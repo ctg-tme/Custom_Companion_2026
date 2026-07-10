@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.10
+ * Version:                 1.0.11
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Main Macro, that will initialize all other devices in scope and will govern the solution's main logic and functionality.
@@ -32,7 +32,7 @@ or implied.
  *
  * Hardware Platforms:      Board Pro Series
  *
- * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_Config_2026, Custom-Campanion_DeviceComms_2026, Custom-Campanion_Utils_2026, Custom-Companion-Memory-Storage
+ * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_Config_2026, Custom-Campanion_DeviceComms_2026, Custom-Campanion_UI_2026, Custom-Campanion_Utils_2026, Custom-Companion-Memory-Storage
  *
  * AI Generation:           Percentage: 95%
  *                          Model(s): GPT-5.3-Codex
@@ -44,6 +44,7 @@ import xapi from 'xapi';
 import { MemoryStorage } from './Memory-Storage-Functions-V2';
 import { config } from './Custom-Campanion_Config_2026';
 import { deviceComms } from './Custom-Campanion_DeviceComms_2026';
+import { companionUi } from './Custom-Campanion_UI_2026';
 import { utils } from './Custom-Campanion_Utils_2026';
 
 const log = new utils.Logger('Custom-Campanion_Board_Main');
@@ -56,6 +57,7 @@ const COMPANION_BOARD_INFORMATION = config.CompanionBoardInformation;
 const PARENT_STATUS_INTERVAL_MS = 30000;
 const INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS = 5;
 const ACTIVE_PARENT_HEARTBEAT_TIMEOUT_SECONDS = 40;
+const OFFLINE_PARENT_SELECTION_RETRY_COUNT = 5;
 const PERIPHERAL_TYPE = 'ControlSystem';
 const HTTP_CLIENT_CONFIG = {
   mode: 'On',
@@ -96,8 +98,10 @@ async function init() {
   boardState = createDefaultBoardState(activeParentSerial);
   parentDeviceStatus = await refreshParentDeviceIdentities(parentDevices, { isInterval: false });
   boardState = createDefaultBoardState(activeParentSerial);
+  await renderSelectDeviceUi();
   await installParentMacrosOnOnlineParents(parentDeviceStatus);
   await connectPeripheralToOnlineParents(parentDeviceStatus);
+  registerUiEventHandlers();
   startParentStatusInterval();
 
   warnIfCredentialsAreStored(parentDevices);
@@ -275,7 +279,105 @@ function startParentStatusInterval() {
 
 async function runParentStatusInterval() {
   parentDeviceStatus = await refreshParentDeviceIdentities(parentDevices, { isInterval: true });
+  await renderSelectDeviceUi();
   await sendActiveParentHeartbeat();
+}
+
+async function renderSelectDeviceUi() {
+  try {
+    await companionUi.savePanel(xapi, parentDevices, parentDeviceStatus, activeParentSerial);
+  } catch (error) {
+    utils.softError({ Context: 'Failed to render Companion Device Select UI', Error: error });
+  }
+}
+
+function registerUiEventHandlers() {
+  xapi.Event.UserInterface.Extensions.Widget.Action.on(event => {
+    handleWidgetAction(event).catch(error => {
+      utils.softError({ Context: 'Failed to handle UI widget action', Event: event, Error: error });
+    });
+  });
+}
+
+async function handleWidgetAction(event) {
+  if (!event || event.Type !== 'clicked' || !companionUi.isSelectDeviceWidget(event.WidgetId)) {
+    return;
+  }
+
+  const widget = companionUi.parseWidgetId(event.WidgetId);
+
+  switch (widget.action) {
+    case 'ReleaseDevice':
+      await selectStandAloneMode();
+      break;
+    case 'ReleaseInfo':
+      await companionUi.showReleaseInfo(xapi);
+      break;
+    case 'ParentSelect':
+      await selectParentByIndex(widget.index);
+      break;
+  }
+}
+
+async function selectStandAloneMode() {
+  activeParentSerial = STAND_ALONE_PARENT_SERIAL;
+  await mem.write(ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
+  boardState = createDefaultBoardState(activeParentSerial);
+  await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
+  log.info({ Message: 'Companion board released to StandAlone mode' });
+}
+
+async function selectParentByIndex(parentIndex) {
+  const parentDevice = parentDevices[parentIndex];
+
+  if (!parentDevice) {
+    return;
+  }
+
+  const parentStatus = await refreshParentStatusWithRetries(parentDevice, OFFLINE_PARENT_SELECTION_RETRY_COUNT);
+  await renderSelectDeviceUi();
+
+  if (!parentStatus.online) {
+    await showSelectedParentOfflinePrompt(parentDevice);
+    return;
+  }
+
+  activeParentSerial = parentStatus.serial;
+  await mem.write(ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
+  boardState = createDefaultBoardState(activeParentSerial);
+  await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
+  await sendActiveParentHeartbeat();
+  log.info({ Message: 'Companion board paired to parent', Host: parentDevice.host, Serial: activeParentSerial, Name: parentStatus.name });
+}
+
+async function refreshParentStatusWithRetries(parentDevice, retryCount) {
+  let latestStatus = null;
+
+  for (let attempt = 0; attempt < retryCount; attempt++) {
+    parentDeviceStatus = await refreshParentDeviceIdentities(parentDevices, { isInterval: true });
+    latestStatus = parentDeviceStatus.find(status => status.host === parentDevice.host || status.serial === parentDevice.serial) || null;
+
+    if (latestStatus && latestStatus.online) {
+      return latestStatus;
+    }
+  }
+
+  return latestStatus || {
+    host: parentDevice.host,
+    serial: parentDevice.serial,
+    name: parentDevice.name,
+    online: false,
+    lastError: 'Parent offline after retry',
+    lastHeartbeat: ''
+  };
+}
+
+async function showSelectedParentOfflinePrompt(parentDevice) {
+  await xapi.Command.UserInterface.Message.Prompt.Display({
+    Title: 'Room Offline',
+    Text: `${parentDevice.name || parentDevice.host} is offline and cannot be paired. Check the room device and try again.`,
+    Duration: 10
+  });
 }
 
 async function sendActiveParentHeartbeat() {
