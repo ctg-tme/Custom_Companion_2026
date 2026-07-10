@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.9
+ * Version:                 1.0.10
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Main Macro, that will initialize all other devices in scope and will govern the solution's main logic and functionality.
@@ -54,6 +54,8 @@ const ACTIVE_PARENT_SERIAL_STORAGE_KEY = 'activeParentSerial';
 const STAND_ALONE_PARENT_SERIAL = 'StandAlone';
 const COMPANION_BOARD_INFORMATION = config.CompanionBoardInformation;
 const PARENT_STATUS_INTERVAL_MS = 30000;
+const INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS = 5;
+const ACTIVE_PARENT_HEARTBEAT_TIMEOUT_SECONDS = 40;
 const PERIPHERAL_TYPE = 'ControlSystem';
 const HTTP_CLIENT_CONFIG = {
   mode: 'On',
@@ -205,8 +207,10 @@ async function connectPeripheralToOnlineParents(statusList) {
 
     try {
       const connectResponse = await deviceComms.connectPeripheral(xapi, parentDevice, peripheralInfo, HTTP_CLIENT_CONFIG);
+      const heartbeatResponse = await deviceComms.sendPeripheralHeartbeat(xapi, parentDevice, peripheralInfo.ID, INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS, HTTP_CLIENT_CONFIG);
       await sendBoardRegistrationMessage(parentDevice, companionBoardInformation);
       log.info({ Message: 'Companion board peripheral connect HTTP response', Host: parentDevice.host, Response: sanitizeHttpResponse(connectResponse) });
+      log.info({ Message: 'Companion board initial peripheral heartbeat HTTP response', Host: parentDevice.host, Response: sanitizeHttpResponse(heartbeatResponse), Timeout: INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS });
       log.info({ Message: 'Companion board peripheral connected to parent', Host: parentDevice.host, PeripheralID: peripheralInfo.ID, Type: peripheralInfo.Type });
     } catch (error) {
       log.warn({ Message: 'Companion board peripheral connect failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown peripheral connect error' });
@@ -288,8 +292,8 @@ async function sendActiveParentHeartbeat() {
   }
 
   try {
-    await deviceComms.sendPeripheralHeartbeat(xapi, activeParentDevice, getCompanionPeripheralId(), HTTP_CLIENT_CONFIG);
-    log.debug({ Message: 'Companion board peripheral heartbeat sent', Host: activeParentDevice.host, PeripheralID: getCompanionPeripheralId() });
+    await deviceComms.sendPeripheralHeartbeat(xapi, activeParentDevice, getCompanionPeripheralId(), ACTIVE_PARENT_HEARTBEAT_TIMEOUT_SECONDS, HTTP_CLIENT_CONFIG);
+    log.debug({ Message: 'Companion board peripheral heartbeat sent', Host: activeParentDevice.host, PeripheralID: getCompanionPeripheralId(), Timeout: ACTIVE_PARENT_HEARTBEAT_TIMEOUT_SECONDS });
   } catch (error) {
     log.warn({ Message: 'Companion board peripheral heartbeat failed', Host: activeParentDevice.host, Error: error.code || error.message || 'Unknown peripheral heartbeat error' });
   }
@@ -324,7 +328,7 @@ function buildCompanionPeripheralInfo(companionBoardInformation) {
     Name: companionBoardInformation.name,
     NetworkAddress: companionBoardInformation.host,
     SerialNumber: companionBoardInformation.serial,
-    HardwareInfo: 'Custom Campanion Board',
+    HardwareInfo: companionBoardInformation.productPlatform,
     SoftwareInfo: config.version,
     Type: PERIPHERAL_TYPE
   };
@@ -367,16 +371,17 @@ function getActiveParentBySerial(parentSerial) {
 async function getRuntimeCompanionBoardInformation() {
   const boardInformation = getConfiguredCompanionBoardInformation();
   const productPlatform = await getProductPlatform();
+  const serial = await getBoardSerialNumber(boardInformation.serial);
   const macAddress = await getActiveNetworkMacAddress(boardInformation.macAddress);
 
   return {
-    serial: boardInformation.serial,
+    serial: serial,
     host: boardInformation.host,
     username: boardInformation.username,
     password: boardInformation.password,
     macAddress: macAddress,
     productPlatform: productPlatform,
-    name: `Custom Companion ${productPlatform}`
+    name: 'Custom Companion Device 2026'
   };
 }
 
@@ -386,6 +391,15 @@ async function getProductPlatform() {
   } catch (error) {
     log.warn({ Message: 'Failed to fetch ProductPlatform for peripheral name', Error: error.message || error.code || 'Unknown ProductPlatform error' });
     return 'RoomOS Device';
+  }
+}
+
+async function getBoardSerialNumber(fallbackSerial) {
+  try {
+    return await xapi.Status.SystemUnit.Hardware.Module.SerialNumber.get();
+  } catch (error) {
+    log.warn({ Message: 'Failed to fetch board serial number for peripheral registration', Error: error.message || error.code || 'Unknown serial number error' });
+    return fallbackSerial || '';
   }
 }
 

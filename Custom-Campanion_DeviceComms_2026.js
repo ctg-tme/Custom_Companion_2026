@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.5
+ * Version:                 1.0.6
  *
  * Description:             A macro module that facilitates device-to-device communication for a custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This module will provide HTTPClient, Message API, and putxml routing helpers. The xapi object must be passed in from the calling macro.
@@ -66,6 +66,7 @@ async function initializeHttpClient(XAPIObject, httpClientConfig) {
  * Gets identifying data from a parent device and validates that HTTP credentials work.
  * @param {object} XAPIObject The RoomOS xapi object.
  * @param {object} parentDevice Parent device connection details.
+ * @param {number} timeoutSeconds Peripheral heartbeat timeout in seconds.
  * @param {object} httpClientConfig HTTPClient request configuration.
  * @returns {Promise<object>} Parent device identity with serial and BroadcastName.
  * @roomosxapi [xCommand HttpClient Get](https://roomos.cisco.com/xapi/Command.HttpClient.Get/)
@@ -181,14 +182,14 @@ async function connectPeripheral(XAPIObject, parentDevice, peripheralInfo, httpC
  * @returns {Promise<object>} HTTPClient response.
  * @roomosxapi [xCommand Peripherals HeartBeat](https://roomos.cisco.com/xapi/Command.Peripherals.HeartBeat/)
  */
-async function sendPeripheralHeartbeat(XAPIObject, parentDevice, peripheralId, httpClientConfig) {
+async function sendPeripheralHeartbeat(XAPIObject, parentDevice, peripheralId, timeoutSeconds, httpClientConfig) {
 	validateParentDevice(parentDevice);
 
 	if (!peripheralId) {
 		throw buildError('Peripheral heartbeat requires a peripheral ID', { Code: 'cc.peripheral-heartbeat.1', Host: parentDevice.host });
 	}
 
-	return sendPutXml(XAPIObject, parentDevice, buildPeripheralHeartbeatXml(peripheralId), httpClientConfig);
+	return sendPutXml(XAPIObject, parentDevice, buildPeripheralHeartbeatXml(peripheralId, timeoutSeconds), httpClientConfig);
 }
 
 function queuedHttpRequest(task) {
@@ -266,8 +267,8 @@ function buildPeripheralConnectXml(peripheralInfo) {
 	return `<Command><Peripherals><Connect><ID>${escapeXml(peripheralInfo.ID)}</ID><Name>${escapeXml(peripheralInfo.Name)}</Name><NetworkAddress>${escapeXml(peripheralInfo.NetworkAddress || '')}</NetworkAddress><SerialNumber>${escapeXml(peripheralInfo.SerialNumber || '')}</SerialNumber><HardwareInfo>${escapeXml(peripheralInfo.HardwareInfo || '')}</HardwareInfo><SoftwareInfo>${escapeXml(peripheralInfo.SoftwareInfo || '')}</SoftwareInfo><Type>${escapeXml(peripheralInfo.Type)}</Type></Connect></Peripherals></Command>`;
 }
 
-function buildPeripheralHeartbeatXml(peripheralId) {
-	return `<Command><Peripherals><HeartBeat><ID>${escapeXml(peripheralId)}</ID></HeartBeat></Peripherals></Command>`;
+function buildPeripheralHeartbeatXml(peripheralId, timeoutSeconds) {
+	return `<Command><Peripherals><HeartBeat><ID>${escapeXml(peripheralId)}</ID><Timeout>${escapeXml(timeoutSeconds)}</Timeout></HeartBeat></Peripherals></Command>`;
 }
 
 function getXmlPathValue(xml, path) {
