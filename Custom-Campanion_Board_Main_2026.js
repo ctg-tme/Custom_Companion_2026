@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.0
+ * Version:                 1.0.1
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Main Macro, that will initialize all other devices in scope and will govern the solution's main logic and functionality.
@@ -32,7 +32,7 @@ or implied.
  *
  * Hardware Platforms:      Board Pro Series
  *
- * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_Utils_2026, Custom-Companion-Memory-Storage
+ * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_Config_2026, Custom-Campanion_DeviceComms_2026, Custom-Campanion_Utils_2026, Custom-Companion-Memory-Storage
  *
  * AI Generation:           Percentage: 95%
  *                          Model(s): GPT-5.3-Codex
@@ -42,25 +42,64 @@ or implied.
 
 import xapi from 'xapi';
 import { MemoryStorage } from './Memory-Storage-Functions-V2';
+import { config } from './Custom-Campanion_Config_2026';
+import { deviceComms } from './Custom-Campanion_DeviceComms_2026';
 import { utils } from './Custom-Campanion_Utils_2026';
 
 const log = new utils.Logger('Custom-Campanion_Board_Main');
 
-const mem = new MemoryStorage(xapi, { StorageMacroName: 'Custom-Campanion' });
+const mem = new MemoryStorage(xapi, { StorageMacroName: config.memory.storageMacroName });
 
 let parentDevices = [];
+let boardState = createDefaultBoardState();
 
 async function init() {
+  try { await deviceComms.initializeHttpClient(xapi, config.httpClient) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
   try { await mem.init() } catch (e) { utils.hardError({ Context: 'Failed to initialize memory', Error: e }) };
 
-  try { parentDevices = await mem.read('parentDevices') } catch (e) {
-    if (e.code === 'msfv2.r.3') {
-      await mem.write('parentDevices', parentDevices);
-      
-    } else {
-      utils.hardError({ Context: 'Failed to fetch Parent Device List', Error: e });
-    };
+  parentDevices = await readOrInitializeMemory(config.parentDevices.storageKey, []);
+  boardState = await readOrInitializeMemory(config.boardState.storageKey, createDefaultBoardState());
 
+  if (!boardState.activeParent || !boardState.activeParent.serial) {
+    boardState = createDefaultBoardState();
+    await mem.write(config.boardState.storageKey, boardState);
+  }
+
+  warnIfCredentialsAreStored(parentDevices);
+  log.info({ Message: 'Custom Campanion initialized', Version: config.version, ActiveParent: boardState.activeParent.name });
+}
+
+async function readOrInitializeMemory(key, defaultValue) {
+  try {
+    return await mem.read(key);
+  } catch (error) {
+    if (error.code === 'msfv2.r.3') {
+      await mem.write(key, defaultValue);
+      return defaultValue;
+    }
+
+    utils.hardError({ Context: `Failed to fetch memory key [${key}]`, Error: error });
+    return defaultValue;
+  }
+}
+
+function createDefaultBoardState() {
+  return {
+    activeParent: config.boardState.standAloneParent,
+    mode: 'StandAlone',
+    lastKnownParentSerial: config.boardState.standAloneParent.serial,
+    lastUpdated: new Date().toISOString()
+  };
+}
+
+function warnIfCredentialsAreStored(devices) {
+  const credentialCount = devices.filter(device => device.username || device.password).length;
+
+  if (credentialCount > 0) {
+    log.warn({
+      Context: 'Stored parent device credentials are present in MemoryStorage. This is required for autonomous device-to-device communication, but macro/storage access can expose these credentials.',
+      CredentialSetCount: credentialCount
+    });
   }
 }
 

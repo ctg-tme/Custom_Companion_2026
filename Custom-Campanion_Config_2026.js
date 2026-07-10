@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.1
+ * Version:                 1.0.2
  *
  * Description:             Shared configuration for the custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This file provides a single source of truth for defaults used by board and room-reference macros.
@@ -41,7 +41,7 @@ or implied.
  */
 
 const config = {
-  version: '1.0.1',
+  version: '1.0.2',
   memory: {
     storageMacroName: 'Custom-Campanion'
   },
@@ -59,6 +59,30 @@ const config = {
   },
   parentDevices: {
     storageKey: 'parentDevices'
+  },
+  boardState: {
+    storageKey: 'boardState',
+    standAloneParent: {
+      serial: 'StandAlone',
+      name: 'StandAlone',
+      host: '',
+      username: '',
+      password: ''
+    }
+  },
+  messages: {
+    service: 'CustomCampanion',
+    routes: {
+      heartbeat: 'parent.heartbeat',
+      callState: 'parent.callState',
+      joinCall: 'board.joinCall'
+    }
+  },
+  parentInstall: {
+    roomReferenceSourceMacroName: 'Custom-Campanion_RoomReference_2026',
+    roomReferenceTargetMacroName: 'Custom-Campanion_Room_2026',
+    configMacroName: 'Custom-Campanion_Config_2026',
+    memoryStorageMacroName: 'Memory-Storage-Functions-V2'
   }
 };
 
