@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.1
+ * Version:                 1.0.2
  *
  * Description:             A macro module that facilitates device-to-device communication for a custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This module will provide HTTPClient, Message API, and putxml routing helpers. The xapi object must be passed in from the calling macro.
@@ -73,7 +73,7 @@ async function initializeHttpClient(XAPIObject, httpClientConfig) {
 async function parentInitializationRequest(XAPIObject, parentDevice, httpClientConfig) {
 	validateParentDevice(parentDevice);
 
-	const url = `https://${parentDevice.host}/getxml?location=/Status/SystemUnit/Hardware/Module/SerialNumber&location=/Configuration/ContactInfo/Name`;
+	const url = `https://${parentDevice.host}/getxml?location=/Status/SystemUnit/Hardware/Module/SerialNumber&location=/Configuration/SystemUnit/ContactInfo/Name`;
 	const response = await queuedHttpRequest(() => XAPIObject.Command.HttpClient.Get({
 		Url: url,
 		Header: buildHeaders(parentDevice),
@@ -82,7 +82,7 @@ async function parentInitializationRequest(XAPIObject, parentDevice, httpClientC
 
 	const body = response.Body || '';
 	const serial = getXmlPathValue(body, ['SerialNumber']);
-	const name = getXmlPathValue(body, ['ContactInfo', 'Name']) || getXmlPathValue(body, ['Name']);
+	const name = getXmlPathValue(body, ['SystemUnit', 'ContactInfo', 'Name']) || getXmlPathValue(body, ['ContactInfo', 'Name']) || getXmlPathValue(body, ['Name']);
 
 	if (!serial || !name) {
 		throw buildError('Parent initialization response did not include both SerialNumber and ContactInfo Name', {

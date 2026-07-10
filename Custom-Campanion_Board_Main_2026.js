@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.2
+ * Version:                 1.0.3
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Main Macro, that will initialize all other devices in scope and will govern the solution's main logic and functionality.
@@ -89,6 +89,7 @@ async function init() {
 
   parentDevices = await readOrInitializeMemory(PARENT_DEVICES_STORAGE_KEY, []);
   boardState = await readOrInitializeMemory(BOARD_STATE_STORAGE_KEY, createDefaultBoardState());
+  parentDevices = await refreshParentDeviceIdentities(parentDevices);
 
   if (!boardState.activeParent || !boardState.activeParent.serial) {
     boardState = createDefaultBoardState();
@@ -111,6 +112,44 @@ async function readOrInitializeMemory(key, defaultValue) {
     utils.hardError({ Context: `Failed to fetch memory key [${key}]`, Error: error });
     return defaultValue;
   }
+}
+
+async function refreshParentDeviceIdentities(devices) {
+  let hasUpdates = false;
+  const refreshedDevices = [];
+
+  for (let index = 0; index < devices.length; index++) {
+    const device = devices[index];
+
+    try {
+      const refreshedDevice = await deviceComms.parentInitializationRequest(xapi, device, HTTP_CLIENT_CONFIG);
+      refreshedDevices.push({
+        ...device,
+        serial: refreshedDevice.serial,
+        name: refreshedDevice.name,
+        online: true,
+        lastHeartbeat: refreshedDevice.lastHeartbeat,
+        lastError: ''
+      });
+      hasUpdates = true;
+      log.info({ Message: 'Parent device identity refreshed', Host: device.host, Serial: refreshedDevice.serial, Name: refreshedDevice.name });
+    } catch (error) {
+      refreshedDevices.push({
+        ...device,
+        online: false,
+        lastError: error.code || error.message || 'Unknown parent refresh error',
+        lastHeartbeat: device.lastHeartbeat || ''
+      });
+      hasUpdates = true;
+      log.warn({ Message: 'Parent device identity refresh failed', Host: device.host, Error: error.code || error.message || 'Unknown parent refresh error' });
+    }
+  }
+
+  if (hasUpdates) {
+    await mem.write(PARENT_DEVICES_STORAGE_KEY, refreshedDevices);
+  }
+
+  return refreshedDevices;
 }
 
 function createDefaultBoardState() {
