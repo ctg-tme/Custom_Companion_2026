@@ -54,7 +54,7 @@ const ACTIVE_PARENT_SERIAL_STORAGE_KEY = 'activeParentSerial';
 const STAND_ALONE_PARENT_SERIAL = 'StandAlone';
 const COMPANION_BOARD_INFORMATION = config.CompanionBoardInformation;
 const PARENT_STATUS_INTERVAL_MS = 30000;
-const PERIPHERAL_TYPE = 'Controller';
+const PERIPHERAL_TYPE = 'ControlSystem';
 const HTTP_CLIENT_CONFIG = {
   mode: 'On',
   allowInsecureHTTPS: config.httpClient.allowInsecureHTTPS,
