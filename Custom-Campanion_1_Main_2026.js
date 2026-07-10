@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.1.1
+ * Version:                 1.1.2
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -87,6 +87,7 @@ let activeParentSerial = companionState.STAND_ALONE_PARENT_SERIAL;
 let companionPeripheralId = '';
 let standaloneUiFeatureConfig = {};
 let isApplyingUiFeatureConfig = false;
+let isHandlingSelection = false;
 
 async function init() {
 	try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
@@ -187,8 +188,12 @@ function startParentStatusInterval() {
 }
 
 async function runParentStatusInterval() {
+	const previousAvailabilitySignature = getParentAvailabilitySignature();
 	await refreshParents({ isInterval: true });
-	await renderSelectDeviceUi();
+	const currentAvailabilitySignature = getParentAvailabilitySignature();
+	if (previousAvailabilitySignature !== currentAvailabilitySignature) {
+		await renderSelectDeviceUi();
+	}
 	await sendActiveParentHeartbeat();
 }
 
@@ -209,31 +214,43 @@ function registerUiEventHandlers() {
 }
 
 async function handleWidgetAction(event) {
-	if (!event || event.Type !== 'clicked' || !companionUi.isSelectDeviceWidget(event.WidgetId)) {
+	if (!event || event.Type !== 'released' || !companionUi.isSelectDeviceWidget(event.WidgetId)) {
+		return;
+	}
+
+	if (isHandlingSelection) {
 		return;
 	}
 
 	const widget = companionUi.parseWidgetId(event.WidgetId);
 
-	switch (widget.action) {
-		case 'ReleaseDevice':
-			await selectStandAloneMode();
-			break;
-		case 'ReleaseInfo':
-			await companionUi.showReleaseInfo(xapi);
-			break;
-		case 'ParentSelect':
-			await selectParentByIndex(widget.index);
-			break;
+	if (widget.action === 'ReleaseInfo') {
+		await companionUi.showReleaseInfo(xapi);
+		return;
+	}
+
+	isHandlingSelection = true;
+
+	try {
+		switch (widget.action) {
+			case 'ReleaseDevice':
+				await selectStandAloneMode();
+				break;
+			case 'ParentSelect':
+				await selectParentByIndex(widget.index);
+				break;
+		}
+	} finally {
+		isHandlingSelection = false;
 	}
 }
 
 async function selectStandAloneMode() {
 	activeParentSerial = companionState.STAND_ALONE_PARENT_SERIAL;
-	await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
 	boardState = createBoardState(activeParentSerial);
-	await applyUiFeatureMode(boardState.mode);
 	await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
+	await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
+	await applyUiFeatureMode(boardState.mode);
 	log.info({ Message: 'Companion board released to StandAlone mode' });
 }
 
@@ -244,33 +261,46 @@ async function selectParentByIndex(parentIndex) {
 		return;
 	}
 
-	const refreshResult = await companionState.refreshParentStatusWithRetries({
-		xapi: xapi,
-		mem: mem,
-		parentDevices: parentDevices,
-		parentDeviceStatus: parentDeviceStatus,
-		parentDevice: parentDevice,
-		retryCount: OFFLINE_PARENT_SELECTION_RETRY_COUNT,
-		deviceComms: deviceComms,
-		httpClientConfig: HTTP_CLIENT_CONFIG,
-		log: log
-	});
-	parentDevices = refreshResult.parentDevices;
-	parentDeviceStatus = refreshResult.parentDeviceStatus;
-	await renderSelectDeviceUi();
+	let parentStatus = findParentStatus(parentDevice);
 
-	if (!refreshResult.parentStatus.online) {
+	if (!parentStatus || !parentStatus.online) {
+		const refreshResult = await companionState.refreshParentStatusWithRetries({
+			xapi: xapi,
+			mem: mem,
+			parentDevices: parentDevices,
+			parentDeviceStatus: parentDeviceStatus,
+			parentDevice: parentDevice,
+			retryCount: OFFLINE_PARENT_SELECTION_RETRY_COUNT,
+			deviceComms: deviceComms,
+			httpClientConfig: HTTP_CLIENT_CONFIG,
+			log: log
+		});
+		parentDevices = refreshResult.parentDevices;
+		parentDeviceStatus = refreshResult.parentDeviceStatus;
+		parentStatus = refreshResult.parentStatus;
+		await renderSelectDeviceUi();
+	}
+
+	if (!parentStatus.online) {
 		await showSelectedParentOfflinePrompt(parentDevice);
 		return;
 	}
 
-	activeParentSerial = refreshResult.parentStatus.serial;
-	await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
+	activeParentSerial = parentStatus.serial;
 	boardState = createBoardState(activeParentSerial);
-	await applyUiFeatureMode(boardState.mode);
 	await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
+	await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
+	await applyUiFeatureMode(boardState.mode);
 	await sendActiveParentHeartbeat();
-	log.info({ Message: 'Companion board paired to parent', Host: parentDevice.host, Serial: activeParentSerial, Name: refreshResult.parentStatus.name });
+	log.info({ Message: 'Companion board paired to parent', Host: parentDevice.host, Serial: activeParentSerial, Name: parentStatus.name });
+}
+
+function findParentStatus(parentDevice) {
+	return parentDeviceStatus.find(status => status.host === parentDevice.host || status.serial === parentDevice.serial) || null;
+}
+
+function getParentAvailabilitySignature() {
+	return parentDeviceStatus.map(status => `${status.host}:${status.online ? 'online' : 'offline'}`).join('|');
 }
 
 async function showSelectedParentOfflinePrompt(parentDevice) {
