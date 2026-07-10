@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.8
+ * Version:                 1.0.9
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Main Macro, that will initialize all other devices in scope and will govern the solution's main logic and functionality.
@@ -50,6 +50,8 @@ const log = new utils.Logger('Custom-Campanion_Board_Main');
 
 const STORAGE_MACRO_NAME = 'Custom-Campanion';
 const PARENT_DEVICES_STORAGE_KEY = 'parentDevices';
+const ACTIVE_PARENT_SERIAL_STORAGE_KEY = 'activeParentSerial';
+const STAND_ALONE_PARENT_SERIAL = 'StandAlone';
 const COMPANION_BOARD_INFORMATION = config.CompanionBoardInformation;
 const PARENT_STATUS_INTERVAL_MS = 30000;
 const PERIPHERAL_TYPE = 'Controller';
@@ -80,14 +82,19 @@ let parentDevices = [];
 let boardState = createDefaultBoardState();
 let parentDeviceStatus = [];
 let parentStatusInterval = null;
+let activeParentSerial = STAND_ALONE_PARENT_SERIAL;
+let companionPeripheralId = '';
 
 async function init() {
   try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
   try { await mem.init() } catch (e) { utils.hardError({ Context: 'Failed to initialize memory', Error: e }) };
 
   parentDevices = await readMemoryOrDefault(PARENT_DEVICES_STORAGE_KEY, []);
-  boardState = createDefaultBoardState();
+  activeParentSerial = await readMemoryOrInitialize(ACTIVE_PARENT_SERIAL_STORAGE_KEY, STAND_ALONE_PARENT_SERIAL);
+  boardState = createDefaultBoardState(activeParentSerial);
   parentDeviceStatus = await refreshParentDeviceIdentities(parentDevices, { isInterval: false });
+  boardState = createDefaultBoardState(activeParentSerial);
+  await installParentMacrosOnOnlineParents(parentDeviceStatus);
   await connectPeripheralToOnlineParents(parentDeviceStatus);
   startParentStatusInterval();
 
@@ -100,6 +107,20 @@ async function readMemoryOrDefault(key, defaultValue) {
     return await mem.read(key);
   } catch (error) {
     if (error.code === 'msfv2.r.3') {
+      return defaultValue;
+    }
+
+    utils.hardError({ Context: `Failed to fetch memory key [${key}]`, Error: error });
+    return defaultValue;
+  }
+}
+
+async function readMemoryOrInitialize(key, defaultValue) {
+  try {
+    return await mem.read(key);
+  } catch (error) {
+    if (error.code === 'msfv2.r.3') {
+      await mem.write(key, defaultValue);
       return defaultValue;
     }
 
@@ -166,8 +187,9 @@ async function refreshParentDeviceIdentities(devices, options = {}) {
 }
 
 async function connectPeripheralToOnlineParents(statusList) {
-  const companionBoardInformation = getConfiguredCompanionBoardInformation();
+  const companionBoardInformation = await getRuntimeCompanionBoardInformation();
   const peripheralInfo = buildCompanionPeripheralInfo(companionBoardInformation);
+  companionPeripheralId = peripheralInfo.ID;
 
   for (let index = 0; index < statusList.length; index++) {
     const status = statusList[index];
@@ -182,13 +204,57 @@ async function connectPeripheralToOnlineParents(statusList) {
     }
 
     try {
-      await deviceComms.connectPeripheral(xapi, parentDevice, peripheralInfo, HTTP_CLIENT_CONFIG);
+      const connectResponse = await deviceComms.connectPeripheral(xapi, parentDevice, peripheralInfo, HTTP_CLIENT_CONFIG);
       await sendBoardRegistrationMessage(parentDevice, companionBoardInformation);
+      log.info({ Message: 'Companion board peripheral connect HTTP response', Host: parentDevice.host, Response: sanitizeHttpResponse(connectResponse) });
       log.info({ Message: 'Companion board peripheral connected to parent', Host: parentDevice.host, PeripheralID: peripheralInfo.ID, Type: peripheralInfo.Type });
     } catch (error) {
       log.warn({ Message: 'Companion board peripheral connect failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown peripheral connect error' });
     }
   }
+}
+
+async function installParentMacrosOnOnlineParents(statusList) {
+  const macroPayloads = await getParentInstallMacroPayloads();
+
+  for (let index = 0; index < statusList.length; index++) {
+    const status = statusList[index];
+
+    if (!status.online) {
+      continue;
+    }
+
+    const parentDevice = findParentDeviceByHost(status.host);
+    if (!parentDevice) {
+      continue;
+    }
+
+    try {
+      await deviceComms.installParentMacros(xapi, parentDevice, macroPayloads, PARENT_INSTALL_CONFIG, HTTP_CLIENT_CONFIG);
+      log.info({ Message: 'Parent macro installation completed', Host: parentDevice.host, MacroName: PARENT_INSTALL_CONFIG.roomReferenceTargetMacroName });
+    } catch (error) {
+      log.warn({ Message: 'Parent macro installation failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown parent macro installation error' });
+    }
+  }
+}
+
+async function getParentInstallMacroPayloads() {
+  return {
+    roomReference: await getLocalMacroContent(PARENT_INSTALL_CONFIG.roomReferenceSourceMacroName),
+    config: await getLocalMacroContent(PARENT_INSTALL_CONFIG.configMacroName),
+    memoryStorage: await getLocalMacroContent(PARENT_INSTALL_CONFIG.memoryStorageMacroName)
+  };
+}
+
+async function getLocalMacroContent(macroName) {
+  const response = await xapi.Command.Macros.Macro.Get({ Name: macroName, Content: 'True' });
+  const macro = response && response.Macro && response.Macro[0];
+
+  if (!macro || !macro.Content) {
+    throw new Error(`Macro content not found for ${macroName}`);
+  }
+
+  return macro.Content;
 }
 
 function startParentStatusInterval() {
@@ -254,7 +320,7 @@ function findParentDeviceByHost(host) {
 
 function buildCompanionPeripheralInfo(companionBoardInformation) {
   return {
-    ID: getCompanionPeripheralId(),
+    ID: getCompanionPeripheralId(companionBoardInformation),
     Name: companionBoardInformation.name,
     NetworkAddress: companionBoardInformation.host,
     SerialNumber: companionBoardInformation.serial,
@@ -264,20 +330,108 @@ function buildCompanionPeripheralInfo(companionBoardInformation) {
   };
 }
 
-function getCompanionPeripheralId() {
-  const companionBoardInformation = getConfiguredCompanionBoardInformation();
+function getCompanionPeripheralId(companionBoardInformation) {
+  if (!companionBoardInformation && companionPeripheralId) {
+    return companionPeripheralId;
+  }
+
+  companionBoardInformation = companionBoardInformation || getConfiguredCompanionBoardInformation();
   return companionBoardInformation.macAddress || companionBoardInformation.serial || companionBoardInformation.host || companionBoardInformation.name;
 }
 
-function createDefaultBoardState() {
-  const activeParent = getConfiguredCompanionBoardInformation();
+function createDefaultBoardState(parentSerial = STAND_ALONE_PARENT_SERIAL) {
+  const activeParent = getActiveParentBySerial(parentSerial);
 
   return {
     activeParent: activeParent,
-    mode: 'StandAlone',
+    mode: parentSerial === STAND_ALONE_PARENT_SERIAL ? 'StandAlone' : 'Paired',
     lastKnownParentSerial: activeParent.serial,
     lastUpdated: new Date().toISOString()
   };
+}
+
+function getActiveParentBySerial(parentSerial) {
+  if (parentSerial === STAND_ALONE_PARENT_SERIAL) {
+    return getConfiguredCompanionBoardInformation();
+  }
+
+  return parentDevices.find(device => device.serial === parentSerial) || {
+    serial: parentSerial,
+    name: parentSerial,
+    host: '',
+    username: '',
+    password: ''
+  };
+}
+
+async function getRuntimeCompanionBoardInformation() {
+  const boardInformation = getConfiguredCompanionBoardInformation();
+  const productPlatform = await getProductPlatform();
+  const macAddress = await getActiveNetworkMacAddress(boardInformation.macAddress);
+
+  return {
+    serial: boardInformation.serial,
+    host: boardInformation.host,
+    username: boardInformation.username,
+    password: boardInformation.password,
+    macAddress: macAddress,
+    productPlatform: productPlatform,
+    name: `Custom Companion ${productPlatform}`
+  };
+}
+
+async function getProductPlatform() {
+  try {
+    return await xapi.Status.SystemUnit.ProductPlatform.get();
+  } catch (error) {
+    log.warn({ Message: 'Failed to fetch ProductPlatform for peripheral name', Error: error.message || error.code || 'Unknown ProductPlatform error' });
+    return 'RoomOS Device';
+  }
+}
+
+async function getActiveNetworkMacAddress(fallbackMacAddress) {
+  try {
+    const networkStatus = await xapi.Status.Network.get();
+    const networkEntries = normalizeNetworkEntries(networkStatus);
+    const wifiEntry = networkEntries.find(entry => isWifiConnected(entry) && entry.Wifi && entry.Wifi.MacAddress);
+
+    if (wifiEntry) {
+      return wifiEntry.Wifi.MacAddress;
+    }
+
+    const ethernetEntry = networkEntries.find(entry => entry.Ethernet && entry.Ethernet.MacAddress);
+    if (ethernetEntry) {
+      return ethernetEntry.Ethernet.MacAddress;
+    }
+  } catch (error) {
+    log.warn({ Message: 'Failed to fetch network MAC address for peripheral ID', Error: error.message || error.code || 'Unknown network status error' });
+  }
+
+  return fallbackMacAddress || '';
+}
+
+function normalizeNetworkEntries(networkStatus) {
+  if (!networkStatus) {
+    return [];
+  }
+
+  if (Array.isArray(networkStatus)) {
+    return networkStatus;
+  }
+
+  if (typeof networkStatus === 'object') {
+    return Object.keys(networkStatus).map(key => networkStatus[key]);
+  }
+
+  return [];
+}
+
+function isWifiConnected(networkEntry) {
+  if (!networkEntry || !networkEntry.Wifi || !networkEntry.Wifi.Status) {
+    return false;
+  }
+
+  return networkEntry.Wifi.Status.toLowerCase() !== 'disconnected';
 }
 
 function getConfiguredCompanionBoardInformation() {
@@ -290,6 +444,18 @@ function getConfiguredCompanionBoardInformation() {
     username: boardInformation.username || '',
     password: boardInformation.password || '',
     macAddress: boardInformation.macAddress || ''
+  };
+}
+
+function sanitizeHttpResponse(response) {
+  if (!response || typeof response !== 'object') {
+    return response;
+  }
+
+  return {
+    StatusCode: response.StatusCode,
+    ReasonPhrase: response.ReasonPhrase,
+    Body: response.Body
   };
 }
 
