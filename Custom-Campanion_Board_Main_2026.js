@@ -52,6 +52,7 @@ const log = new utils.Logger('Custom-Campanion_Board_Main');
 const STORAGE_MACRO_NAME = 'Custom-Campanion';
 const PARENT_DEVICES_STORAGE_KEY = 'parentDevices';
 const ACTIVE_PARENT_SERIAL_STORAGE_KEY = 'activeParentSerial';
+const STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY = 'standaloneUiFeatureConfig';
 const STAND_ALONE_PARENT_SERIAL = 'StandAlone';
 const COMPANION_BOARD_INFORMATION = config.CompanionBoardInformation;
 const PARENT_STATUS_INTERVAL_MS = 30000;
@@ -79,6 +80,17 @@ const PARENT_INSTALL_CONFIG = {
   configMacroName: 'Custom-Campanion_Config_2026',
   memoryStorageMacroName: 'Memory-Storage-Functions-V2'
 };
+const UI_FEATURE_CONFIGS = [
+  { key: 'call', path: ['UserInterface', 'Features', 'Call', 'Start'], pairedValue: 'Hidden' },
+  { key: 'share', path: ['UserInterface', 'Features', 'Share', 'Start'], pairedValue: 'Hidden' },
+  { key: 'aiNotes', path: ['UserInterface', 'Features', 'Call', 'AINotes'], pairedValue: 'Hidden' },
+  { key: 'webex', path: ['UserInterface', 'Features', 'Call', 'JoinWebex'], pairedValue: 'Hidden' },
+  { key: 'microsoftTeamsCvi', path: ['UserInterface', 'Features', 'Call', 'JoinMicrosoftTeamsCVI'], pairedValue: 'Hidden' },
+  { key: 'microsoftTeamsDirectGuestJoin', path: ['UserInterface', 'Features', 'Call', 'JoinMicrosoftTeamsDirectGuestJoin'], pairedValue: 'Hidden' },
+  { key: 'googleMeet', path: ['UserInterface', 'Features', 'Call', 'JoinGoogleMeet'], pairedValue: 'Hidden' },
+  { key: 'zoom', path: ['UserInterface', 'Features', 'Call', 'JoinZoom'], pairedValue: 'Hidden' },
+  { key: 'scanToPair', path: ['BYOD', 'QRCodePairing'], pairedValue: 'Disabled' }
+];
 
 const mem = new MemoryStorage(xapi, { StorageMacroName: STORAGE_MACRO_NAME });
 
@@ -88,6 +100,8 @@ let parentDeviceStatus = [];
 let parentStatusInterval = null;
 let activeParentSerial = STAND_ALONE_PARENT_SERIAL;
 let companionPeripheralId = '';
+let standaloneUiFeatureConfig = {};
+let isApplyingUiFeatureConfig = false;
 
 async function init() {
   try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
@@ -95,9 +109,13 @@ async function init() {
 
   parentDevices = await readMemoryOrDefault(PARENT_DEVICES_STORAGE_KEY, []);
   activeParentSerial = await readMemoryOrInitialize(ACTIVE_PARENT_SERIAL_STORAGE_KEY, STAND_ALONE_PARENT_SERIAL);
+  standaloneUiFeatureConfig = await readMemoryOrDefault(STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY, {});
+  await ensureStandaloneUiFeatureConfig();
+  registerStandaloneUiFeatureSubscriptions();
   boardState = createDefaultBoardState(activeParentSerial);
   parentDeviceStatus = await refreshParentDeviceIdentities(parentDevices, { isInterval: false });
   boardState = createDefaultBoardState(activeParentSerial);
+  await applyUiFeatureMode(boardState.mode);
   await renderSelectDeviceUi();
   await installParentMacrosOnOnlineParents(parentDeviceStatus);
   await connectPeripheralToOnlineParents(parentDeviceStatus);
@@ -323,6 +341,7 @@ async function selectStandAloneMode() {
   activeParentSerial = STAND_ALONE_PARENT_SERIAL;
   await mem.write(ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
   boardState = createDefaultBoardState(activeParentSerial);
+  await applyUiFeatureMode(boardState.mode);
   await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
   log.info({ Message: 'Companion board released to StandAlone mode' });
 }
@@ -345,6 +364,7 @@ async function selectParentByIndex(parentIndex) {
   activeParentSerial = parentStatus.serial;
   await mem.write(ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
   boardState = createDefaultBoardState(activeParentSerial);
+  await applyUiFeatureMode(boardState.mode);
   await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
   await sendActiveParentHeartbeat();
   log.info({ Message: 'Companion board paired to parent', Host: parentDevice.host, Serial: activeParentSerial, Name: parentStatus.name });
@@ -378,6 +398,127 @@ async function showSelectedParentOfflinePrompt(parentDevice) {
     Text: `${parentDevice.name || parentDevice.host} is offline and cannot be paired. Check the room device and try again.`,
     Duration: 10
   });
+}
+
+async function ensureStandaloneUiFeatureConfig() {
+  let hasUpdates = false;
+
+  for (let index = 0; index < UI_FEATURE_CONFIGS.length; index++) {
+    const feature = UI_FEATURE_CONFIGS[index];
+
+    if (standaloneUiFeatureConfig[feature.key] !== undefined) {
+      continue;
+    }
+
+    const currentValue = await getUiFeatureConfigValue(feature);
+    if (currentValue !== null) {
+      standaloneUiFeatureConfig[feature.key] = currentValue;
+      hasUpdates = true;
+    }
+  }
+
+  if (hasUpdates) {
+    await mem.write(STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY, standaloneUiFeatureConfig);
+  }
+}
+
+function registerStandaloneUiFeatureSubscriptions() {
+  for (let index = 0; index < UI_FEATURE_CONFIGS.length; index++) {
+    const feature = UI_FEATURE_CONFIGS[index];
+    const node = getXapiConfigNode(feature.path);
+
+    if (!node || typeof node.on !== 'function') {
+      log.debug({ Message: 'UI feature config subscription unavailable', Feature: feature.key, Path: feature.path.join('.') });
+      continue;
+    }
+
+    node.on(value => {
+      handleStandaloneUiFeatureChange(feature, normalizeConfigEventValue(value)).catch(error => {
+        utils.softError({ Context: 'Failed to save standalone UI feature config change', Feature: feature.key, Error: error });
+      });
+    });
+  }
+}
+
+async function handleStandaloneUiFeatureChange(feature, value) {
+  if (isApplyingUiFeatureConfig || boardState.mode !== 'StandAlone' || value === undefined || value === null) {
+    return;
+  }
+
+  standaloneUiFeatureConfig[feature.key] = value;
+  await mem.write(STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY, standaloneUiFeatureConfig);
+  log.info({ Message: 'Saved standalone UI feature preference', Feature: feature.key, Value: value });
+}
+
+async function applyUiFeatureMode(mode) {
+  isApplyingUiFeatureConfig = true;
+
+  try {
+    for (let index = 0; index < UI_FEATURE_CONFIGS.length; index++) {
+      const feature = UI_FEATURE_CONFIGS[index];
+      const value = mode === 'StandAlone' ? standaloneUiFeatureConfig[feature.key] : feature.pairedValue;
+
+      if (value === undefined || value === null) {
+        continue;
+      }
+
+      await setUiFeatureConfigValue(feature, value);
+    }
+  } finally {
+    isApplyingUiFeatureConfig = false;
+  }
+}
+
+async function getUiFeatureConfigValue(feature) {
+  const node = getXapiConfigNode(feature.path);
+
+  if (!node || typeof node.get !== 'function') {
+    log.debug({ Message: 'UI feature config get unavailable', Feature: feature.key, Path: feature.path.join('.') });
+    return null;
+  }
+
+  try {
+    return await node.get();
+  } catch (error) {
+    log.debug({ Message: 'UI feature config get failed', Feature: feature.key, Path: feature.path.join('.'), Error: error.message || error.code || 'Unknown get error' });
+    return null;
+  }
+}
+
+async function setUiFeatureConfigValue(feature, value) {
+  const node = getXapiConfigNode(feature.path);
+
+  if (!node || typeof node.set !== 'function') {
+    log.debug({ Message: 'UI feature config set unavailable', Feature: feature.key, Path: feature.path.join('.') });
+    return;
+  }
+
+  try {
+    await node.set(value);
+  } catch (error) {
+    log.warn({ Message: 'UI feature config set failed', Feature: feature.key, Path: feature.path.join('.'), Value: value, Error: error.message || error.code || 'Unknown set error' });
+  }
+}
+
+function getXapiConfigNode(path) {
+  let node = xapi.Config;
+
+  for (let index = 0; index < path.length; index++) {
+    if (!node || node[path[index]] === undefined) {
+      return null;
+    }
+    node = node[path[index]];
+  }
+
+  return node;
+}
+
+function normalizeConfigEventValue(value) {
+  if (value && typeof value === 'object' && value.Value !== undefined) {
+    return value.Value;
+  }
+
+  return value;
 }
 
 async function sendActiveParentHeartbeat() {

@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.2
+ * Version:                 1.0.3
  *
  * Description:             A macro module that facilitates the custom Companion Solution user interface for Board Series endpoints with Wheel Kits.
  *                          This module will provide PIN-protected parent-device management UI helpers. The xapi object must be passed in from the calling macro.
@@ -144,35 +144,32 @@ function buildParentRowsXml(parentDevices, parentDeviceStatus) {
 			</Row>`;
 	}
 
-	return parentDevices.map((parentDevice, index) => buildParentRowXml(parentDevice, getParentStatus(parentDevice, parentDeviceStatus), index)).join('');
+	return `<Row>
+				<Name>Select a Room</Name>
+				${parentDevices.map((parentDevice, index) => buildParentWidgetXml(parentDevice, getParentStatus(parentDevice, parentDeviceStatus), index)).join('')}
+			</Row>`;
 }
 
-function buildParentRowXml(parentDevice, parentStatus, index) {
+function buildParentWidgetXml(parentDevice, parentStatus, index) {
 	const parentName = parentDevice.name || parentDevice.host || `Parent ${index + 1}`;
 	const offlineWidgetId = `${SELECT_DEVICE_PAGE_ID}~ParentOffline~${index}`;
 	const selectWidgetId = `${SELECT_DEVICE_PAGE_ID}~ParentSelect~${index}`;
 
 	if (!parentStatus || !parentStatus.online) {
-		return `<Row>
-				<Name>Select a Room</Name>
-				<Widget>
+		return `<Widget>
 					<WidgetId>${offlineWidgetId}</WidgetId>
 					<Name>${escapeXml(parentName)} Offline</Name>
 					<Type>Text</Type>
-					<Options>size=4;fontSize=small;align=center</Options>
-				</Widget>
-			</Row>`;
+					<Options>size=2;fontSize=small;align=center</Options>
+				</Widget>`;
 	}
 
-	return `<Row>
-				<Name>Select a Room</Name>
-				<Widget>
+	return `<Widget>
 					<WidgetId>${selectWidgetId}</WidgetId>
 					<Name>${escapeXml(parentName)}</Name>
 					<Type>Button</Type>
-					<Options>size=4</Options>
-				</Widget>
-			</Row>`;
+					<Options>size=2</Options>
+				</Widget>`;
 }
 
 async function savePanel(XAPIObject, parentDevices, parentDeviceStatus, activeParentSerial) {
