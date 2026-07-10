@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.6
+ * Version:                 1.0.7
  *
  * Description:             User-facing configuration for the custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -41,11 +41,11 @@ or implied.
  */
 
 const config = {
-  version: '1.0.6',
-  'Companion Board Information': {
+  version: '1.0.7',
+  CompanionBoardInformation: {
     serial: 'StandAlone',
     name: 'StandAlone',
-    host: '',
+    host: '10.0.0.120',
     username: '',
     password: ''
   },

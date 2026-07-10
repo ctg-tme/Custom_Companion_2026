@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.3
+ * Version:                 1.0.4
  *
  * Description:             A macro module that facilitates device-to-device communication for a custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This module will provide HTTPClient, Message API, and putxml routing helpers. The xapi object must be passed in from the calling macro.
@@ -67,13 +67,13 @@ async function initializeHttpClient(XAPIObject, httpClientConfig) {
  * @param {object} XAPIObject The RoomOS xapi object.
  * @param {object} parentDevice Parent device connection details.
  * @param {object} httpClientConfig HTTPClient request configuration.
- * @returns {Promise<object>} Parent device identity with serial and name.
+ * @returns {Promise<object>} Parent device identity with serial and BroadcastName.
  * @roomosxapi [xCommand HttpClient Get](https://roomos.cisco.com/xapi/Command.HttpClient.Get/)
  */
 async function parentInitializationRequest(XAPIObject, parentDevice, httpClientConfig) {
 	validateParentDevice(parentDevice);
 
-	const url = `https://${parentDevice.host}/getxml?location=/Status/SystemUnit/Hardware/Module/SerialNumber&location=/Configuration/SystemUnit/ContactInfo/Name`;
+	const url = `https://${parentDevice.host}/getxml?location=/Status/SystemUnit`;
 	const response = await queuedHttpRequest(() => XAPIObject.Command.HttpClient.Get({
 		Url: url,
 		Header: buildHeaders(parentDevice),
@@ -81,11 +81,11 @@ async function parentInitializationRequest(XAPIObject, parentDevice, httpClientC
 	}));
 
 	const body = response.Body || '';
-	const serial = getXmlPathValue(body, ['SerialNumber']);
-	const name = getXmlPathValue(body, ['SystemUnit', 'ContactInfo', 'Name']) || getXmlPathValue(body, ['ContactInfo', 'Name']) || getXmlPathValue(body, ['Name']);
+	const serial = getXmlPathValue(body, ['SystemUnit', 'Hardware', 'Module', 'SerialNumber']) || getXmlPathValue(body, ['SerialNumber']);
+	const broadcastName = getXmlPathValue(body, ['SystemUnit', 'BroadcastName']) || getXmlPathValue(body, ['BroadcastName']);
 
-	if (!serial || !name) {
-		throw buildError('Parent initialization response did not include both SerialNumber and ContactInfo Name', {
+	if (!serial || !broadcastName) {
+		throw buildError('Parent initialization response did not include both SerialNumber and BroadcastName', {
 			Code: 'cc.parent-init.1',
 			Host: parentDevice.host,
 			ResponseStatusCode: response.StatusCode
@@ -94,7 +94,7 @@ async function parentInitializationRequest(XAPIObject, parentDevice, httpClientC
 
 	return {
 		serial: serial,
-		name: name,
+		name: broadcastName,
 		host: parentDevice.host,
 		username: parentDevice.username,
 		password: parentDevice.password

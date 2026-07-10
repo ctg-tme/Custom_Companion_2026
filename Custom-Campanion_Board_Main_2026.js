@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.5
+ * Version:                 1.0.6
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Main Macro, that will initialize all other devices in scope and will govern the solution's main logic and functionality.
@@ -50,7 +50,7 @@ const log = new utils.Logger('Custom-Campanion_Board_Main');
 
 const STORAGE_MACRO_NAME = 'Custom-Campanion';
 const PARENT_DEVICES_STORAGE_KEY = 'parentDevices';
-const COMPANION_BOARD_INFORMATION = config['Companion Board Information'];
+const COMPANION_BOARD_INFORMATION = config.CompanionBoardInformation;
 const HTTP_CLIENT_CONFIG = {
   mode: 'On',
   allowInsecureHTTPS: config.httpClient.allowInsecureHTTPS,
