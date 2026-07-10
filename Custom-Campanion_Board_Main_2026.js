@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.1
+ * Version:                 1.0.2
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Main Macro, that will initialize all other devices in scope and will govern the solution's main logic and functionality.
@@ -48,21 +48,51 @@ import { utils } from './Custom-Campanion_Utils_2026';
 
 const log = new utils.Logger('Custom-Campanion_Board_Main');
 
-const mem = new MemoryStorage(xapi, { StorageMacroName: config.memory.storageMacroName });
+const STORAGE_MACRO_NAME = 'Custom-Campanion';
+const PARENT_DEVICES_STORAGE_KEY = 'parentDevices';
+const BOARD_STATE_STORAGE_KEY = 'boardState';
+const STAND_ALONE_PARENT = {
+  serial: 'StandAlone',
+  name: 'StandAlone',
+  host: '',
+  username: '',
+  password: ''
+};
+const HTTP_CLIENT_CONFIG = {
+  mode: 'On',
+  allowInsecureHTTPS: config.httpClient.allowInsecureHTTPS,
+  maxConcurrentRequests: 3
+};
+const MESSAGE_CONFIG = {
+  service: 'CustomCampanion',
+  routes: {
+    heartbeat: 'parent.heartbeat',
+    callState: 'parent.callState',
+    joinCall: 'board.joinCall'
+  }
+};
+const PARENT_INSTALL_CONFIG = {
+  roomReferenceSourceMacroName: 'Custom-Campanion_RoomReference_2026',
+  roomReferenceTargetMacroName: 'Custom-Campanion_Room_2026',
+  configMacroName: 'Custom-Campanion_Config_2026',
+  memoryStorageMacroName: 'Memory-Storage-Functions-V2'
+};
+
+const mem = new MemoryStorage(xapi, { StorageMacroName: STORAGE_MACRO_NAME });
 
 let parentDevices = [];
 let boardState = createDefaultBoardState();
 
 async function init() {
-  try { await deviceComms.initializeHttpClient(xapi, config.httpClient) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
+  try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
   try { await mem.init() } catch (e) { utils.hardError({ Context: 'Failed to initialize memory', Error: e }) };
 
-  parentDevices = await readOrInitializeMemory(config.parentDevices.storageKey, []);
-  boardState = await readOrInitializeMemory(config.boardState.storageKey, createDefaultBoardState());
+  parentDevices = await readOrInitializeMemory(PARENT_DEVICES_STORAGE_KEY, []);
+  boardState = await readOrInitializeMemory(BOARD_STATE_STORAGE_KEY, createDefaultBoardState());
 
   if (!boardState.activeParent || !boardState.activeParent.serial) {
     boardState = createDefaultBoardState();
-    await mem.write(config.boardState.storageKey, boardState);
+    await mem.write(BOARD_STATE_STORAGE_KEY, boardState);
   }
 
   warnIfCredentialsAreStored(parentDevices);
@@ -85,9 +115,9 @@ async function readOrInitializeMemory(key, defaultValue) {
 
 function createDefaultBoardState() {
   return {
-    activeParent: config.boardState.standAloneParent,
+    activeParent: STAND_ALONE_PARENT,
     mode: 'StandAlone',
-    lastKnownParentSerial: config.boardState.standAloneParent.serial,
+    lastKnownParentSerial: STAND_ALONE_PARENT.serial,
     lastUpdated: new Date().toISOString()
   };
 }

@@ -21,10 +21,10 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.2
+ * Version:                 1.0.3
  *
- * Description:             Shared configuration for the custom Companion Solution for Board Series endpoints with Wheel Kits.
- *                          This file provides a single source of truth for defaults used by board and room-reference macros.
+ * Description:             User-facing configuration for the custom Companion Solution for Board Series endpoints with Wheel Kits.
+ *                          This file provides settings intended to be edited for deployment-specific behavior.
  *
  * Documentation:           N/A
  *
@@ -41,10 +41,7 @@ or implied.
  */
 
 const config = {
-  version: '1.0.2',
-  memory: {
-    storageMacroName: 'Custom-Campanion'
-  },
+  version: '1.0.3',
   pinProtection: {
     enabled: true,
     defaultPin: '0000',
@@ -53,36 +50,7 @@ const config = {
     pattern: '^\\d{4,8}$'
   },
   httpClient: {
-    mode: 'On',
-    allowInsecureHTTPS: false,
-    maxConcurrentRequests: 3
-  },
-  parentDevices: {
-    storageKey: 'parentDevices'
-  },
-  boardState: {
-    storageKey: 'boardState',
-    standAloneParent: {
-      serial: 'StandAlone',
-      name: 'StandAlone',
-      host: '',
-      username: '',
-      password: ''
-    }
-  },
-  messages: {
-    service: 'CustomCampanion',
-    routes: {
-      heartbeat: 'parent.heartbeat',
-      callState: 'parent.callState',
-      joinCall: 'board.joinCall'
-    }
-  },
-  parentInstall: {
-    roomReferenceSourceMacroName: 'Custom-Campanion_RoomReference_2026',
-    roomReferenceTargetMacroName: 'Custom-Campanion_Room_2026',
-    configMacroName: 'Custom-Campanion_Config_2026',
-    memoryStorageMacroName: 'Memory-Storage-Functions-V2'
+    allowInsecureHTTPS: false
   }
 };
 
