@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.7
+ * Version:                 1.0.8
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Main Macro, that will initialize all other devices in scope and will govern the solution's main logic and functionality.
@@ -87,7 +87,7 @@ async function init() {
 
   parentDevices = await readMemoryOrDefault(PARENT_DEVICES_STORAGE_KEY, []);
   boardState = createDefaultBoardState();
-  parentDeviceStatus = await refreshParentDeviceIdentities(parentDevices);
+  parentDeviceStatus = await refreshParentDeviceIdentities(parentDevices, { isInterval: false });
   await connectPeripheralToOnlineParents(parentDeviceStatus);
   startParentStatusInterval();
 
@@ -108,10 +108,12 @@ async function readMemoryOrDefault(key, defaultValue) {
   }
 }
 
-async function refreshParentDeviceIdentities(devices) {
+async function refreshParentDeviceIdentities(devices, options = {}) {
   const refreshedStatus = [];
   const updatedDevices = [];
   let hasParentDeviceUpdates = false;
+  const statusLog = options.isInterval ? log.debug.bind(log) : log.info.bind(log);
+  const errorLog = options.isInterval ? log.debug.bind(log) : log.warn.bind(log);
 
   for (let index = 0; index < devices.length; index++) {
     const device = devices[index];
@@ -139,7 +141,7 @@ async function refreshParentDeviceIdentities(devices) {
         lastHeartbeat: new Date().toISOString(),
         lastError: ''
       });
-      log.info({ Message: 'Parent device identity refreshed', Host: device.host, Serial: refreshedDevice.serial, Name: refreshedDevice.name });
+      statusLog({ Message: 'Parent device identity refreshed', Host: device.host, Serial: refreshedDevice.serial, Name: refreshedDevice.name });
     } catch (error) {
       updatedDevices.push(device);
       refreshedStatus.push({
@@ -150,7 +152,7 @@ async function refreshParentDeviceIdentities(devices) {
         lastError: error.code || error.message || 'Unknown parent refresh error',
         lastHeartbeat: device.lastHeartbeat || ''
       });
-      log.warn({ Message: 'Parent device identity refresh failed', Host: device.host, Error: error.code || error.message || 'Unknown parent refresh error' });
+      errorLog({ Message: 'Parent device identity refresh failed', Host: device.host, Error: error.code || error.message || 'Unknown parent refresh error' });
     }
   }
 
@@ -202,7 +204,7 @@ function startParentStatusInterval() {
 }
 
 async function runParentStatusInterval() {
-  parentDeviceStatus = await refreshParentDeviceIdentities(parentDevices);
+  parentDeviceStatus = await refreshParentDeviceIdentities(parentDevices, { isInterval: true });
   await sendActiveParentHeartbeat();
 }
 
@@ -221,7 +223,7 @@ async function sendActiveParentHeartbeat() {
 
   try {
     await deviceComms.sendPeripheralHeartbeat(xapi, activeParentDevice, getCompanionPeripheralId(), HTTP_CLIENT_CONFIG);
-    log.info({ Message: 'Companion board peripheral heartbeat sent', Host: activeParentDevice.host, PeripheralID: getCompanionPeripheralId() });
+    log.debug({ Message: 'Companion board peripheral heartbeat sent', Host: activeParentDevice.host, PeripheralID: getCompanionPeripheralId() });
   } catch (error) {
     log.warn({ Message: 'Companion board peripheral heartbeat failed', Host: activeParentDevice.host, Error: error.code || error.message || 'Unknown peripheral heartbeat error' });
   }
