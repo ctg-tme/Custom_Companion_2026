@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.6
+ * Version:                 1.0.7
  *
  * Description:             A macro module that facilitates device-to-device communication for a custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This module will provide HTTPClient, Message API, and putxml routing helpers. The xapi object must be passed in from the calling macro.
@@ -43,6 +43,8 @@ or implied.
 let activeRequestCount = 0;
 let maxConcurrentRequests = 3;
 const queuedRequests = [];
+const COMPANION_APP = 'Companion Board 2026';
+const SCHEMA_VERSION = '0.1';
 
 /**
  * Sets RoomOS HTTPClient configuration used by this solution.
@@ -119,6 +121,8 @@ async function installParentMacros(XAPIObject, parentDevice, macroPayloads, inst
 	const macros = [
 		{ Name: config.roomReferenceTargetMacroName || 'Custom-Campanion_Room_2026', Content: macroPayloads.roomReference },
 		{ Name: config.configMacroName || 'Custom-Campanion_2_Config_2026', Content: macroPayloads.config },
+		{ Name: config.utilsMacroName || 'Custom-Campanion_3_Utils_2026', Content: macroPayloads.utils },
+		{ Name: config.deviceCommsMacroName || 'Custom-Campanion_6_DeviceComms_2026', Content: macroPayloads.deviceComms },
 		{ Name: config.memoryStorageMacroName || 'Memory-Storage-Functions-V2', Content: macroPayloads.memoryStorage }
 	];
 
@@ -145,16 +149,46 @@ async function installParentMacros(XAPIObject, parentDevice, macroPayloads, inst
 async function sendMessageCommand(XAPIObject, parentDevice, route, payload, messageConfig, httpClientConfig) {
 	validateParentDevice(parentDevice);
 
-	const config = messageConfig || {};
-	const message = {
-		Service: config.service || 'CustomCampanion',
-		Version: config.version || 'Unknown',
-		Route: route,
-		Timestamp: new Date().toISOString(),
-		Payload: payload || {}
-	};
+	const message = buildCompanionMessage(route, payload, messageConfig || {});
 
 	return sendPutXml(XAPIObject, parentDevice, buildMessageSendXml(message), httpClientConfig);
+}
+
+function buildCompanionMessage(action, payload, options = {}) {
+	const source = options.source || {};
+
+	return {
+		App: options.app || COMPANION_APP,
+		SchemaVersion: options.schemaVersion || SCHEMA_VERSION,
+		MessageId: options.messageId || createMessageId(),
+		CorrelationId: options.correlationId || '',
+		Timestamp: new Date().toISOString(),
+		Action: action,
+		Serial: options.serial || source.Serial || '',
+		Source: source,
+		Target: options.target || {},
+		Payload: payload || {}
+	};
+}
+
+function parseCompanionMessage(text) {
+	let message;
+
+	try {
+		message = JSON.parse(text);
+	} catch (error) {
+		return null;
+	}
+
+	if (!message || message.App !== COMPANION_APP || !message.Action || !message.Serial) {
+		return null;
+	}
+
+	return message;
+}
+
+function createMessageId() {
+	return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 }
 
 /**
@@ -315,6 +349,8 @@ const deviceComms = {
 	parentInitializationRequest,
 	installParentMacros,
 	sendMessageCommand,
+	buildCompanionMessage,
+	parseCompanionMessage,
 	connectPeripheral,
 	sendPeripheralHeartbeat
 };

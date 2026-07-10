@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.0
+ * Version:                 1.0.1
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -79,6 +79,8 @@ async function getParentInstallMacroPayloads(XAPIObject, installConfig) {
 	return {
 		roomReference: await getLocalMacroContent(XAPIObject, installConfig.roomReferenceSourceMacroName),
 		config: await getLocalMacroContent(XAPIObject, installConfig.configMacroName),
+		utils: await getLocalMacroContent(XAPIObject, installConfig.utilsMacroName),
+		deviceComms: await getLocalMacroContent(XAPIObject, installConfig.deviceCommsMacroName),
 		memoryStorage: await getLocalMacroContent(XAPIObject, installConfig.memoryStorageMacroName)
 	};
 }

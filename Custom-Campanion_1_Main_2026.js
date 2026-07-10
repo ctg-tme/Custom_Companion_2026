@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.0
+ * Version:                 0.1.1.3
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -51,6 +51,7 @@ import { boardServices } from './Custom-Campanion_8_Services_2026';
 const log = new utils.Logger('Custom-Campanion_Board_Main');
 
 const STORAGE_MACRO_NAME = 'Custom-Campanion';
+const MAX_PARENT_DEVICES = 6;
 const PARENT_STATUS_INTERVAL_MS = 30000;
 const INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS = 5;
 const ACTIVE_PARENT_HEARTBEAT_TIMEOUT_SECONDS = 40;
@@ -65,7 +66,7 @@ const MESSAGE_CONFIG = {
 	service: 'CustomCampanion',
 	routes: {
 		heartbeat: 'parent.heartbeat',
-		boardRegistration: 'parent.boardRegistration',
+		boardRegistration: 'Register',
 		callState: 'parent.callState',
 		joinCall: 'board.joinCall'
 	}
@@ -74,6 +75,8 @@ const PARENT_INSTALL_CONFIG = {
 	roomReferenceSourceMacroName: 'Custom-Campanion_7_RoomReference_2026',
 	roomReferenceTargetMacroName: 'Custom-Campanion_Room_2026',
 	configMacroName: 'Custom-Campanion_2_Config_2026',
+	utilsMacroName: 'Custom-Campanion_3_Utils_2026',
+	deviceCommsMacroName: 'Custom-Campanion_6_DeviceComms_2026',
 	memoryStorageMacroName: 'Memory-Storage-Functions-V2'
 };
 
@@ -101,6 +104,7 @@ async function init() {
 	await renderSelectDeviceUi();
 	await installParentMacrosOnOnlineParents();
 	await connectPeripheralToOnlineParents();
+	registerCompanionMessageHandlers();
 	registerUiEventHandlers();
 	startParentStatusInterval();
 
@@ -110,9 +114,42 @@ async function init() {
 
 async function loadMemoryState() {
 	parentDevices = await companionState.readMemoryOrDefault(mem, companionState.PARENT_DEVICES_STORAGE_KEY, [], utils);
+	if (parentDevices.length > MAX_PARENT_DEVICES) {
+		parentDevices = parentDevices.slice(0, MAX_PARENT_DEVICES);
+		await mem.write(companionState.PARENT_DEVICES_STORAGE_KEY, parentDevices);
+		log.warn({ Message: 'Parent device list exceeded maximum and was trimmed', MaxParentDevices: MAX_PARENT_DEVICES });
+	}
 	activeParentSerial = await companionState.readMemoryOrInitialize(mem, companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, companionState.STAND_ALONE_PARENT_SERIAL, utils);
 	standaloneUiFeatureConfig = await companionState.readMemoryOrDefault(mem, companionState.STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY, {}, utils);
 	boardState = createBoardState(activeParentSerial);
+}
+
+function registerCompanionMessageHandlers() {
+	xapi.Event.Message.Send.on(event => {
+		const message = deviceComms.parseCompanionMessage(event.Text);
+		if (!message) {
+			return;
+		}
+
+		handleCompanionMessage(message).catch(error => {
+			utils.softError({ Context: 'Failed to handle companion message', Action: message.Action, Error: error });
+		});
+	});
+}
+
+async function handleCompanionMessage(message) {
+	switch (message.Action) {
+		case 'RegisterAccepted':
+			log.info({ Message: 'Parent accepted board registration', Source: message.Source, Payload: message.Payload });
+			break;
+		case 'RegisterDenied':
+			await xapi.Command.UserInterface.Message.Prompt.Display({
+				Title: 'Room Registration Denied',
+				Text: message.Payload && message.Payload.Reason ? message.Payload.Reason : 'The room denied this board registration request.',
+				Duration: 10
+			});
+			break;
+	}
 }
 
 async function initializeUiFeatureMode() {
@@ -359,13 +396,37 @@ async function sendActiveParentHeartbeat() {
 
 async function sendBoardRegistrationMessage(parentDevice, companionBoardInformation) {
 	await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.boardRegistration, {
+		Board: {
+			Serial: companionBoardInformation.serial,
+			Name: companionBoardInformation.name,
+			Host: companionBoardInformation.host,
+			Username: companionBoardInformation.username,
+			Password: companionBoardInformation.password,
+			MacAddress: companionBoardInformation.macAddress,
+			ProductPlatform: companionBoardInformation.productPlatform
+		},
+		Capabilities: {
+			CanJoinCall: true,
+			CanMuteAudio: true,
+			CanMuteVideo: true,
+			CanReceiveMessages: true
+		}
+	}, {
+		app: 'Companion Board 2026',
+		schemaVersion: '0.1',
 		serial: companionBoardInformation.serial,
-		name: companionBoardInformation.name,
-		host: companionBoardInformation.host,
-		username: companionBoardInformation.username,
-		password: companionBoardInformation.password,
-		macAddress: companionBoardInformation.macAddress
-	}, { service: MESSAGE_CONFIG.service, version: config.version }, HTTP_CLIENT_CONFIG);
+		source: {
+			Role: 'Board',
+			Serial: companionBoardInformation.serial,
+			Name: companionBoardInformation.name,
+			Host: companionBoardInformation.host,
+			MacAddress: companionBoardInformation.macAddress
+		},
+		target: {
+			Role: 'Parent',
+			Serial: parentDevice.serial
+		}
+	}, HTTP_CLIENT_CONFIG);
 }
 
 function createBoardState(parentSerial) {

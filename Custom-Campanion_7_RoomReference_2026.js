@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.0
+ * Version:                 0.1.1.3
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -33,7 +33,7 @@ or implied.
  *
  * Hardware Platforms:      Board Pro Series
  *
- * Code Dependencies:       None
+ * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_2_Config_2026, Custom-Campanion_3_Utils_2026, Custom-Campanion_6_DeviceComms_2026
  *
  * AI Generation:           Percentage: 95%
  *                          Model(s): GPT-5.3-Codex
@@ -42,3 +42,186 @@ or implied.
  */
 
 import xapi from 'xapi';
+import { MemoryStorage } from './Memory-Storage-Functions-V2';
+import { config } from './Custom-Campanion_2_Config_2026';
+import { utils } from './Custom-Campanion_3_Utils_2026';
+import { deviceComms } from './Custom-Campanion_6_DeviceComms_2026';
+
+const log = new utils.Logger('Custom-Campanion_RoomReference');
+
+const STORAGE_MACRO_NAME = 'Custom-Campanion';
+const REGISTERED_BOARDS_STORAGE_KEY = 'registeredBoards';
+const MAX_REGISTERED_BOARDS = 3;
+const HTTP_CLIENT_CONFIG = {
+	mode: 'On',
+	allowInsecureHTTPS: config.httpClient.allowInsecureHTTPS,
+	maxConcurrentRequests: 3
+};
+
+const mem = new MemoryStorage(xapi, { StorageMacroName: STORAGE_MACRO_NAME });
+
+let registeredBoards = [];
+
+async function init() {
+	try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
+	try { await mem.init() } catch (error) { utils.hardError({ Context: 'Failed to initialize memory', Error: error }) };
+
+	registeredBoards = await readMemoryOrDefault(REGISTERED_BOARDS_STORAGE_KEY, []);
+	registerMessageHandler();
+	log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredBoardCount: registeredBoards.length });
+}
+
+async function readMemoryOrDefault(key, defaultValue) {
+	try {
+		return await mem.read(key);
+	} catch (error) {
+		if (error.code === 'msfv2.r.3') {
+			return defaultValue;
+		}
+
+		utils.hardError({ Context: `Failed to fetch memory key [${key}]`, Error: error });
+		return defaultValue;
+	}
+}
+
+function registerMessageHandler() {
+	xapi.Event.Message.Send.on(event => {
+		const message = deviceComms.parseCompanionMessage(event.Text);
+		if (!message) {
+			return;
+		}
+
+		handleCompanionMessage(message).catch(error => {
+			utils.softError({ Context: 'Failed to handle companion message', Action: message.Action, Error: error });
+		});
+	});
+}
+
+async function handleCompanionMessage(message) {
+	if (message.Action === 'Register') {
+		await handleRegister(message);
+		return;
+	}
+
+	if (!isRegisteredBoard(message.Serial)) {
+		await sendRegisterRequired(message);
+		return;
+	}
+
+	log.debug({ Message: 'Companion message received', Action: message.Action, Serial: message.Serial });
+}
+
+async function handleRegister(message) {
+	const boardRecord = normalizeBoardRecord(message);
+	const existingIndex = registeredBoards.findIndex(board => board.Serial === boardRecord.Serial);
+
+	if (existingIndex === -1 && registeredBoards.length >= MAX_REGISTERED_BOARDS) {
+		await sendRegistrationResponse('RegisterDenied', message, boardRecord, {
+			Reason: 'MaxBoardsReached',
+			MaxBoards: MAX_REGISTERED_BOARDS,
+			RegisteredBoardCount: registeredBoards.length
+		}, false);
+		return;
+	}
+
+	if (existingIndex >= 0) {
+		registeredBoards[existingIndex] = boardRecord;
+	} else {
+		registeredBoards.push(boardRecord);
+	}
+
+	await mem.write(REGISTERED_BOARDS_STORAGE_KEY, registeredBoards);
+	await sendRegistrationResponse('RegisterAccepted', message, boardRecord, {
+		MaxBoards: MAX_REGISTERED_BOARDS,
+		RegisteredBoardCount: registeredBoards.length
+	}, true);
+	log.info({ Message: 'Companion board registered', Serial: boardRecord.Serial, Name: boardRecord.Name, RegisteredBoardCount: registeredBoards.length });
+}
+
+function normalizeBoardRecord(message) {
+	const source = message.Source || {};
+	const payload = message.Payload || {};
+	const board = payload.Board || {};
+	const now = new Date().toISOString();
+
+	return {
+		Serial: board.Serial || message.Serial,
+		Name: board.Name || source.Name || message.Serial,
+		Host: board.Host || source.Host || '',
+		Username: board.Username || '',
+		Password: board.Password || '',
+		MacAddress: board.MacAddress || source.MacAddress || '',
+		ProductPlatform: board.ProductPlatform || '',
+		Capabilities: payload.Capabilities || {},
+		RegisteredAt: getRegisteredAt(board.Serial || message.Serial) || now,
+		LastMessageAt: now
+	};
+}
+
+function getRegisteredAt(serial) {
+	const board = registeredBoards.find(item => item.Serial === serial);
+	return board ? board.RegisteredAt : '';
+}
+
+function isRegisteredBoard(serial) {
+	return registeredBoards.some(board => board.Serial === serial);
+}
+
+async function sendRegisterRequired(message) {
+	const boardRecord = normalizeBoardRecord(message);
+	await sendRegistrationResponse('RegisterRequired', message, boardRecord, { Reason: 'BoardNotRegistered' }, false);
+}
+
+async function sendRegistrationResponse(action, inboundMessage, boardRecord, payload, isAccepted) {
+	const parentSource = await getParentSource();
+	const boardDevice = {
+		host: boardRecord.Host,
+		username: boardRecord.Username,
+		password: boardRecord.Password
+	};
+
+	try {
+		await deviceComms.sendMessageCommand(xapi, boardDevice, action, payload, {
+			app: 'Companion Board 2026',
+			schemaVersion: '0.1',
+			serial: parentSource.Serial,
+			source: parentSource,
+			target: { Role: 'Board', Serial: boardRecord.Serial },
+			correlationId: inboundMessage.MessageId
+		}, HTTP_CLIENT_CONFIG);
+	} catch (error) {
+		await xapi.Command.UserInterface.Message.Prompt.Display({
+			Title: 'Companion Registration Error',
+			Text: `${isAccepted ? 'Accepted' : 'Denied'} ${boardRecord.Name}, but response failed. Check board credentials.`,
+			Duration: 10
+		});
+		log.warn({ Message: 'Failed to send registration response to board', Action: action, Serial: boardRecord.Serial, Error: error.message || error.code || 'Unknown response error' });
+	}
+}
+
+async function getParentSource() {
+	return {
+		Role: 'Parent',
+		Serial: await getParentSerial(),
+		Name: await getParentName(),
+		Host: ''
+	};
+}
+
+async function getParentSerial() {
+	try {
+		return await xapi.Status.SystemUnit.Hardware.Module.SerialNumber.get();
+	} catch (error) {
+		return '';
+	}
+}
+
+async function getParentName() {
+	try {
+		return await xapi.Status.SystemUnit.BroadcastName.get();
+	} catch (error) {
+		return '';
+	}
+}
+
+init();
