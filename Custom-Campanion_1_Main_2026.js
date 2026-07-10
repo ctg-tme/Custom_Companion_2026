@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.1.0
+ * Version:                 1.1.1
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -31,7 +31,7 @@ or implied.
  *
  * Hardware Platforms:      Board Pro Series
  *
- * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_Config_2026, Custom-Campanion_DeviceComms_2026, Custom-Campanion_UI_2026, Custom-Campanion_State_2026, Custom-Campanion_BoardServices_2026, Custom-Campanion_Utils_2026, Custom-Companion-Memory-Storage
+ * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_2_Config_2026, Custom-Campanion_3_Utils_2026, Custom-Campanion_4_UI_2026, Custom-Campanion_5_State_2026, Custom-Campanion_6_DeviceComms_2026, Custom-Campanion_8_Services_2026, Custom-Companion-Memory-Storage
  *
  * AI Generation:           Percentage: 95%
  *                          Model(s): GPT-5.3-Codex
@@ -41,12 +41,12 @@ or implied.
 
 import xapi from 'xapi';
 import { MemoryStorage } from './Memory-Storage-Functions-V2';
-import { config } from './Custom-Campanion_Config_2026';
-import { deviceComms } from './Custom-Campanion_DeviceComms_2026';
-import { companionUi } from './Custom-Campanion_UI_2026';
-import { companionState } from './Custom-Campanion_State_2026';
-import { boardServices } from './Custom-Campanion_BoardServices_2026';
-import { utils } from './Custom-Campanion_Utils_2026';
+import { config } from './Custom-Campanion_2_Config_2026';
+import { utils } from './Custom-Campanion_3_Utils_2026';
+import { companionUi } from './Custom-Campanion_4_UI_2026';
+import { companionState } from './Custom-Campanion_5_State_2026';
+import { deviceComms } from './Custom-Campanion_6_DeviceComms_2026';
+import { boardServices } from './Custom-Campanion_8_Services_2026';
 
 const log = new utils.Logger('Custom-Campanion_Board_Main');
 
@@ -71,9 +71,9 @@ const MESSAGE_CONFIG = {
 	}
 };
 const PARENT_INSTALL_CONFIG = {
-	roomReferenceSourceMacroName: 'Custom-Campanion_RoomReference_2026',
+	roomReferenceSourceMacroName: 'Custom-Campanion_7_RoomReference_2026',
 	roomReferenceTargetMacroName: 'Custom-Campanion_Room_2026',
-	configMacroName: 'Custom-Campanion_Config_2026',
+	configMacroName: 'Custom-Campanion_2_Config_2026',
 	memoryStorageMacroName: 'Memory-Storage-Functions-V2'
 };
 

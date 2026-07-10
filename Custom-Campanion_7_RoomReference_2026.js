@@ -25,7 +25,7 @@ or implied.
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
- *                          This macro will not be enabled if it's name is Custom-Campanion_RoomReference_2026. On a proper install, it will be named Custom-Campanion_Room_2026
+ *                          This macro will not be enabled if its name is Custom-Campanion_7_RoomReference_2026. On a proper install, it will be named Custom-Campanion_Room_2026
  *
  * Documentation:           N/A
  *

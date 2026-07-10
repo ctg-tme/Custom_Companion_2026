@@ -118,7 +118,7 @@ async function installParentMacros(XAPIObject, parentDevice, macroPayloads, inst
 	const config = installConfig || {};
 	const macros = [
 		{ Name: config.roomReferenceTargetMacroName || 'Custom-Campanion_Room_2026', Content: macroPayloads.roomReference },
-		{ Name: config.configMacroName || 'Custom-Campanion_Config_2026', Content: macroPayloads.config },
+		{ Name: config.configMacroName || 'Custom-Campanion_2_Config_2026', Content: macroPayloads.config },
 		{ Name: config.memoryStorageMacroName || 'Memory-Storage-Functions-V2', Content: macroPayloads.memoryStorage }
 	];
 
