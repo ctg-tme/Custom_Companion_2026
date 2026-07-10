@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.2
+ * Version:                 1.0.3
  *
  * Description:             A macro module that facilitates device-to-device communication for a custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This module will provide HTTPClient, Message API, and putxml routing helpers. The xapi object must be passed in from the calling macro.
@@ -67,7 +67,7 @@ async function initializeHttpClient(XAPIObject, httpClientConfig) {
  * @param {object} XAPIObject The RoomOS xapi object.
  * @param {object} parentDevice Parent device connection details.
  * @param {object} httpClientConfig HTTPClient request configuration.
- * @returns {Promise<object>} Parent device with serial, name, online state, and heartbeat timestamp.
+ * @returns {Promise<object>} Parent device identity with serial and name.
  * @roomosxapi [xCommand HttpClient Get](https://roomos.cisco.com/xapi/Command.HttpClient.Get/)
  */
 async function parentInitializationRequest(XAPIObject, parentDevice, httpClientConfig) {
@@ -97,9 +97,7 @@ async function parentInitializationRequest(XAPIObject, parentDevice, httpClientC
 		name: name,
 		host: parentDevice.host,
 		username: parentDevice.username,
-		password: parentDevice.password,
-		online: true,
-		lastHeartbeat: new Date().toISOString()
+		password: parentDevice.password
 	};
 }
 

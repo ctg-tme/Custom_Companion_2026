@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.4
+ * Version:                 1.0.6
  *
  * Description:             User-facing configuration for the custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -41,7 +41,14 @@ or implied.
  */
 
 const config = {
-  version: '1.0.4',
+  version: '1.0.6',
+  'Companion Board Information': {
+    serial: 'StandAlone',
+    name: 'StandAlone',
+    host: '',
+    username: '',
+    password: ''
+  },
   pinProtection: {
     enabled: true,
     defaultPin: '0000',
@@ -50,7 +57,7 @@ const config = {
     pattern: '^\\d{4,8}$'
   },
   httpClient: {
-    allowInsecureHTTPS: false
+    allowInsecureHTTPS: true
   }
 };
 

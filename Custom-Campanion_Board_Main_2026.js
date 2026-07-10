@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.3
+ * Version:                 1.0.5
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Main Macro, that will initialize all other devices in scope and will govern the solution's main logic and functionality.
@@ -50,14 +50,7 @@ const log = new utils.Logger('Custom-Campanion_Board_Main');
 
 const STORAGE_MACRO_NAME = 'Custom-Campanion';
 const PARENT_DEVICES_STORAGE_KEY = 'parentDevices';
-const BOARD_STATE_STORAGE_KEY = 'boardState';
-const STAND_ALONE_PARENT = {
-  serial: 'StandAlone',
-  name: 'StandAlone',
-  host: '',
-  username: '',
-  password: ''
-};
+const COMPANION_BOARD_INFORMATION = config['Companion Board Information'];
 const HTTP_CLIENT_CONFIG = {
   mode: 'On',
   allowInsecureHTTPS: config.httpClient.allowInsecureHTTPS,
@@ -82,30 +75,25 @@ const mem = new MemoryStorage(xapi, { StorageMacroName: STORAGE_MACRO_NAME });
 
 let parentDevices = [];
 let boardState = createDefaultBoardState();
+let parentDeviceStatus = [];
 
 async function init() {
   try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
   try { await mem.init() } catch (e) { utils.hardError({ Context: 'Failed to initialize memory', Error: e }) };
 
-  parentDevices = await readOrInitializeMemory(PARENT_DEVICES_STORAGE_KEY, []);
-  boardState = await readOrInitializeMemory(BOARD_STATE_STORAGE_KEY, createDefaultBoardState());
-  parentDevices = await refreshParentDeviceIdentities(parentDevices);
-
-  if (!boardState.activeParent || !boardState.activeParent.serial) {
-    boardState = createDefaultBoardState();
-    await mem.write(BOARD_STATE_STORAGE_KEY, boardState);
-  }
+  parentDevices = await readMemoryOrDefault(PARENT_DEVICES_STORAGE_KEY, []);
+  boardState = createDefaultBoardState();
+  parentDeviceStatus = await refreshParentDeviceIdentities(parentDevices);
 
   warnIfCredentialsAreStored(parentDevices);
   log.info({ Message: 'Custom Campanion initialized', Version: config.version, ActiveParent: boardState.activeParent.name });
 }
 
-async function readOrInitializeMemory(key, defaultValue) {
+async function readMemoryOrDefault(key, defaultValue) {
   try {
     return await mem.read(key);
   } catch (error) {
     if (error.code === 'msfv2.r.3') {
-      await mem.write(key, defaultValue);
       return defaultValue;
     }
 
@@ -115,49 +103,58 @@ async function readOrInitializeMemory(key, defaultValue) {
 }
 
 async function refreshParentDeviceIdentities(devices) {
-  let hasUpdates = false;
-  const refreshedDevices = [];
+  const refreshedStatus = [];
 
   for (let index = 0; index < devices.length; index++) {
     const device = devices[index];
 
     try {
       const refreshedDevice = await deviceComms.parentInitializationRequest(xapi, device, HTTP_CLIENT_CONFIG);
-      refreshedDevices.push({
-        ...device,
+      refreshedStatus.push({
+        host: device.host,
         serial: refreshedDevice.serial,
         name: refreshedDevice.name,
         online: true,
-        lastHeartbeat: refreshedDevice.lastHeartbeat,
+        lastHeartbeat: new Date().toISOString(),
         lastError: ''
       });
-      hasUpdates = true;
       log.info({ Message: 'Parent device identity refreshed', Host: device.host, Serial: refreshedDevice.serial, Name: refreshedDevice.name });
     } catch (error) {
-      refreshedDevices.push({
-        ...device,
+      refreshedStatus.push({
+        host: device.host,
+        serial: device.serial,
+        name: device.name,
         online: false,
         lastError: error.code || error.message || 'Unknown parent refresh error',
         lastHeartbeat: device.lastHeartbeat || ''
       });
-      hasUpdates = true;
       log.warn({ Message: 'Parent device identity refresh failed', Host: device.host, Error: error.code || error.message || 'Unknown parent refresh error' });
     }
   }
 
-  if (hasUpdates) {
-    await mem.write(PARENT_DEVICES_STORAGE_KEY, refreshedDevices);
-  }
-
-  return refreshedDevices;
+  return refreshedStatus;
 }
 
 function createDefaultBoardState() {
+  const activeParent = getConfiguredCompanionBoardInformation();
+
   return {
-    activeParent: STAND_ALONE_PARENT,
+    activeParent: activeParent,
     mode: 'StandAlone',
-    lastKnownParentSerial: STAND_ALONE_PARENT.serial,
+    lastKnownParentSerial: activeParent.serial,
     lastUpdated: new Date().toISOString()
+  };
+}
+
+function getConfiguredCompanionBoardInformation() {
+  const boardInformation = COMPANION_BOARD_INFORMATION || {};
+
+  return {
+    serial: boardInformation.serial || 'StandAlone',
+    name: boardInformation.name || 'StandAlone',
+    host: boardInformation.host || '',
+    username: boardInformation.username || '',
+    password: boardInformation.password || ''
   };
 }
 
