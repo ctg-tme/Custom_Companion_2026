@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.4
+ * Version:                 1.0.5
  *
  * Description:             A macro module that facilitates device-to-device communication for a custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This module will provide HTTPClient, Message API, and putxml routing helpers. The xapi object must be passed in from the calling macro.
@@ -156,6 +156,41 @@ async function sendMessageCommand(XAPIObject, parentDevice, route, payload, mess
 	return sendPutXml(XAPIObject, parentDevice, buildMessageSendXml(message), httpClientConfig);
 }
 
+/**
+ * Registers the companion board as a peripheral on a parent device.
+ * @param {object} XAPIObject The RoomOS xapi object.
+ * @param {object} parentDevice Parent device connection details.
+ * @param {object} peripheralInfo Companion board peripheral registration details.
+ * @param {object} httpClientConfig HTTPClient request configuration.
+ * @returns {Promise<object>} HTTPClient response.
+ * @roomosxapi [xCommand Peripherals Connect](https://roomos.cisco.com/xapi/Command.Peripherals.Connect/)
+ */
+async function connectPeripheral(XAPIObject, parentDevice, peripheralInfo, httpClientConfig) {
+	validateParentDevice(parentDevice);
+	validatePeripheralInfo(peripheralInfo);
+
+	return sendPutXml(XAPIObject, parentDevice, buildPeripheralConnectXml(peripheralInfo), httpClientConfig);
+}
+
+/**
+ * Sends a peripheral heartbeat for the companion board to a parent device.
+ * @param {object} XAPIObject The RoomOS xapi object.
+ * @param {object} parentDevice Parent device connection details.
+ * @param {string} peripheralId Unique peripheral ID.
+ * @param {object} httpClientConfig HTTPClient request configuration.
+ * @returns {Promise<object>} HTTPClient response.
+ * @roomosxapi [xCommand Peripherals HeartBeat](https://roomos.cisco.com/xapi/Command.Peripherals.HeartBeat/)
+ */
+async function sendPeripheralHeartbeat(XAPIObject, parentDevice, peripheralId, httpClientConfig) {
+	validateParentDevice(parentDevice);
+
+	if (!peripheralId) {
+		throw buildError('Peripheral heartbeat requires a peripheral ID', { Code: 'cc.peripheral-heartbeat.1', Host: parentDevice.host });
+	}
+
+	return sendPutXml(XAPIObject, parentDevice, buildPeripheralHeartbeatXml(peripheralId), httpClientConfig);
+}
+
 function queuedHttpRequest(task) {
 	return new Promise((resolve, reject) => {
 		queuedRequests.push({ Task: task, Resolve: resolve, Reject: reject });
@@ -183,6 +218,12 @@ function runNextQueuedRequest() {
 function validateParentDevice(parentDevice) {
 	if (!parentDevice || !parentDevice.host || !parentDevice.username || !parentDevice.password) {
 		throw buildError('Parent device must include host, username, and password', { Code: 'cc.parent-device.1' });
+	}
+}
+
+function validatePeripheralInfo(peripheralInfo) {
+	if (!peripheralInfo || !peripheralInfo.ID || !peripheralInfo.Name || !peripheralInfo.Type) {
+		throw buildError('Peripheral information must include ID, Name, and Type', { Code: 'cc.peripheral-connect.1' });
 	}
 }
 
@@ -219,6 +260,14 @@ function buildMacroActivateXml(name) {
 
 function buildMessageSendXml(message) {
 	return `<Command><Message><Send><Text>${escapeXml(JSON.stringify(message))}</Text></Send></Message></Command>`;
+}
+
+function buildPeripheralConnectXml(peripheralInfo) {
+	return `<Command><Peripherals><Connect><ID>${escapeXml(peripheralInfo.ID)}</ID><Name>${escapeXml(peripheralInfo.Name)}</Name><NetworkAddress>${escapeXml(peripheralInfo.NetworkAddress || '')}</NetworkAddress><SerialNumber>${escapeXml(peripheralInfo.SerialNumber || '')}</SerialNumber><HardwareInfo>${escapeXml(peripheralInfo.HardwareInfo || '')}</HardwareInfo><SoftwareInfo>${escapeXml(peripheralInfo.SoftwareInfo || '')}</SoftwareInfo><Type>${escapeXml(peripheralInfo.Type)}</Type></Connect></Peripherals></Command>`;
+}
+
+function buildPeripheralHeartbeatXml(peripheralId) {
+	return `<Command><Peripherals><HeartBeat><ID>${escapeXml(peripheralId)}</ID></HeartBeat></Peripherals></Command>`;
 }
 
 function getXmlPathValue(xml, path) {
@@ -264,7 +313,9 @@ const deviceComms = {
 	initializeHttpClient,
 	parentInitializationRequest,
 	installParentMacros,
-	sendMessageCommand
+	sendMessageCommand,
+	connectPeripheral,
+	sendPeripheralHeartbeat
 };
 
 export { deviceComms };

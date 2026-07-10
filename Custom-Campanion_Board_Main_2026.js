@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.6
+ * Version:                 1.0.7
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Main Macro, that will initialize all other devices in scope and will govern the solution's main logic and functionality.
@@ -51,6 +51,8 @@ const log = new utils.Logger('Custom-Campanion_Board_Main');
 const STORAGE_MACRO_NAME = 'Custom-Campanion';
 const PARENT_DEVICES_STORAGE_KEY = 'parentDevices';
 const COMPANION_BOARD_INFORMATION = config.CompanionBoardInformation;
+const PARENT_STATUS_INTERVAL_MS = 30000;
+const PERIPHERAL_TYPE = 'Controller';
 const HTTP_CLIENT_CONFIG = {
   mode: 'On',
   allowInsecureHTTPS: config.httpClient.allowInsecureHTTPS,
@@ -60,6 +62,7 @@ const MESSAGE_CONFIG = {
   service: 'CustomCampanion',
   routes: {
     heartbeat: 'parent.heartbeat',
+    boardRegistration: 'parent.boardRegistration',
     callState: 'parent.callState',
     joinCall: 'board.joinCall'
   }
@@ -76,6 +79,7 @@ const mem = new MemoryStorage(xapi, { StorageMacroName: STORAGE_MACRO_NAME });
 let parentDevices = [];
 let boardState = createDefaultBoardState();
 let parentDeviceStatus = [];
+let parentStatusInterval = null;
 
 async function init() {
   try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
@@ -84,6 +88,8 @@ async function init() {
   parentDevices = await readMemoryOrDefault(PARENT_DEVICES_STORAGE_KEY, []);
   boardState = createDefaultBoardState();
   parentDeviceStatus = await refreshParentDeviceIdentities(parentDevices);
+  await connectPeripheralToOnlineParents(parentDeviceStatus);
+  startParentStatusInterval();
 
   warnIfCredentialsAreStored(parentDevices);
   log.info({ Message: 'Custom Campanion initialized', Version: config.version, ActiveParent: boardState.activeParent.name });
@@ -104,12 +110,27 @@ async function readMemoryOrDefault(key, defaultValue) {
 
 async function refreshParentDeviceIdentities(devices) {
   const refreshedStatus = [];
+  const updatedDevices = [];
+  let hasParentDeviceUpdates = false;
 
   for (let index = 0; index < devices.length; index++) {
     const device = devices[index];
 
     try {
       const refreshedDevice = await deviceComms.parentInitializationRequest(xapi, device, HTTP_CLIENT_CONFIG);
+      const updatedDevice = {
+        serial: refreshedDevice.serial,
+        name: refreshedDevice.name,
+        host: device.host,
+        username: device.username,
+        password: device.password
+      };
+
+      updatedDevices.push(updatedDevice);
+      if (device.serial !== updatedDevice.serial || device.name !== updatedDevice.name) {
+        hasParentDeviceUpdates = true;
+      }
+
       refreshedStatus.push({
         host: device.host,
         serial: refreshedDevice.serial,
@@ -120,6 +141,7 @@ async function refreshParentDeviceIdentities(devices) {
       });
       log.info({ Message: 'Parent device identity refreshed', Host: device.host, Serial: refreshedDevice.serial, Name: refreshedDevice.name });
     } catch (error) {
+      updatedDevices.push(device);
       refreshedStatus.push({
         host: device.host,
         serial: device.serial,
@@ -132,7 +154,117 @@ async function refreshParentDeviceIdentities(devices) {
     }
   }
 
+  if (hasParentDeviceUpdates) {
+    parentDevices = updatedDevices;
+    await mem.write(PARENT_DEVICES_STORAGE_KEY, parentDevices);
+    log.info({ Message: 'Persisted refreshed parent device identity fields', UpdatedDeviceCount: parentDevices.length });
+  }
+
   return refreshedStatus;
+}
+
+async function connectPeripheralToOnlineParents(statusList) {
+  const companionBoardInformation = getConfiguredCompanionBoardInformation();
+  const peripheralInfo = buildCompanionPeripheralInfo(companionBoardInformation);
+
+  for (let index = 0; index < statusList.length; index++) {
+    const status = statusList[index];
+
+    if (!status.online) {
+      continue;
+    }
+
+    const parentDevice = findParentDeviceByHost(status.host);
+    if (!parentDevice) {
+      continue;
+    }
+
+    try {
+      await deviceComms.connectPeripheral(xapi, parentDevice, peripheralInfo, HTTP_CLIENT_CONFIG);
+      await sendBoardRegistrationMessage(parentDevice, companionBoardInformation);
+      log.info({ Message: 'Companion board peripheral connected to parent', Host: parentDevice.host, PeripheralID: peripheralInfo.ID, Type: peripheralInfo.Type });
+    } catch (error) {
+      log.warn({ Message: 'Companion board peripheral connect failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown peripheral connect error' });
+    }
+  }
+}
+
+function startParentStatusInterval() {
+  if (parentStatusInterval) {
+    clearInterval(parentStatusInterval);
+  }
+
+  parentStatusInterval = setInterval(() => {
+    runParentStatusInterval().catch(error => {
+      utils.softError({ Context: 'Parent status interval failed', Error: error });
+    });
+  }, PARENT_STATUS_INTERVAL_MS);
+}
+
+async function runParentStatusInterval() {
+  parentDeviceStatus = await refreshParentDeviceIdentities(parentDevices);
+  await sendActiveParentHeartbeat();
+}
+
+async function sendActiveParentHeartbeat() {
+  const activeParentDevice = findActiveParentDevice();
+
+  if (!activeParentDevice) {
+    return;
+  }
+
+  const activeParentStatus = parentDeviceStatus.find(status => status.host === activeParentDevice.host);
+  if (!activeParentStatus || !activeParentStatus.online) {
+    log.warn({ Message: 'Active parent is offline; skipping peripheral heartbeat', Host: activeParentDevice.host });
+    return;
+  }
+
+  try {
+    await deviceComms.sendPeripheralHeartbeat(xapi, activeParentDevice, getCompanionPeripheralId(), HTTP_CLIENT_CONFIG);
+    log.info({ Message: 'Companion board peripheral heartbeat sent', Host: activeParentDevice.host, PeripheralID: getCompanionPeripheralId() });
+  } catch (error) {
+    log.warn({ Message: 'Companion board peripheral heartbeat failed', Host: activeParentDevice.host, Error: error.code || error.message || 'Unknown peripheral heartbeat error' });
+  }
+}
+
+async function sendBoardRegistrationMessage(parentDevice, companionBoardInformation) {
+  await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.boardRegistration, {
+    serial: companionBoardInformation.serial,
+    name: companionBoardInformation.name,
+    host: companionBoardInformation.host,
+    username: companionBoardInformation.username,
+    password: companionBoardInformation.password,
+    macAddress: companionBoardInformation.macAddress
+  }, { service: MESSAGE_CONFIG.service, version: config.version }, HTTP_CLIENT_CONFIG);
+}
+
+function findActiveParentDevice() {
+  if (boardState.mode === 'StandAlone') {
+    return null;
+  }
+
+  return parentDevices.find(device => device.serial === boardState.activeParent.serial || device.host === boardState.activeParent.host) || null;
+}
+
+function findParentDeviceByHost(host) {
+  return parentDevices.find(device => device.host === host) || null;
+}
+
+function buildCompanionPeripheralInfo(companionBoardInformation) {
+  return {
+    ID: getCompanionPeripheralId(),
+    Name: companionBoardInformation.name,
+    NetworkAddress: companionBoardInformation.host,
+    SerialNumber: companionBoardInformation.serial,
+    HardwareInfo: 'Custom Campanion Board',
+    SoftwareInfo: config.version,
+    Type: PERIPHERAL_TYPE
+  };
+}
+
+function getCompanionPeripheralId() {
+  const companionBoardInformation = getConfiguredCompanionBoardInformation();
+  return companionBoardInformation.macAddress || companionBoardInformation.serial || companionBoardInformation.host || companionBoardInformation.name;
 }
 
 function createDefaultBoardState() {
@@ -154,7 +286,8 @@ function getConfiguredCompanionBoardInformation() {
     name: boardInformation.name || 'StandAlone',
     host: boardInformation.host || '',
     username: boardInformation.username || '',
-    password: boardInformation.password || ''
+    password: boardInformation.password || '',
+    macAddress: boardInformation.macAddress || ''
   };
 }
 
