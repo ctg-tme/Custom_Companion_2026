@@ -202,6 +202,8 @@ flowchart TD
 
 The board switches between standalone and paired behavior based on the active parent selection.
 
+`config.UserInterface.WebWidget.enabled` is `true` by default. In standalone mode, the board saves the current Web Widget URL once into memory and restores that URL when unpaired. In paired mode, the board shows either `config.UserInterface.WebWidget.urlOverride` or a local `data:text/html` Web Widget that says the board is paired to the selected room. If no original Web Widget exists, the same local Companion widget is used.
+
 ```mermaid
 flowchart TD
 	A[User releases board or selects parent] --> B{Selected StandAlone?}

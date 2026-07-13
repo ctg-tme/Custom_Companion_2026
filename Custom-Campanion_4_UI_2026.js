@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.3
+ * Version:                 1.0.4
  *
  * Description:             A macro module that facilitates the custom Companion Solution user interface for Board Series endpoints with Wheel Kits.
  *                          This module will provide PIN-protected parent-device management UI helpers. The xapi object must be passed in from the calling macro.
@@ -47,6 +47,7 @@ const RELEASE_DEVICE_WIDGET_ID = `${SELECT_DEVICE_PAGE_ID}~ReleaseDevice`;
 const RELEASE_INFO_WIDGET_ID = `${SELECT_DEVICE_PAGE_ID}~ReleaseInfo`;
 const NO_PARENTS_FOUND_WIDGET_ID = `${SELECT_DEVICE_PAGE_ID}~NoParentsFound`;
 const RELEASE_INFO_TEXT = 'Select a room to pair this companion board to that room system. Use Stand Alone to unpair and restore normal local use.';
+const WEB_WIDGET_URL_LIMIT = 200;
 
 function buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial) {
 	const parentRowsXml = buildParentRowsXml(parentDevices, parentDeviceStatus);
@@ -203,6 +204,58 @@ async function showReleaseInfo(XAPIObject) {
 	});
 }
 
+async function getCurrentWebWidgetUrl(XAPIObject) {
+	const webViews = normalizeWebViews(await XAPIObject.Status.UserInterface.WebView.get());
+	const webWidget = webViews.find(view => String(view.Type || view.Mode || '').toLowerCase() === 'webwidget');
+
+	return webWidget ? webWidget.Url || webWidget.URL || webWidget.url || '' : '';
+}
+
+async function setWebWidgetUrl(XAPIObject, url) {
+	if (!url) {
+		return;
+	}
+
+	await XAPIObject.Command.UserInterface.WebView.Display({ Mode: 'WebWidget', Url: url });
+}
+
+function buildCompanionWebWidgetUrl(roomName, urlOverride) {
+	if (urlOverride) {
+		return urlOverride;
+	}
+
+	const room = sanitizeDataText(roomName || 'this room', 28);
+	const url = `data:text/html,<body style=margin:0;background:%230b1220;color:white;font:22px sans-serif><b>Custom Companion 2026</b><p style=text-align:center;margin-top:35vh>Paired to ${room}`;
+
+	return url.length <= WEB_WIDGET_URL_LIMIT ? url : url.slice(0, WEB_WIDGET_URL_LIMIT);
+}
+
+function normalizeWebViews(webViewStatus) {
+	if (!webViewStatus) {
+		return [];
+	}
+
+	if (Array.isArray(webViewStatus)) {
+		return webViewStatus;
+	}
+
+	if (Array.isArray(webViewStatus.WebView)) {
+		return webViewStatus.WebView;
+	}
+
+	if (typeof webViewStatus === 'object') {
+		return Object.keys(webViewStatus).map(key => webViewStatus[key]);
+	}
+
+	return [];
+}
+
+function sanitizeDataText(value, maxLength) {
+	return String(value || '')
+		.replace(/[^a-z0-9 .,_()-]/gi, '')
+		.slice(0, maxLength);
+}
+
 function parseWidgetId(widgetId) {
 	const parts = String(widgetId || '').split('~');
 	return {
@@ -239,6 +292,9 @@ const companionUi = {
 	savePanel,
 	setSelectedParent,
 	showReleaseInfo,
+	getCurrentWebWidgetUrl,
+	setWebWidgetUrl,
+	buildCompanionWebWidgetUrl,
 	parseWidgetId,
 	isSelectDeviceWidget
 };

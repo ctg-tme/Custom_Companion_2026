@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.1.6
+ * Version:                 0.1.1.7
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -161,6 +161,9 @@ async function initializeUiFeatureMode() {
 		mem: mem,
 		storageKey: companionState.STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY,
 		standaloneUiFeatureConfig: standaloneUiFeatureConfig,
+		mode: boardState.mode,
+		userInterfaceConfig: config.UserInterface,
+		companionUi: companionUi,
 		log: log
 	});
 
@@ -369,6 +372,9 @@ async function applyUiFeatureMode(mode) {
 			xapi: xapi,
 			mode: mode,
 			standaloneUiFeatureConfig: standaloneUiFeatureConfig,
+			userInterfaceConfig: config.UserInterface,
+			activeParentName: boardState.activeParent.name,
+			companionUi: companionUi,
 			log: log
 		});
 	} finally {
