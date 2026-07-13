@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.2.3
+ * Version:                 0.1.2.4
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -517,12 +517,6 @@ async function handleStandbySync(message) {
 async function scheduleStandbySync(state) {
 	if (state === 'EnteringStandby') {
 		log.debug({ Message: 'Ignored parent standby transition state', State: state });
-		return;
-	}
-
-	if (state === 'Off') {
-		clearStandbySyncTimers();
-		log.debug({ Message: 'Ignored parent standby Off state', State: state });
 		return;
 	}
 
