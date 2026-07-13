@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.1.18
+ * Version:                 0.1.2.0
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -57,11 +57,14 @@ const HTTP_CLIENT_CONFIG = {
 	allowInsecureHTTPS: true,
 	maxConcurrentRequests: 3
 };
+const STANDBY_SYNC_DEBOUNCE_MS = 250;
 
 const mem = new MemoryStorage(xapi, { StorageMacroName: STORAGE_MACRO_NAME });
 
 let registeredBoards = [];
 let boardConfigs = {};
+let standbySyncTimeout = null;
+let lastStandbyState = '';
 
 async function init() {
 	try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
@@ -70,6 +73,7 @@ async function init() {
 	registeredBoards = await readMemoryOrDefault(REGISTERED_BOARDS_STORAGE_KEY, []);
 	boardConfigs = await readMemoryOrDefault(BOARD_CONFIGS_STORAGE_KEY, {});
 	registerMessageHandler();
+	registerStandbyStateHandler();
 	log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredBoardCount: registeredBoards.length });
 }
 
@@ -97,6 +101,43 @@ function registerMessageHandler() {
 			utils.softError({ Context: 'Failed to handle companion message', Action: message.Action, Error: error });
 		});
 	});
+}
+
+function registerStandbyStateHandler() {
+	xapi.Status.Standby.State.on(state => {
+		queueStandbySync(normalizeEventValue(state));
+	});
+}
+
+function queueStandbySync(state) {
+	lastStandbyState = state;
+
+	if (standbySyncTimeout) {
+		clearTimeout(standbySyncTimeout);
+	}
+
+	standbySyncTimeout = setTimeout(() => {
+		standbySyncTimeout = null;
+		sendStandbySync(lastStandbyState).catch(error => {
+			utils.softError({ Context: 'Failed to send standby sync', State: lastStandbyState, Error: error });
+		});
+	}, STANDBY_SYNC_DEBOUNCE_MS);
+}
+
+async function sendStandbySync(state) {
+	for (let index = 0; index < registeredBoards.length; index++) {
+		await sendRegistrationResponse('StandbySync', { MessageId: '' }, registeredBoards[index], { State: state }, true);
+	}
+
+	log.info({ Message: 'Parent standby sync sent', State: state, RegisteredBoardCount: registeredBoards.length });
+}
+
+function normalizeEventValue(value) {
+	if (value && typeof value === 'object' && value.Value !== undefined) {
+		return value.Value;
+	}
+
+	return value;
 }
 
 async function handleCompanionMessage(message) {

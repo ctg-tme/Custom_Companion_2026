@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.1.19
+ * Version:                 0.1.2.0
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -88,8 +88,10 @@ let parentStatusInterval = null;
 let activeParentSerial = companionState.STAND_ALONE_PARENT_SERIAL;
 let companionPeripheralId = '';
 let standaloneUiFeatureConfig = {};
+let standaloneStandbyConfig = {};
 let userInterfaceThemeName = 'EveningFjord';
 let isApplyingUiFeatureConfig = false;
+let isApplyingStandbyConfig = false;
 let isHandlingSelection = false;
 
 async function init() {
@@ -98,9 +100,11 @@ async function init() {
 
 	await loadMemoryState();
 	await initializeUiFeatureMode();
+	await initializeStandbyMode();
 	await refreshParents({ isInterval: false });
 	boardState = createBoardState(activeParentSerial);
 	await applyUiFeatureMode(boardState.mode);
+	await applyStandbyMode(boardState.mode);
 	await renderSelectDeviceUi();
 	registerCompanionMessageHandlers();
 	await installParentMacrosOnOnlineParents();
@@ -121,6 +125,7 @@ async function loadMemoryState() {
 	}
 	activeParentSerial = await companionState.readMemoryOrInitialize(mem, companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, companionState.STAND_ALONE_PARENT_SERIAL, utils);
 	standaloneUiFeatureConfig = await companionState.readMemoryOrDefault(mem, companionState.STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY, {}, utils);
+	standaloneStandbyConfig = await companionState.readMemoryOrDefault(mem, companionState.STANDALONE_STANDBY_CONFIG_STORAGE_KEY, {}, utils);
 	boardState = createBoardState(activeParentSerial);
 }
 
@@ -155,6 +160,9 @@ async function handleCompanionMessage(message) {
 		case 'ConfigRequired':
 			log.warn({ Message: 'Parent requested config sync before processing action', Source: message.Source, Payload: message.Payload });
 			break;
+		case 'StandbySync':
+			await handleStandbySync(message);
+			break;
 	}
 }
 
@@ -184,6 +192,23 @@ async function initializeUiFeatureMode() {
 		log: log,
 		utils: utils,
 		onChange: handleUserInterfaceThemeChange
+	});
+}
+
+async function initializeStandbyMode() {
+	standaloneStandbyConfig = await boardServices.ensureStandaloneStandbyConfig({
+		xapi: xapi,
+		mem: mem,
+		storageKey: companionState.STANDALONE_STANDBY_CONFIG_STORAGE_KEY,
+		standaloneStandbyConfig: standaloneStandbyConfig,
+		log: log
+	});
+
+	boardServices.registerStandaloneStandbySubscriptions({
+		xapi: xapi,
+		log: log,
+		utils: utils,
+		onChange: handleStandaloneStandbyChange
 	});
 }
 
@@ -306,6 +331,7 @@ async function selectStandAloneMode() {
 	await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
 	await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
 	await applyUiFeatureMode(boardState.mode);
+	await applyStandbyMode(boardState.mode);
 	log.info({ Message: 'Companion board released to StandAlone mode' });
 }
 
@@ -346,6 +372,7 @@ async function selectParentByIndex(parentIndex) {
 	await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
 	await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
 	await applyUiFeatureMode(boardState.mode);
+	await applyStandbyMode(boardState.mode);
 	await sendActiveParentHeartbeat();
 	log.info({ Message: 'Companion board paired to parent', Host: parentDevice.host, Serial: activeParentSerial, Name: parentStatus.name });
 }
@@ -382,6 +409,16 @@ async function handleUserInterfaceThemeChange(value) {
 	log.info({ Message: 'Applied Companion Web Widget theme update', Theme: userInterfaceThemeName });
 }
 
+async function handleStandaloneStandbyChange(standbyConfig, value) {
+	if (isApplyingStandbyConfig || boardState.mode !== 'StandAlone' || value === undefined || value === null) {
+		return;
+	}
+
+	standaloneStandbyConfig[standbyConfig.key] = value;
+	await mem.write(companionState.STANDALONE_STANDBY_CONFIG_STORAGE_KEY, standaloneStandbyConfig);
+	log.info({ Message: 'Saved standalone standby preference', Feature: standbyConfig.key, Value: value });
+}
+
 async function applyUiFeatureMode(mode) {
 	isApplyingUiFeatureConfig = true;
 
@@ -399,6 +436,34 @@ async function applyUiFeatureMode(mode) {
 	} finally {
 		isApplyingUiFeatureConfig = false;
 	}
+}
+
+async function applyStandbyMode(mode) {
+	isApplyingStandbyConfig = true;
+
+	try {
+		await boardServices.applyStandbyMode({
+			xapi: xapi,
+			mode: mode,
+			standaloneStandbyConfig: standaloneStandbyConfig,
+			log: log
+		});
+	} finally {
+		isApplyingStandbyConfig = false;
+	}
+}
+
+async function handleStandbySync(message) {
+	if (message.Serial !== activeParentSerial) {
+		log.debug({ Message: 'Ignored standby sync from non-active parent', SendingParentSerial: message.Serial, ActiveParentSerial: activeParentSerial });
+		return;
+	}
+
+	await boardServices.applyStandbySyncState({
+		xapi: xapi,
+		state: message.Payload && message.Payload.State,
+		log: log
+	});
 }
 
 async function sendActiveParentHeartbeat() {

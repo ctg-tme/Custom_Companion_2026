@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.12
+ * Version:                 1.0.13
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -49,6 +49,11 @@ const UI_FEATURE_CONFIGS = [
 	{ key: 'googleMeet', path: ['UserInterface', 'Features', 'Call', 'JoinGoogleMeet'], pairedValue: 'Hidden' },
 	{ key: 'zoom', path: ['UserInterface', 'Features', 'Call', 'JoinZoom'], pairedValue: 'Hidden' },
 	{ key: 'scanToPair', path: ['BYOD', 'QRCodePairing'], pairedValue: 'Disabled' }
+];
+const STANDBY_CONFIGS = [
+	{ key: 'standbyControl', path: ['Standby', 'Control'], pairedValue: 'Off' },
+	{ key: 'standbyHalfwakeMode', path: ['Standby', 'Halfwake', 'Mode'], pairedValue: 'Manual' },
+	{ key: 'officeHoursEnabled', path: ['Time', 'OfficeHours', 'Enabled'], pairedValue: 'False' }
 ];
 
 async function installParentMacrosOnOnlineParents(options) {
@@ -275,6 +280,31 @@ async function ensureStandaloneUiFeatureConfig(options) {
 	return standaloneConfig;
 }
 
+async function ensureStandaloneStandbyConfig(options) {
+	let hasUpdates = false;
+	const standaloneConfig = options.standaloneStandbyConfig || {};
+
+	for (let index = 0; index < STANDBY_CONFIGS.length; index++) {
+		const standbyConfig = STANDBY_CONFIGS[index];
+
+		if (standaloneConfig[standbyConfig.key] !== undefined) {
+			continue;
+		}
+
+		const currentValue = await getUiFeatureConfigValue(options.xapi, standbyConfig, options.log);
+		if (currentValue !== null) {
+			standaloneConfig[standbyConfig.key] = currentValue;
+			hasUpdates = true;
+		}
+	}
+
+	if (hasUpdates) {
+		await options.mem.write(options.storageKey, standaloneConfig);
+	}
+
+	return standaloneConfig;
+}
+
 function registerStandaloneUiFeatureSubscriptions(options) {
 	for (let index = 0; index < UI_FEATURE_CONFIGS.length; index++) {
 		const feature = UI_FEATURE_CONFIGS[index];
@@ -293,6 +323,24 @@ function registerStandaloneUiFeatureSubscriptions(options) {
 	}
 }
 
+function registerStandaloneStandbySubscriptions(options) {
+	for (let index = 0; index < STANDBY_CONFIGS.length; index++) {
+		const standbyConfig = STANDBY_CONFIGS[index];
+		const node = getXapiConfigNode(options.xapi, standbyConfig.path);
+
+		if (!node || typeof node.on !== 'function') {
+			options.log.debug({ Message: 'Standby config subscription unavailable', Feature: standbyConfig.key, Path: standbyConfig.path.join('.') });
+			continue;
+		}
+
+		node.on(value => {
+			options.onChange(standbyConfig, normalizeConfigEventValue(value)).catch(error => {
+				options.utils.softError({ Context: 'Failed to save standalone standby config change', Feature: standbyConfig.key, Error: error });
+			});
+		});
+	}
+}
+
 async function applyUiFeatureMode(options) {
 	for (let index = 0; index < UI_FEATURE_CONFIGS.length; index++) {
 		const feature = UI_FEATURE_CONFIGS[index];
@@ -306,6 +354,40 @@ async function applyUiFeatureMode(options) {
 	}
 
 	await applyWebWidgetMode(options);
+}
+
+async function applyStandbyMode(options) {
+	for (let index = 0; index < STANDBY_CONFIGS.length; index++) {
+		const standbyConfig = STANDBY_CONFIGS[index];
+		const value = options.mode === 'StandAlone' ? options.standaloneStandbyConfig[standbyConfig.key] : standbyConfig.pairedValue;
+
+		if (value === undefined || value === null) {
+			continue;
+		}
+
+		await setUiFeatureConfigValue(options.xapi, standbyConfig, value, options.log);
+	}
+}
+
+async function applyStandbySyncState(options) {
+	const state = options.state;
+
+	switch (state) {
+		case 'Off':
+			await options.xapi.Command.Standby.Deactivate();
+			break;
+		case 'Standby':
+			await options.xapi.Command.Standby.Activate();
+			break;
+		case 'Halfwake':
+			await options.xapi.Command.Standby.Halfwake();
+			break;
+		case 'EnteringStandby':
+			options.log.debug({ Message: 'Ignored parent standby transition state', State: state });
+			break;
+		default:
+			options.log.warn({ Message: 'Unknown parent standby state ignored', State: state });
+	}
 }
 
 async function applyWebWidgetMode(options) {
@@ -458,10 +540,14 @@ const boardServices = {
 	getRuntimeCompanionBoardInformation,
 	getCompanionPeripheralId,
 	ensureStandaloneUiFeatureConfig,
+	ensureStandaloneStandbyConfig,
 	registerStandaloneUiFeatureSubscriptions,
+	registerStandaloneStandbySubscriptions,
 	getUserInterfaceThemeName,
 	registerUserInterfaceThemeSubscription,
 	applyUiFeatureMode,
+	applyStandbyMode,
+	applyStandbySyncState,
 	sanitizeHttpResponse
 };
 

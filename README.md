@@ -204,6 +204,8 @@ The board switches between standalone and paired behavior based on the active pa
 
 `config.UserInterface.WebWidget.CompanionWidget.enabled` is `true` by default. The board reads the current Web Widget from `Status.UserInterface.WebView` and saves its URL and restore metadata once into memory. By default, Companion Widget is shown in both standalone and paired modes; set `config.UserInterface.WebWidget.CompanionWidget.restoreStandaloneExisting` to `true` to restore the original Web Widget when unpaired. In paired mode, the board removes its own Companion widget when needed with `UserInterface.Extensions.WebWidget.Remove`, then saves the built-in Simple-WebWidget URL with hash parameters unless `config.UserInterface.WebWidget.urlOverride` is supplied. Configurable CompanionWidget hash fields include weather.mode, weather.latitude, weather.longitude, weather.temperatureUnit, time.mode, time.timeZone, context-specific info2, context-specific info3, and context-specific iconUrl. The board supplies theme, heading, and info1 in code, and re-saves the widget if `UserInterface Theme Name` changes.
 
+Standalone standby preferences are saved in board memory for `Standby Control`, `Standby Halfwake Mode`, and `Time OfficeHours Enabled`. In paired mode, the board forces those values to `Off`, `Manual`, and `False` so it does not enter standby independently. Parent rooms subscribe to `Status.Standby.State` and send debounced `StandbySync` messages to registered boards; a board only follows standby commands from its active paired parent.
+
 ```mermaid
 flowchart TD
 	A[User releases board or selects parent] --> B{Selected StandAlone?}
@@ -229,6 +231,7 @@ The current source keeps a small route map in `Custom-Campanion_1_Main_2026`. Th
 | `ConfigAccepted` | Parent to board | Implemented | Parent confirms config was stored in `boardConfigs` and board identity was stored or updated in `registeredBoards`. |
 | `ConfigDenied` | Parent to board | Implemented | Parent rejects config from a new board when its 3-board registration limit is reached. |
 | `ConfigRequired` | Parent to board | Implemented guard response | Parent receives an unsupported action from an unknown board serial and asks the board to send config first. |
+| `StandbySync` | Parent to board | Implemented | Parent sends its debounced standby state to registered boards; boards only act when the sending parent serial matches their active parent. |
 | `parent.callState` | Parent to board | Defined route | Reserved for parent call-state updates. |
 | `board.joinCall` | Parent to board | Defined route | Reserved for instructing the board to join the selected parent call context. |
 

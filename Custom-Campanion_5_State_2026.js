@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.0
+ * Version:                 1.0.1
  *
  * Description:             State and MemoryStorage helpers for the Custom Companion Solution.
  *
@@ -43,6 +43,7 @@ const STAND_ALONE_PARENT_SERIAL = 'StandAlone';
 const PARENT_DEVICES_STORAGE_KEY = 'parentDevices';
 const ACTIVE_PARENT_SERIAL_STORAGE_KEY = 'activeParentSerial';
 const STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY = 'standaloneUiFeatureConfig';
+const STANDALONE_STANDBY_CONFIG_STORAGE_KEY = 'standaloneStandbyConfig';
 
 async function readMemoryOrDefault(mem, key, defaultValue, utils) {
 	try {
@@ -221,6 +222,7 @@ const companionState = {
 	PARENT_DEVICES_STORAGE_KEY,
 	ACTIVE_PARENT_SERIAL_STORAGE_KEY,
 	STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY,
+	STANDALONE_STANDBY_CONFIG_STORAGE_KEY,
 	readMemoryOrDefault,
 	readMemoryOrInitialize,
 	refreshParentDeviceIdentities,
