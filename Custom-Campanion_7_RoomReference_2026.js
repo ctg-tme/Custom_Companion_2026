@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.10
+ * Version:                 0.1.2.11
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -65,7 +65,7 @@ let registeredBoards = [];
 let boardConfigs = {};
 let standbySyncTimeout = null;
 let lastStandbyState = '';
-let callDetectionArmed = false;
+let isCallDetectionReady = false;
 let pendingCallRemoteNumber = '';
 let callDetectionToken = 0;
 
@@ -78,7 +78,7 @@ async function init() {
 	registerMessageHandler();
 	registerStandbyStateHandler();
 	registerCallLifecycleHandlers();
-	armCallDetection();
+	prepareCallDetection();
 	log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredBoardCount: registeredBoards.length });
 }
 
@@ -145,28 +145,28 @@ function normalizeEventValue(value) {
 	return value;
 }
 
-function armCallDetection() {
-	if (callDetectionArmed) {
+function prepareCallDetection() {
+	if (isCallDetectionReady) {
 		return;
 	}
 
-	callDetectionArmed = true;
+	isCallDetectionReady = true;
 	callDetectionToken++;
 	const detectionToken = callDetectionToken;
 	pendingCallRemoteNumber = '';
 
 	xapi.Status.Call.RemoteNumber.once(remoteNumber => {
-		if (!callDetectionArmed || detectionToken !== callDetectionToken) {
+		if (!isCallDetectionReady || detectionToken !== callDetectionToken) {
 			return;
 		}
 
 		pendingCallRemoteNumber = normalizeEventValue(remoteNumber) || '';
 		xapi.Event.CallSuccessful.once(call => {
-			if (!callDetectionArmed || detectionToken !== callDetectionToken) {
+			if (!isCallDetectionReady || detectionToken !== callDetectionToken) {
 				return;
 			}
 
-			callDetectionArmed = false;
+			isCallDetectionReady = false;
 			sendCallSync(pendingCallRemoteNumber, call).catch(error => {
 				utils.softError({ Context: 'Failed to send call sync', RemoteNumber: pendingCallRemoteNumber, Call: call, Error: error });
 			});
@@ -178,15 +178,15 @@ function registerCallLifecycleHandlers() {
 	xapi.Event.CallDisconnect.on(() => {
 		callDetectionToken++;
 		pendingCallRemoteNumber = '';
-		callDetectionArmed = false;
-		armCallDetection();
+		isCallDetectionReady = false;
+		prepareCallDetection();
 	});
 
 	xapi.Event.CallFailed.on(() => {
 		callDetectionToken++;
-		callDetectionArmed = false;
+		isCallDetectionReady = false;
 		pendingCallRemoteNumber = '';
-		armCallDetection();
+		prepareCallDetection();
 	});
 }
 
