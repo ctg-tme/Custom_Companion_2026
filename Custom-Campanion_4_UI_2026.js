@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.15
+ * Version:                 1.0.16
  *
  * Description:             A macro module that facilitates the custom Companion Solution user interface for Board Series endpoints with Wheel Kits.
  *                          This module will provide PIN-protected parent-device management UI helpers. The xapi object must be passed in from the calling macro.
@@ -286,9 +286,7 @@ function buildCompanionWebWidgetUrl(options) {
 		params.timeZone = timeConfig.timeZone;
 	}
 
-	if (webWidgetConfig.hideSettings) {
-		params.hideSettings = 'true';
-	}
+	params.hideSettings = 'true';
 
 	return `${getWebWidgetBaseUrl(options.urlOverride)}#${buildHashParams(params)}`;
 }
