@@ -177,7 +177,7 @@ flowchart TD
 	O --> P[Send ConfigAccepted]
 	F -- No --> Q{Sender serial registered?}
 	Q -- Yes --> R[Handle or log action]
-	Q -- No --> S[Send RegisterRequired]
+	Q -- No --> S[Send ConfigRequired]
 ```
 
 If the parent accepts or denies configuration but cannot send the response back to the board with the credentials supplied by the board, the parent shows a touch panel prompt: `Companion Registration Error`.
@@ -228,10 +228,7 @@ The current source keeps a small route map in `Custom-Campanion_1_Main_2026`. Th
 | `ConfigSync` | Board to parent | Implemented | Board sends the current config, board return credentials, and capabilities. |
 | `ConfigAccepted` | Parent to board | Implemented | Parent confirms config was stored in `boardConfigs` and board identity was stored or updated in `registeredBoards`. |
 | `ConfigDenied` | Parent to board | Implemented | Parent rejects config from a new board when its 3-board registration limit is reached. |
-| `Register` | Board to parent | Backward-compatible handler | Parent still accepts legacy registration payloads. New board config handoff uses `ConfigSync`. |
-| `RegisterAccepted` | Parent to board | Backward-compatible handler | Parent can still confirm legacy `Register` messages. |
-| `RegisterDenied` | Parent to board | Backward-compatible handler | Parent can still reject legacy `Register` messages when full. |
-| `RegisterRequired` | Parent to board | Implemented guard response | Parent receives a non-register action from an unknown serial and asks the board to register first. |
+| `ConfigRequired` | Parent to board | Implemented guard response | Parent receives an unsupported action from an unknown board serial and asks the board to send config first. |
 | `parent.heartbeat` | Board to parent | Defined route | Legacy/custom route name reserved for parent heartbeat messaging. Current heartbeat uses `Peripherals.HeartBeat`. |
 | `parent.callState` | Parent to board | Defined route | Reserved for parent call-state updates. |
 | `board.joinCall` | Parent to board | Defined route | Reserved for instructing the board to join the selected parent call context. |

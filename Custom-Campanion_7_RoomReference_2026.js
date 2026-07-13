@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.1.5
+ * Version:                 0.1.1.18
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -110,13 +110,8 @@ async function handleCompanionMessage(message) {
 		return;
 	}
 
-	if (message.Action === 'Register') {
-		await handleRegister(message);
-		return;
-	}
-
 	if (!isRegisteredBoard(message.Serial)) {
-		await sendRegisterRequired(message);
+		await sendConfigRequired(message);
 		return;
 	}
 
@@ -169,33 +164,6 @@ async function applySyncedConfig(syncedConfig) {
 	}
 }
 
-async function handleRegister(message) {
-	const boardRecord = normalizeBoardRecord(message);
-	const existingIndex = registeredBoards.findIndex(board => board.Serial === boardRecord.Serial);
-
-	if (existingIndex === -1 && registeredBoards.length >= MAX_REGISTERED_BOARDS) {
-		await sendRegistrationResponse('RegisterDenied', message, boardRecord, {
-			Reason: 'MaxBoardsReached',
-			MaxBoards: MAX_REGISTERED_BOARDS,
-			RegisteredBoardCount: registeredBoards.length
-		}, false);
-		return;
-	}
-
-	if (existingIndex >= 0) {
-		registeredBoards[existingIndex] = boardRecord;
-	} else {
-		registeredBoards.push(boardRecord);
-	}
-
-	await mem.write(REGISTERED_BOARDS_STORAGE_KEY, registeredBoards);
-	await sendRegistrationResponse('RegisterAccepted', message, boardRecord, {
-		MaxBoards: MAX_REGISTERED_BOARDS,
-		RegisteredBoardCount: registeredBoards.length
-	}, true);
-	log.info({ Message: 'Companion board registered', Serial: boardRecord.Serial, Name: boardRecord.Name, RegisteredBoardCount: registeredBoards.length });
-}
-
 function normalizeBoardRecord(message) {
 	const source = message.Source || {};
 	const payload = message.Payload || {};
@@ -225,9 +193,9 @@ function isRegisteredBoard(serial) {
 	return registeredBoards.some(board => board.Serial === serial);
 }
 
-async function sendRegisterRequired(message) {
+async function sendConfigRequired(message) {
 	const boardRecord = normalizeBoardRecord(message);
-	await sendRegistrationResponse('RegisterRequired', message, boardRecord, { Reason: 'BoardNotRegistered' }, false);
+	await sendRegistrationResponse('ConfigRequired', message, boardRecord, { Reason: 'BoardConfigNotSynced' }, false);
 }
 
 async function sendRegistrationResponse(action, inboundMessage, boardRecord, payload, isAccepted) {

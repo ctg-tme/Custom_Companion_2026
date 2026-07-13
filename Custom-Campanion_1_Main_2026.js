@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.1.17
+ * Version:                 0.1.1.18
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -152,6 +152,9 @@ async function handleCompanionMessage(message) {
 				Text: message.Payload && message.Payload.Reason ? message.Payload.Reason : 'The room denied this board registration request.',
 				Duration: 10
 			});
+			break;
+		case 'ConfigRequired':
+			log.warn({ Message: 'Parent requested config sync before processing action', Source: message.Source, Payload: message.Payload });
 			break;
 	}
 }

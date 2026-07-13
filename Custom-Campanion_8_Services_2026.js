@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.11
+ * Version:                 1.0.12
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -250,7 +250,14 @@ async function ensureStandaloneUiFeatureConfig(options) {
 		}
 	}
 
-	if (shouldManageWebWidget(options.userInterfaceConfig) && options.mode === 'StandAlone' && standaloneConfig.webWidgetUrl === undefined) {
+	if (shouldManageWebWidget(options.userInterfaceConfig) && !shouldRestoreStandaloneWebWidget(options.userInterfaceConfig) && (standaloneConfig.webWidget !== undefined || standaloneConfig.webWidgetUrl !== undefined)) {
+		delete standaloneConfig.webWidget;
+		delete standaloneConfig.webWidgetUrl;
+		hasUpdates = true;
+		options.log.info({ Message: 'Removed stale standalone Web Widget restore memory because restoreStandaloneExisting is disabled' });
+	}
+
+	if (shouldManageWebWidget(options.userInterfaceConfig) && shouldRestoreStandaloneWebWidget(options.userInterfaceConfig) && options.mode === 'StandAlone' && standaloneConfig.webWidgetUrl === undefined) {
 		try {
 			const currentWebWidget = await options.companionUi.getCurrentWebWidget(options.xapi);
 			standaloneConfig.webWidget = currentWebWidget && !options.companionUi.isCompanionWebWidget(currentWebWidget) ? currentWebWidget : null;
@@ -309,8 +316,8 @@ async function applyWebWidgetMode(options) {
 	const webWidgetConfig = options.userInterfaceConfig.WebWidget || {};
 	const companionWidgetConfig = webWidgetConfig.CompanionWidget || {};
 	const standaloneWebWidget = getStandaloneWebWidget(options.standaloneUiFeatureConfig);
-	const shouldRestoreStandaloneWebWidget = !!(companionWidgetConfig.restoreStandaloneExisting && options.mode === 'StandAlone' && standaloneWebWidget && standaloneWebWidget.url);
-	const url = shouldRestoreStandaloneWebWidget ? standaloneWebWidget.url : options.companionUi.buildCompanionWebWidgetUrl({
+	const shouldRestoreExistingWebWidget = !!(companionWidgetConfig.restoreStandaloneExisting && options.mode === 'StandAlone' && standaloneWebWidget && standaloneWebWidget.url);
+	const url = shouldRestoreExistingWebWidget ? standaloneWebWidget.url : options.companionUi.buildCompanionWebWidgetUrl({
 		mode: options.mode,
 		roomName: options.activeParentName,
 		themeName: options.themeName,
@@ -319,16 +326,21 @@ async function applyWebWidgetMode(options) {
 	});
 
 	try {
-		if (shouldRestoreStandaloneWebWidget) {
+		options.log.info({ Message: 'Companion Web Widget URL computed', Mode: options.mode, RestoreExistingWebWidget: !!shouldRestoreExistingWebWidget, UrlOverrideUsed: !!webWidgetConfig.urlOverride, Url: url });
+		if (shouldRestoreExistingWebWidget) {
 			await options.companionUi.removeCompanionWebWidget(options.xapi);
 			await options.companionUi.saveWebWidget(options.xapi, standaloneWebWidget);
 		} else {
 			await options.companionUi.saveCompanionWebWidget(options.xapi, url);
 		}
-		options.log.info({ Message: 'Companion Web Widget mode applied', Mode: options.mode, RestoredStandaloneWidget: !!shouldRestoreStandaloneWebWidget, UrlLength: url.length });
+		options.log.info({ Message: 'Companion Web Widget mode applied', Mode: options.mode, RestoredStandaloneWidget: !!shouldRestoreExistingWebWidget, UrlLength: url.length });
 	} catch (error) {
 		options.log.warn({ Message: 'Failed to apply Companion Web Widget mode', Mode: options.mode, Error: error.message || error.code || 'Unknown Web Widget error' });
 	}
+}
+
+function shouldRestoreStandaloneWebWidget(userInterfaceConfig) {
+	return !!(userInterfaceConfig && userInterfaceConfig.WebWidget && userInterfaceConfig.WebWidget.CompanionWidget && userInterfaceConfig.WebWidget.CompanionWidget.restoreStandaloneExisting);
 }
 
 function getStandaloneWebWidget(standaloneUiFeatureConfig) {
