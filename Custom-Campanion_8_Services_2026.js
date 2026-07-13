@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.1
+ * Version:                 1.0.2
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -78,7 +78,6 @@ async function installParentMacrosOnOnlineParents(options) {
 async function getParentInstallMacroPayloads(XAPIObject, installConfig) {
 	return {
 		roomReference: await getLocalMacroContent(XAPIObject, installConfig.roomReferenceSourceMacroName),
-		config: await getLocalMacroContent(XAPIObject, installConfig.configMacroName),
 		utils: await getLocalMacroContent(XAPIObject, installConfig.utilsMacroName),
 		deviceComms: await getLocalMacroContent(XAPIObject, installConfig.deviceCommsMacroName),
 		memoryStorage: await getLocalMacroContent(XAPIObject, installConfig.memoryStorageMacroName)
@@ -115,7 +114,7 @@ async function connectPeripheralToOnlineParents(options) {
 		try {
 			const connectResponse = await options.deviceComms.connectPeripheral(options.xapi, parentDevice, peripheralInfo, options.httpClientConfig);
 			const heartbeatResponse = await options.deviceComms.sendPeripheralHeartbeat(options.xapi, parentDevice, peripheralInfo.ID, options.initialHeartbeatTimeout, options.httpClientConfig);
-			await options.sendBoardRegistrationMessage(parentDevice, companionBoardInformation);
+			await options.sendParentReadyRequest(parentDevice, companionBoardInformation);
 			options.log.info({ Message: 'Companion board peripheral connect HTTP response', Host: parentDevice.host, Response: sanitizeHttpResponse(connectResponse) });
 			options.log.info({ Message: 'Companion board initial peripheral heartbeat HTTP response', Host: parentDevice.host, Response: sanitizeHttpResponse(heartbeatResponse), Timeout: options.initialHeartbeatTimeout });
 			options.log.info({ Message: 'Companion board peripheral connected to parent', Host: parentDevice.host, PeripheralID: peripheralInfo.ID, Type: peripheralInfo.Type });

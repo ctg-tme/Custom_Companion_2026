@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.8
+ * Version:                 1.0.9
  *
  * Description:             A macro module that facilitates device-to-device communication for a custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This module will provide HTTPClient, Message API, and putxml routing helpers. The xapi object must be passed in from the calling macro.
@@ -104,7 +104,7 @@ async function parentInitializationRequest(XAPIObject, parentDevice, httpClientC
 }
 
 /**
- * Installs the room-reference runtime, shared config, and MemoryStorage library on a parent device.
+ * Installs the room-reference runtime and its dependencies on a parent device.
  * @param {object} XAPIObject The RoomOS xapi object.
  * @param {object} parentDevice Parent device connection details.
  * @param {object} macroPayloads Macro content keyed by target purpose.
@@ -119,17 +119,12 @@ async function installParentMacros(XAPIObject, parentDevice, macroPayloads, inst
 	const config = installConfig || {};
 	const macros = [
 		{ Name: config.roomReferenceTargetMacroName || 'Custom-Campanion_Room_2026', Content: macroPayloads.roomReference },
-		{ Name: config.configMacroName || 'Custom-Campanion_2_Config_2026', Content: macroPayloads.config },
 		{ Name: config.utilsMacroName || 'Custom-Campanion_3_Utils_2026', Content: macroPayloads.utils },
 		{ Name: config.deviceCommsMacroName || 'Custom-Campanion_6_DeviceComms_2026', Content: macroPayloads.deviceComms },
 		{ Name: config.memoryStorageMacroName || 'Memory-Storage-Functions-V2', Content: macroPayloads.memoryStorage }
 	];
 
-	for (let index = 0; index < macros.length; index++) {
-		await sendPutXml(XAPIObject, parentDevice, buildMacroSaveXml(macros[index].Name, macros[index].Content), httpClientConfig);
-	}
-
-	await sendPutXml(XAPIObject, parentDevice, buildMacroActivateXml(config.roomReferenceTargetMacroName || 'Custom-Campanion_Room_2026'), httpClientConfig);
+	await sendPutXml(XAPIObject, parentDevice, buildParentMacroInstallXml(macros, config.roomReferenceTargetMacroName || 'Custom-Campanion_Room_2026'), httpClientConfig);
 
 	return { Status: 'OK', Message: 'Parent macros installed', Host: parentDevice.host };
 }
@@ -285,16 +280,33 @@ function sendPutXml(XAPIObject, parentDevice, xmlBody, httpClientConfig) {
 	}, xmlBody));
 }
 
-function buildMacroSaveXml(name, content) {
+function buildParentMacroInstallXml(macros, activeMacroName) {
+	let macroXml = '';
+
+	for (let index = 0; index < macros.length; index++) {
+		macroXml += buildMacroSaveNode(macros[index].Name, macros[index].Content);
+	}
+
+	macroXml += buildMacroActivateNode(activeMacroName);
+	macroXml += buildMacroRuntimeRestartNode();
+
+	return `<Command><Macros>${macroXml}</Macros></Command>`;
+}
+
+function buildMacroSaveNode(name, content) {
 	if (!content) {
 		throw buildError(`Missing macro content for ${name}`, { Code: 'cc.parent-install.1', MacroName: name });
 	}
 
-	return `<Command><Macros><Macro><Save><Name>${escapeXml(name)}</Name><body>${escapeXml(content)}</body></Save></Macro></Macros></Command>`;
+	return `<Macro><Save><Name>${escapeXml(name)}</Name><body>${escapeXml(content)}</body></Save></Macro>`;
 }
 
-function buildMacroActivateXml(name) {
-	return `<Command><Macros><Macro><Activate><Name>${escapeXml(name)}</Name></Activate></Macro></Macros></Command>`;
+function buildMacroActivateNode(name) {
+	return `<Macro><Activate><Name>${escapeXml(name)}</Name></Activate></Macro>`;
+}
+
+function buildMacroRuntimeRestartNode() {
+	return '<Runtime><Restart></Restart></Runtime>';
 }
 
 function buildMessageSendXml(message) {

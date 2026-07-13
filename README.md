@@ -21,7 +21,7 @@ Custom Companion 2026 is a Cisco RoomOS macro solution for Board Pro Series endp
 
 ## Initialization
 
-The companion board initializes first. It loads local state, validates known parent devices, installs the parent-side macro package, connects itself as a peripheral, and sends a structured `Register` message to each online parent.
+The companion board initializes first. It loads local state, validates known parent devices, installs the parent-side runtime package, connects itself as a peripheral, and asks each online parent to confirm that the runtime is ready before sending board-owned configuration.
 
 ```mermaid
 flowchart TD
@@ -36,33 +36,35 @@ flowchart TD
 	H --> I[Refresh parent identities with HTTP GET]
 	I --> J[Apply standalone or paired UI feature mode]
 	J --> K[Render Companion Device Select panel]
-	K --> L[Install parent macro package on online parents]
-	L --> M[Connect board as parent peripheral]
-	M --> N[Send initial peripheral heartbeat]
-	N --> O[Send Register message]
-	O --> P[Subscribe to Message.Send and UI widget events]
+	K --> L[Subscribe to Message.Send]
+	L --> M[Install parent runtime package on online parents]
+	M --> N[Connect board as parent peripheral]
+	N --> O[Send initial peripheral heartbeat]
+	O --> P[Send ParentReadyRequest]
 	P --> Q[Start parent status and heartbeat interval]
 ```
 
 ## Parent Macro Installation
 
-The board installs the parent-room runtime onto each online parent codec. The installed runtime name is `Custom-Campanion_Room_2026`; helper modules are copied with their numbered source names.
+The board installs the parent-room runtime onto each online parent codec. The installed runtime name is `Custom-Campanion_Room_2026`; helper modules are copied with their numbered source names. Board configuration stays on the board and is sent later with `ConfigSync`.
+
+The macro save, activate, and runtime restart operations are sent in one putxml command payload. Commands share one `<Command>` root and are grouped under the correct common path nodes; configuration XML is not mixed into this command payload.
 
 ```mermaid
 flowchart TD
 	A[Board has online parent status] --> B[Read local macro contents]
 	B --> C[RoomReference source macro]
-	B --> D[Config module]
-	B --> E[Utils module]
-	B --> F[DeviceComms module]
-	B --> G[MemoryStorage library]
-	C --> H[POST Macro.Save over putxml]
-	D --> H
-	E --> H
-	F --> H
-	G --> H
+	B --> D[Utils module]
+	B --> E[DeviceComms module]
+	B --> F[MemoryStorage library]
+	C --> G[Build one Command XML payload]
+	D --> G
+	E --> G
+	F --> G
+	G --> H[Save macros]
 	H --> I[Activate Custom-Campanion_Room_2026]
-	I --> J[Parent RoomReference initializes]
+	I --> J[Restart parent macro runtime]
+	J --> K[Parent RoomReference initializes]
 ```
 
 ## Codec to Codec Communication
@@ -76,17 +78,20 @@ sequenceDiagram
 	participant ParentMacro as Custom-Campanion_Room_2026
 	participant ParentMemory as Parent MemoryStorage
 
-	Board->>Parent: HTTPClient POST /putxml Message.Send Register
+	Board->>Parent: HTTPClient POST /putxml Message.Send ParentReadyRequest
 	Parent->>ParentMacro: xapi.Event.Message.Send
 	ParentMacro->>ParentMacro: Parse Companion Board 2026 envelope
+	ParentMacro->>Board: HTTPClient POST /putxml Message.Send ParentReady
+	Board->>Parent: HTTPClient POST /putxml Message.Send ConfigSync
+	Parent->>ParentMacro: xapi.Event.Message.Send
 	alt Board already registered
-		ParentMacro->>ParentMemory: Overwrite board record by Serial
-		ParentMacro->>Board: HTTPClient POST /putxml Message.Send RegisterAccepted
+		ParentMacro->>ParentMemory: Overwrite board record and boardConfigs entry
+		ParentMacro->>Board: HTTPClient POST /putxml Message.Send ConfigAccepted
 	else Parent has fewer than 3 boards
-		ParentMacro->>ParentMemory: Store new board record
-		ParentMacro->>Board: HTTPClient POST /putxml Message.Send RegisterAccepted
+		ParentMacro->>ParentMemory: Store board record and boardConfigs entry
+		ParentMacro->>Board: HTTPClient POST /putxml Message.Send ConfigAccepted
 	else Parent already has 3 boards
-		ParentMacro->>Board: HTTPClient POST /putxml Message.Send RegisterDenied
+		ParentMacro->>Board: HTTPClient POST /putxml Message.Send ConfigDenied
 		ParentMacro->>ParentMemory: No write
 	end
 ```
@@ -98,7 +103,7 @@ Every custom application message produced by `deviceComms.sendMessageCommand` us
 ```json
 {
   "App": "Companion Board 2026",
-  "Action": "Register",
+	"Action": "ConfigSync",
   "Serial": "sending device serial",
   "Source": {
 	"Role": "Board",
@@ -110,27 +115,34 @@ Every custom application message produced by `deviceComms.sendMessageCommand` us
 }
 ```
 
-The envelope is intentionally small because RoomOS `Message.Send` text is limited to 8192 characters. Timestamps are left to the macro logs, serial data is only sent once at the top level, and empty `Source` fields are omitted. `Register` is intentionally allowed before the parent recognizes the board serial. Other parent-side custom actions require the sending serial to already exist in the parent `registeredBoards` memory list.
+The envelope is intentionally small because RoomOS `Message.Send` text is limited to 8192 characters. Timestamps are left to the macro logs, serial data is only sent once at the top level, and empty `Source` fields are omitted. `ParentReadyRequest` and `ConfigSync` are intentionally allowed before the parent recognizes the board serial. Other parent-side custom actions require the sending serial to already exist in the parent `registeredBoards` memory list.
 
-## Board Registration
+## Board Configuration Handoff
 
-Registration happens during the current peripheral-connect path. The board first registers itself as a RoomOS peripheral, then sends its Custom Companion application registration data.
+Configuration handoff happens after the parent runtime package is installed and the board is connected as a RoomOS peripheral. The parent confirms readiness first, then the board sends the current board-owned config by custom message.
 
 ```mermaid
 flowchart TD
 	A[Online parent found] --> B[Build companion peripheral info]
 	B --> C[Send Peripherals.Connect]
 	C --> D[Send initial Peripherals.HeartBeat]
-	D --> E[Build Register payload]
-	E --> F[Send Message.Send Register]
-	F --> G{Parent response}
-	G -- RegisterAccepted --> H[Board logs acceptance]
-	G -- RegisterDenied --> I[Board shows Room Registration Denied prompt]
-	G -- No response or HTTP failure --> J[Board logs peripheral connect failure]
+	D --> E[Send Message.Send ParentReadyRequest]
+	E --> F{Parent response}
+	F -- ParentReady --> G[Send Message.Send ConfigSync]
+	G --> H{Config response}
+	H -- ConfigAccepted --> I[Board logs acceptance]
+	H -- ConfigDenied --> J[Board shows Room Configuration Denied prompt]
+	F -- No response or HTTP failure --> K[Board logs peripheral connect failure]
 ```
 
-The `Register` payload currently includes:
+The `ParentReadyRequest` payload currently includes return-path credentials:
 
+- `Board.Username`
+- `Board.Password`
+
+The `ConfigSync` payload currently includes:
+
+- `Config`
 - `Board.Username`
 - `Board.Password`
 - `Board.ProductPlatform`
@@ -139,30 +151,34 @@ The `Register` payload currently includes:
 - `Capabilities.CanMuteVideo`
 - `Capabilities.CanReceiveMessages`
 
-## Parent Registration Handling
+## Parent Configuration Handling
 
-Each parent codec can store up to 3 registered companion boards. A new registration overwrites an existing board record when the serial matches.
+Each parent codec can store up to 3 registered companion boards. `ConfigSync` saves the board config into `boardConfigs` by board serial and updates the `registeredBoards` record. A repeated sync overwrites existing records when the serial matches.
 
 ```mermaid
 flowchart TD
 	A[Parent receives Message.Send event] --> B{Valid Companion Board 2026 message?}
 	B -- No --> C[Ignore]
-	B -- Yes --> D{Action is Register?}
-	D -- Yes --> E[Normalize board record from payload]
-	E --> F{Serial already registered?}
-	F -- Yes --> G[Overwrite existing board record]
-	F -- No --> H{Registered board count below 3?}
-	H -- Yes --> I[Append new board record]
-	H -- No --> J[Send RegisterDenied with MaxBoardsReached]
-	G --> K[Write registeredBoards memory]
-	I --> K
-	K --> L[Send RegisterAccepted]
-	D -- No --> M{Sender serial registered?}
-	M -- Yes --> N[Handle or log action]
-	M -- No --> O[Send RegisterRequired]
+	B -- Yes --> D{Action is ParentReadyRequest?}
+	D -- Yes --> E[Send ParentReady]
+	D -- No --> F{Action is ConfigSync?}
+	F -- Yes --> G[Normalize board record from payload]
+	G --> H{Serial already registered?}
+	H -- Yes --> I[Overwrite board record]
+	H -- No --> J{Registered board count below 3?}
+	J -- Yes --> K[Append new board record]
+	J -- No --> L[Send ConfigDenied with MaxBoardsReached]
+	I --> M[Write registeredBoards memory]
+	K --> M
+	M --> N[Write boardConfigs memory]
+	N --> O[Apply relevant config]
+	O --> P[Send ConfigAccepted]
+	F -- No --> Q{Sender serial registered?}
+	Q -- Yes --> R[Handle or log action]
+	Q -- No --> S[Send RegisterRequired]
 ```
 
-If the parent accepts or denies registration but cannot send the response back to the board with the credentials supplied in the `Register` payload, the parent shows a touch panel prompt: `Companion Registration Error`.
+If the parent accepts or denies configuration but cannot send the response back to the board with the credentials supplied by the board, the parent shows a touch panel prompt: `Companion Registration Error`.
 
 ## Parent Selection and Ongoing Heartbeat
 
@@ -203,9 +219,14 @@ The current source keeps a small route map in `Custom-Campanion_1_Main_2026`. Th
 
 | Route or Action | Direction | Current Status | Purpose |
 | --- | --- | --- | --- |
-| `Register` | Board to parent | Implemented | Board sends identity, credentials, and capability payload during peripheral connect. |
-| `RegisterAccepted` | Parent to board | Implemented | Parent confirms the board is stored or updated in `registeredBoards`. |
-| `RegisterDenied` | Parent to board | Implemented | Parent rejects a new board when its 3-board registration limit is reached. |
+| `ParentReadyRequest` | Board to parent | Implemented | Board asks the freshly installed parent runtime to confirm it is ready and provides return-path credentials. |
+| `ParentReady` | Parent to board | Implemented | Parent confirms the runtime is active and ready to receive board-owned configuration. |
+| `ConfigSync` | Board to parent | Implemented | Board sends the current config, board return credentials, and capabilities. |
+| `ConfigAccepted` | Parent to board | Implemented | Parent confirms config was stored in `boardConfigs` and board identity was stored or updated in `registeredBoards`. |
+| `ConfigDenied` | Parent to board | Implemented | Parent rejects config from a new board when its 3-board registration limit is reached. |
+| `Register` | Board to parent | Backward-compatible handler | Parent still accepts legacy registration payloads. New board config handoff uses `ConfigSync`. |
+| `RegisterAccepted` | Parent to board | Backward-compatible handler | Parent can still confirm legacy `Register` messages. |
+| `RegisterDenied` | Parent to board | Backward-compatible handler | Parent can still reject legacy `Register` messages when full. |
 | `RegisterRequired` | Parent to board | Implemented guard response | Parent receives a non-register action from an unknown serial and asks the board to register first. |
 | `parent.heartbeat` | Board to parent | Defined route | Legacy/custom route name reserved for parent heartbeat messaging. Current heartbeat uses `Peripherals.HeartBeat`. |
 | `parent.callState` | Parent to board | Defined route | Reserved for parent call-state updates. |
@@ -215,7 +236,7 @@ The current source keeps a small route map in `Custom-Campanion_1_Main_2026`. Th
 
 - One companion board can keep up to 6 parent devices in board memory.
 - One parent room codec can register up to 3 companion boards in parent memory.
-- Re-registering the same board serial updates that board record instead of consuming another slot.
+- Re-syncing the same board serial updates that board record and its `boardConfigs` entry instead of consuming another slot.
 - `Custom-Campanion-Storage.js` is generated database state and should not be edited or committed as source.
 
 ## Notes

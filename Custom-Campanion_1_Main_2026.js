@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.1.4
+ * Version:                 0.1.1.5
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -66,7 +66,8 @@ const MESSAGE_CONFIG = {
 	service: 'CustomCampanion',
 	routes: {
 		heartbeat: 'parent.heartbeat',
-		boardRegistration: 'Register',
+		parentReadyRequest: 'ParentReadyRequest',
+		configSync: 'ConfigSync',
 		callState: 'parent.callState',
 		joinCall: 'board.joinCall'
 	}
@@ -74,7 +75,6 @@ const MESSAGE_CONFIG = {
 const PARENT_INSTALL_CONFIG = {
 	roomReferenceSourceMacroName: 'Custom-Campanion_7_RoomReference_2026',
 	roomReferenceTargetMacroName: 'Custom-Campanion_Room_2026',
-	configMacroName: 'Custom-Campanion_2_Config_2026',
 	utilsMacroName: 'Custom-Campanion_3_Utils_2026',
 	deviceCommsMacroName: 'Custom-Campanion_6_DeviceComms_2026',
 	memoryStorageMacroName: 'Memory-Storage-Functions-V2'
@@ -102,9 +102,9 @@ async function init() {
 	boardState = createBoardState(activeParentSerial);
 	await applyUiFeatureMode(boardState.mode);
 	await renderSelectDeviceUi();
+	registerCompanionMessageHandlers();
 	await installParentMacrosOnOnlineParents();
 	await connectPeripheralToOnlineParents();
-	registerCompanionMessageHandlers();
 	registerUiEventHandlers();
 	startParentStatusInterval();
 
@@ -139,12 +139,15 @@ function registerCompanionMessageHandlers() {
 
 async function handleCompanionMessage(message) {
 	switch (message.Action) {
-		case 'RegisterAccepted':
-			log.info({ Message: 'Parent accepted board registration', Source: message.Source, Payload: message.Payload });
+		case 'ParentReady':
+			await sendParentConfigMessage(message);
 			break;
-		case 'RegisterDenied':
+		case 'ConfigAccepted':
+			log.info({ Message: 'Parent accepted board configuration', Source: message.Source, Payload: message.Payload });
+			break;
+		case 'ConfigDenied':
 			await xapi.Command.UserInterface.Message.Prompt.Display({
-				Title: 'Room Registration Denied',
+				Title: 'Room Configuration Denied',
 				Text: message.Payload && message.Payload.Reason ? message.Payload.Reason : 'The room denied this board registration request.',
 				Duration: 10
 			});
@@ -207,7 +210,7 @@ async function connectPeripheralToOnlineParents() {
 		peripheralType: PERIPHERAL_TYPE,
 		httpClientConfig: HTTP_CLIENT_CONFIG,
 		initialHeartbeatTimeout: INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS,
-		sendBoardRegistrationMessage: sendBoardRegistrationMessage,
+		sendParentReadyRequest: sendParentReadyRequest,
 		log: log
 	});
 }
@@ -394,8 +397,34 @@ async function sendActiveParentHeartbeat() {
 	}
 }
 
-async function sendBoardRegistrationMessage(parentDevice, companionBoardInformation) {
-	await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.boardRegistration, {
+async function sendParentReadyRequest(parentDevice, companionBoardInformation) {
+	await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.parentReadyRequest, {
+		Board: {
+			Username: companionBoardInformation.username,
+			Password: companionBoardInformation.password
+		}
+	}, {
+		app: 'Companion Board 2026',
+		serial: companionBoardInformation.serial,
+		source: {
+			Role: 'Board',
+			Name: companionBoardInformation.name,
+			Host: companionBoardInformation.host,
+			MacAddress: companionBoardInformation.macAddress
+		}
+	}, HTTP_CLIENT_CONFIG);
+}
+
+async function sendParentConfigMessage(message) {
+	const parentDevice = findParentDeviceBySerial(message.Serial) || companionState.findParentDeviceByHost(parentDevices, message.Source && message.Source.Host);
+	if (!parentDevice) {
+		log.warn({ Message: 'ParentReady received from unknown parent', Serial: message.Serial, Source: message.Source });
+		return;
+	}
+
+	const companionBoardInformation = await boardServices.getRuntimeCompanionBoardInformation(xapi, getConfiguredCompanionBoardInformation(), log);
+	await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.configSync, {
+		Config: config,
 		Board: {
 			Username: companionBoardInformation.username,
 			Password: companionBoardInformation.password,
@@ -425,6 +454,10 @@ function createBoardState(parentSerial) {
 
 function findParentDeviceByHost(host) {
 	return companionState.findParentDeviceByHost(parentDevices, host);
+}
+
+function findParentDeviceBySerial(serial) {
+	return parentDevices.find(device => device.serial === serial) || null;
 }
 
 function getCompanionPeripheralId() {
