@@ -232,7 +232,7 @@ The current source keeps a small route map in `Custom-Campanion_1_Main_2026`. Th
 | `ConfigDenied` | Parent to board | Implemented | Parent rejects config from a new board when its 3-board registration limit is reached. |
 | `ConfigRequired` | Parent to board | Implemented guard response | Parent receives an unsupported action from an unknown board serial and asks the board to send config first. |
 | `StandbySync` | Parent to board | Implemented | Parent sends its debounced standby state to registered boards; boards only act when the sending parent serial matches their active parent. |
-| `CallSync` | Parent to board | Initial detection slice | Parent captures the outgoing `Call RemoteNumber` with a guarded status subscription, pairs it with `CallSuccessful`, and sends the call details to registered boards. |
+| `CallSync` | Parent to board | Initial detection slice | Parent captures the outgoing `Call RemoteNumber` with a new-style one-shot status listener, pairs it with a new-style one-shot `CallSuccessful` listener, and sends the call details to registered boards. |
 | `parent.callState` | Parent to board | Defined route | Reserved for parent call-state updates. |
 | `board.joinCall` | Parent to board | Defined route | Reserved for instructing the board to join the selected parent call context. |
 

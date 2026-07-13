@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.8
+ * Version:                 0.1.2.9
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -67,6 +67,7 @@ let standbySyncTimeout = null;
 let lastStandbyState = '';
 let callDetectionArmed = false;
 let pendingCallRemoteNumber = '';
+let callDetectionToken = 0;
 
 async function init() {
 	try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
@@ -149,38 +150,46 @@ function armCallDetection() {
 		return;
 	}
 
+	const remoteNumberNode = xapi.Status.Call.RemoteNumber;
+	if (!remoteNumberNode || typeof remoteNumberNode.once !== 'function' || !xapi.Event.CallSuccessful || typeof xapi.Event.CallSuccessful.once !== 'function') {
+		log.warn({ Message: 'Call detection requires new-style once handlers' });
+		return;
+	}
+
 	callDetectionArmed = true;
+	callDetectionToken++;
+	const detectionToken = callDetectionToken;
+	pendingCallRemoteNumber = '';
+
+	remoteNumberNode.once(remoteNumber => {
+		if (!callDetectionArmed || detectionToken !== callDetectionToken) {
+			return;
+		}
+
+		pendingCallRemoteNumber = normalizeEventValue(remoteNumber) || '';
+		xapi.Event.CallSuccessful.once(call => {
+			if (!callDetectionArmed || detectionToken !== callDetectionToken) {
+				return;
+			}
+
+			callDetectionArmed = false;
+			sendCallSync(pendingCallRemoteNumber, call).catch(error => {
+				utils.softError({ Context: 'Failed to send call sync', RemoteNumber: pendingCallRemoteNumber, Call: call, Error: error });
+			});
+		});
+	});
 }
 
 function registerCallLifecycleHandlers() {
-	const remoteNumberNode = xapi.Status.Call.RemoteNumber;
-	if (remoteNumberNode && typeof remoteNumberNode.on === 'function') {
-		remoteNumberNode.on(remoteNumber => {
-			if (!callDetectionArmed) {
-				return;
-			}
-			pendingCallRemoteNumber = normalizeEventValue(remoteNumber) || '';
-		});
-	} else {
-		log.warn({ Message: 'Call RemoteNumber subscription unavailable' });
-	}
-
-	xapi.Event.CallSuccessful.on(call => {
-		if (!callDetectionArmed) {
-			return;
-		}
-		callDetectionArmed = false;
-		sendCallSync(pendingCallRemoteNumber, call).catch(error => {
-			utils.softError({ Context: 'Failed to send call sync', RemoteNumber: pendingCallRemoteNumber, Call: call, Error: error });
-		});
-	});
-
 	xapi.Event.CallDisconnect.on(() => {
+		callDetectionToken++;
 		pendingCallRemoteNumber = '';
+		callDetectionArmed = false;
 		armCallDetection();
 	});
 
 	xapi.Event.CallFailed.on(() => {
+		callDetectionToken++;
 		callDetectionArmed = false;
 		pendingCallRemoteNumber = '';
 		armCallDetection();
