@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.1.10
+ * Version:                 0.1.1.11
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -89,6 +89,7 @@ let parentStatusInterval = null;
 let activeParentSerial = companionState.STAND_ALONE_PARENT_SERIAL;
 let companionPeripheralId = '';
 let standaloneUiFeatureConfig = {};
+let userInterfaceThemeName = 'EveningFjord';
 let isApplyingUiFeatureConfig = false;
 let isHandlingSelection = false;
 
@@ -156,6 +157,8 @@ async function handleCompanionMessage(message) {
 }
 
 async function initializeUiFeatureMode() {
+	userInterfaceThemeName = await boardServices.getUserInterfaceThemeName({ xapi: xapi, log: log });
+
 	standaloneUiFeatureConfig = await boardServices.ensureStandaloneUiFeatureConfig({
 		xapi: xapi,
 		mem: mem,
@@ -172,6 +175,13 @@ async function initializeUiFeatureMode() {
 		log: log,
 		utils: utils,
 		onChange: handleStandaloneUiFeatureChange
+	});
+
+	boardServices.registerUserInterfaceThemeSubscription({
+		xapi: xapi,
+		log: log,
+		utils: utils,
+		onChange: handleUserInterfaceThemeChange
 	});
 }
 
@@ -364,6 +374,12 @@ async function handleStandaloneUiFeatureChange(feature, value) {
 	log.info({ Message: 'Saved standalone UI feature preference', Feature: feature.key, Value: value });
 }
 
+async function handleUserInterfaceThemeChange(value) {
+	userInterfaceThemeName = value || 'EveningFjord';
+	await applyUiFeatureMode(boardState.mode);
+	log.info({ Message: 'Applied Companion Web Widget theme update', Theme: userInterfaceThemeName });
+}
+
 async function applyUiFeatureMode(mode) {
 	isApplyingUiFeatureConfig = true;
 
@@ -374,6 +390,7 @@ async function applyUiFeatureMode(mode) {
 			standaloneUiFeatureConfig: standaloneUiFeatureConfig,
 			userInterfaceConfig: config.UserInterface,
 			activeParentName: boardState.activeParent.name,
+			themeName: userInterfaceThemeName,
 			companionUi: companionUi,
 			log: log
 		});

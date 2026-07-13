@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.7
+ * Version:                 1.0.8
  *
  * Description:             A macro module that facilitates the custom Companion Solution user interface for Board Series endpoints with Wheel Kits.
  *                          This module will provide PIN-protected parent-device management UI helpers. The xapi object must be passed in from the calling macro.
@@ -47,10 +47,10 @@ const RELEASE_DEVICE_WIDGET_ID = `${SELECT_DEVICE_PAGE_ID}~ReleaseDevice`;
 const RELEASE_INFO_WIDGET_ID = `${SELECT_DEVICE_PAGE_ID}~ReleaseInfo`;
 const NO_PARENTS_FOUND_WIDGET_ID = `${SELECT_DEVICE_PAGE_ID}~NoParentsFound`;
 const RELEASE_INFO_TEXT = 'Select a room to pair this companion board to that room system. Use Stand Alone to unpair and restore normal local use.';
-const WEB_WIDGET_URL_LIMIT = 200;
 const WEB_WIDGET_PANEL_ID = `${PANEL_ID}WebWidget`;
 const WEB_WIDGET_NAME = 'Custom Companion 2026';
 const WEB_WIDGET_REFRESH_INTERVAL = 0;
+const WEB_WIDGET_DEFAULT_URL = 'https://ctg-tme.github.io/Simple-WebWidget/';
 
 function buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial) {
 	const parentRowsXml = buildParentRowsXml(parentDevices, parentDeviceStatus);
@@ -256,15 +256,50 @@ function isCompanionWebWidget(webWidget) {
 	return !!(webWidget && webWidget.panelId === WEB_WIDGET_PANEL_ID);
 }
 
-function buildCompanionWebWidgetUrl(roomName, configuredUrl) {
-	if (configuredUrl) {
-		return configuredUrl;
+function buildCompanionWebWidgetUrl(options) {
+	const webWidgetConfig = options.webWidgetConfig || {};
+	const contextConfig = options.mode === 'StandAlone' ? webWidgetConfig.standalone || {} : webWidgetConfig.paired || {};
+	const params = {
+		theme: options.themeName || 'EveningFjord',
+		heading: 'Custom Companion 2026',
+		info1: options.mode === 'StandAlone' ? 'Operating in Standalone' : `Paired to Room:\n${options.roomName || 'Unknown Room'}`,
+		info2: contextConfig.info2 || '',
+		info3: contextConfig.info3 || '',
+		iconUrl: contextConfig.iconUrl || ''
+	};
+
+	if (webWidgetConfig.weather) {
+		params.weather = 'true';
 	}
 
-	const room = sanitizeDataText(roomName || 'this room', 28);
-	const url = `data:text/html,%3Cb%20style=position:fixed;top:8px;left:8px%3ECC26%3C/b%3E%3Ch1%20style=text-align:center;margin-top:35vh%3EPaired%20to%20${room}%3C/h1%3E`;
+	if (webWidgetConfig.time) {
+		params.time = 'true';
+	}
 
-	return url.length <= WEB_WIDGET_URL_LIMIT ? url : url.slice(0, WEB_WIDGET_URL_LIMIT);
+	if (webWidgetConfig.timeZone) {
+		params.timeZone = webWidgetConfig.timeZone;
+	}
+
+	return `${getWebWidgetBaseUrl(webWidgetConfig.url)}#${buildHashParams(params)}`;
+}
+
+function getWebWidgetBaseUrl(configuredUrl) {
+	return String(configuredUrl || WEB_WIDGET_DEFAULT_URL).split('#')[0];
+}
+
+function buildHashParams(params) {
+	const hashParts = [];
+	const keys = Object.keys(params);
+
+	for (let index = 0; index < keys.length; index++) {
+		const key = keys[index];
+		if (params[key] === undefined || params[key] === null || params[key] === '') {
+			continue;
+		}
+		hashParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`);
+	}
+
+	return hashParts.join('&');
 }
 
 function normalizeWebViews(webViewStatus) {

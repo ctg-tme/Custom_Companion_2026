@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.7
+ * Version:                 1.0.8
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -309,7 +309,12 @@ async function applyWebWidgetMode(options) {
 	const webWidgetConfig = options.userInterfaceConfig.WebWidget || {};
 	const standaloneWebWidget = getStandaloneWebWidget(options.standaloneUiFeatureConfig);
 	const shouldRestoreStandaloneWebWidget = options.mode === 'StandAlone' && standaloneWebWidget && standaloneWebWidget.url;
-	const url = shouldRestoreStandaloneWebWidget ? standaloneWebWidget.url : options.companionUi.buildCompanionWebWidgetUrl(options.activeParentName, webWidgetConfig.url);
+	const url = shouldRestoreStandaloneWebWidget ? standaloneWebWidget.url : options.companionUi.buildCompanionWebWidgetUrl({
+		mode: options.mode,
+		roomName: options.activeParentName,
+		themeName: options.themeName,
+		webWidgetConfig: webWidgetConfig
+	});
 
 	try {
 		if (shouldRestoreStandaloneWebWidget) {
@@ -344,6 +349,29 @@ function getStandaloneWebWidget(standaloneUiFeatureConfig) {
 
 function shouldManageWebWidget(userInterfaceConfig) {
 	return !!(userInterfaceConfig && userInterfaceConfig.WebWidget && userInterfaceConfig.WebWidget.enabled);
+}
+
+async function getUserInterfaceThemeName(options) {
+	try {
+		return await options.xapi.Config.UserInterface.Theme.Name.get();
+	} catch (error) {
+		options.log.warn({ Message: 'Failed to fetch UserInterface Theme Name', Error: error.message || error.code || 'Unknown theme get error' });
+		return 'EveningFjord';
+	}
+}
+
+function registerUserInterfaceThemeSubscription(options) {
+	const node = getXapiConfigNode(options.xapi, ['UserInterface', 'Theme', 'Name']);
+	if (!node || typeof node.on !== 'function') {
+		options.log.debug({ Message: 'UserInterface Theme Name subscription unavailable' });
+		return;
+	}
+
+	node.on(value => {
+		options.onChange(normalizeConfigEventValue(value)).catch(error => {
+			options.utils.softError({ Context: 'Failed to apply UserInterface theme change', Error: error });
+		});
+	});
 }
 
 async function getUiFeatureConfigValue(XAPIObject, feature, log) {
@@ -417,6 +445,8 @@ const boardServices = {
 	getCompanionPeripheralId,
 	ensureStandaloneUiFeatureConfig,
 	registerStandaloneUiFeatureSubscriptions,
+	getUserInterfaceThemeName,
+	registerUserInterfaceThemeSubscription,
 	applyUiFeatureMode,
 	sanitizeHttpResponse
 };
