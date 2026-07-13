@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.0
+ * Version:                 0.1.2.7
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -65,6 +65,7 @@ let registeredBoards = [];
 let boardConfigs = {};
 let standbySyncTimeout = null;
 let lastStandbyState = '';
+let callDetectionArmed = false;
 
 async function init() {
 	try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
@@ -74,6 +75,8 @@ async function init() {
 	boardConfigs = await readMemoryOrDefault(BOARD_CONFIGS_STORAGE_KEY, {});
 	registerMessageHandler();
 	registerStandbyStateHandler();
+	registerCallLifecycleHandlers();
+	armCallDetection();
 	log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredBoardCount: registeredBoards.length });
 }
 
@@ -138,6 +141,49 @@ function normalizeEventValue(value) {
 	}
 
 	return value;
+}
+
+function armCallDetection() {
+	if (callDetectionArmed) {
+		return;
+	}
+
+	if (!xapi.status || typeof xapi.status.once !== 'function' || !xapi.event || typeof xapi.event.once !== 'function') {
+		log.warn({ Message: 'Call detection requires xapi.status.once and xapi.event.once' });
+		return;
+	}
+
+	callDetectionArmed = true;
+	xapi.status.once('Call RemoteNumber', remoteNumber => {
+		xapi.event.once('CallSuccessful', call => {
+			callDetectionArmed = false;
+			sendCallSync(remoteNumber, call).catch(error => {
+				utils.softError({ Context: 'Failed to send call sync', RemoteNumber: remoteNumber, Call: call, Error: error });
+			});
+		});
+	});
+}
+
+function registerCallLifecycleHandlers() {
+	xapi.Event.CallDisconnect.on(() => {
+		armCallDetection();
+	});
+
+	xapi.Event.CallFailed.on(() => {
+		callDetectionArmed = false;
+		armCallDetection();
+	});
+}
+
+async function sendCallSync(remoteNumber, call) {
+	for (let index = 0; index < registeredBoards.length; index++) {
+		await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredBoards[index], {
+			RemoteNumber: remoteNumber || '',
+			ParentCall: call || {}
+		}, true);
+	}
+
+	log.info({ Message: 'Parent call sync sent', RemoteNumber: remoteNumber || '', RegisteredBoardCount: registeredBoards.length });
 }
 
 async function handleCompanionMessage(message) {

@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.2.6
+ * Version:                 0.1.2.7
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -174,6 +174,9 @@ async function handleCompanionMessage(message) {
 			break;
 		case 'StandbySync':
 			await handleStandbySync(message);
+			break;
+		case 'CallSync':
+			await handleCallSync(message);
 			break;
 	}
 }
@@ -512,6 +515,16 @@ async function handleStandbySync(message) {
 	}
 
 	await scheduleStandbySync(message.Payload && message.Payload.State);
+}
+
+async function handleCallSync(message) {
+	if (message.Serial !== activeParentSerial) {
+		log.debug({ Message: 'Ignored call sync from non-active parent', SendingParentSerial: message.Serial, ActiveParentSerial: activeParentSerial });
+		return;
+	}
+
+	clearStandbySyncState();
+	log.info({ Message: 'Parent call sync received', Source: message.Source, Payload: message.Payload });
 }
 
 async function scheduleStandbySync(state) {
