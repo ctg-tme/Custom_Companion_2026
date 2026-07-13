@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.7
+ * Version:                 0.1.2.8
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -66,6 +66,7 @@ let boardConfigs = {};
 let standbySyncTimeout = null;
 let lastStandbyState = '';
 let callDetectionArmed = false;
+let pendingCallRemoteNumber = '';
 
 async function init() {
 	try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
@@ -148,29 +149,40 @@ function armCallDetection() {
 		return;
 	}
 
-	if (!xapi.status || typeof xapi.status.once !== 'function' || !xapi.event || typeof xapi.event.once !== 'function') {
-		log.warn({ Message: 'Call detection requires xapi.status.once and xapi.event.once' });
-		return;
-	}
-
 	callDetectionArmed = true;
-	xapi.status.once('Call RemoteNumber', remoteNumber => {
-		xapi.event.once('CallSuccessful', call => {
-			callDetectionArmed = false;
-			sendCallSync(remoteNumber, call).catch(error => {
-				utils.softError({ Context: 'Failed to send call sync', RemoteNumber: remoteNumber, Call: call, Error: error });
-			});
-		});
-	});
 }
 
 function registerCallLifecycleHandlers() {
+	const remoteNumberNode = xapi.Status.Call.RemoteNumber;
+	if (remoteNumberNode && typeof remoteNumberNode.on === 'function') {
+		remoteNumberNode.on(remoteNumber => {
+			if (!callDetectionArmed) {
+				return;
+			}
+			pendingCallRemoteNumber = normalizeEventValue(remoteNumber) || '';
+		});
+	} else {
+		log.warn({ Message: 'Call RemoteNumber subscription unavailable' });
+	}
+
+	xapi.Event.CallSuccessful.on(call => {
+		if (!callDetectionArmed) {
+			return;
+		}
+		callDetectionArmed = false;
+		sendCallSync(pendingCallRemoteNumber, call).catch(error => {
+			utils.softError({ Context: 'Failed to send call sync', RemoteNumber: pendingCallRemoteNumber, Call: call, Error: error });
+		});
+	});
+
 	xapi.Event.CallDisconnect.on(() => {
+		pendingCallRemoteNumber = '';
 		armCallDetection();
 	});
 
 	xapi.Event.CallFailed.on(() => {
 		callDetectionArmed = false;
+		pendingCallRemoteNumber = '';
 		armCallDetection();
 	});
 }
