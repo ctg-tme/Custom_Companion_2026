@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.4
+ * Version:                 1.0.5
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -252,7 +252,9 @@ async function ensureStandaloneUiFeatureConfig(options) {
 
 	if (shouldManageWebWidget(options.userInterfaceConfig) && options.mode === 'StandAlone' && standaloneConfig.webWidgetUrl === undefined) {
 		try {
-			standaloneConfig.webWidgetUrl = await options.companionUi.getCurrentWebWidgetUrl(options.xapi);
+			const currentWebWidget = await options.companionUi.getCurrentWebWidget(options.xapi);
+			standaloneConfig.webWidget = currentWebWidget && !options.companionUi.isCompanionWebWidget(currentWebWidget) ? currentWebWidget : null;
+			standaloneConfig.webWidgetUrl = standaloneConfig.webWidget ? standaloneConfig.webWidget.url : '';
 			hasUpdates = true;
 		} catch (error) {
 			options.log.warn({ Message: 'Failed to save original standalone Web Widget URL', Error: error.message || error.code || 'Unknown Web Widget status error' });
@@ -305,14 +307,38 @@ async function applyWebWidgetMode(options) {
 	}
 
 	const webWidgetConfig = options.userInterfaceConfig.WebWidget || {};
-	const standaloneUrl = options.standaloneUiFeatureConfig.webWidgetUrl || '';
-	const url = options.mode === 'StandAlone' && standaloneUrl ? standaloneUrl : options.companionUi.buildCompanionWebWidgetUrl(options.activeParentName, webWidgetConfig.urlOverride);
+	const standaloneWebWidget = getStandaloneWebWidget(options.standaloneUiFeatureConfig);
+	const shouldRestoreStandaloneWebWidget = options.mode === 'StandAlone' && standaloneWebWidget && standaloneWebWidget.url;
+	const url = shouldRestoreStandaloneWebWidget ? standaloneWebWidget.url : options.companionUi.buildCompanionWebWidgetUrl(options.activeParentName, webWidgetConfig.urlOverride);
 
 	try {
-		await options.companionUi.setWebWidgetUrl(options.xapi, url);
+		if (shouldRestoreStandaloneWebWidget) {
+			await options.companionUi.removeCompanionWebWidget(options.xapi);
+			await options.companionUi.saveWebWidget(options.xapi, standaloneWebWidget);
+		} else {
+			await options.companionUi.saveCompanionWebWidget(options.xapi, url);
+		}
 	} catch (error) {
 		options.log.warn({ Message: 'Failed to apply Companion Web Widget mode', Mode: options.mode, Error: error.message || error.code || 'Unknown Web Widget error' });
 	}
+}
+
+function getStandaloneWebWidget(standaloneUiFeatureConfig) {
+	const config = standaloneUiFeatureConfig || {};
+	if (config.webWidget && config.webWidget.url) {
+		return config.webWidget;
+	}
+
+	if (config.webWidgetUrl) {
+		return {
+			url: config.webWidgetUrl,
+			name: 'Web Widget',
+			panelId: 'cc26OriginalWebWidget',
+			refreshInterval: 0
+		};
+	}
+
+	return null;
 }
 
 function shouldManageWebWidget(userInterfaceConfig) {
