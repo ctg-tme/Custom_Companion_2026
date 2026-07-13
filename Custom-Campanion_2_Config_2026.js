@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.1.16
+ * Version:                 0.1.1.17
  *
  * Description:             User-facing configuration for the custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -41,7 +41,7 @@ or implied.
  */
 
 const config = {
-  version: '0.1.1.16',
+  version: '0.1.1.17',
   CompanionBoardInformation: {
     host: '10.0.0.120',
     username: '',
@@ -63,12 +63,16 @@ const config = {
       CompanionWidget: {
         enabled: true,
         restoreStandaloneExisting: false,
-        weather: true,
-        latitude: '42.35843',
-        longitude: '-71.05977',
-        temperatureUnit: 'fahrenheit',
-        time: true,
-        timeZone: 'America/New_York',
+        weather: {
+          mode: true,
+          latitude: '42.35843',
+          longitude: '-71.05977',
+          temperatureUnit: 'fahrenheit'
+        },
+        time: {
+          mode: true,
+          timeZone: 'America/New_York'
+        },
         standalone: {
           info2: 'Use Companion Device Select to pair this board to a room.',
           info3: '',
