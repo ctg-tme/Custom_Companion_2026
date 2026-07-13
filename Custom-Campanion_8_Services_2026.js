@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.5
+ * Version:                 1.0.6
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -318,6 +318,7 @@ async function applyWebWidgetMode(options) {
 		} else {
 			await options.companionUi.saveCompanionWebWidget(options.xapi, url);
 		}
+		options.log.info({ Message: 'Companion Web Widget mode applied', Mode: options.mode, RestoredStandaloneWidget: !!shouldRestoreStandaloneWebWidget, UrlLength: url.length });
 	} catch (error) {
 		options.log.warn({ Message: 'Failed to apply Companion Web Widget mode', Mode: options.mode, Error: error.message || error.code || 'Unknown Web Widget error' });
 	}

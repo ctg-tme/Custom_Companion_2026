@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.5
+ * Version:                 1.0.6
  *
  * Description:             A macro module that facilitates the custom Companion Solution user interface for Board Series endpoints with Wheel Kits.
  *                          This module will provide PIN-protected parent-device management UI helpers. The xapi object must be passed in from the calling macro.
@@ -262,7 +262,7 @@ function buildCompanionWebWidgetUrl(roomName, urlOverride) {
 	}
 
 	const room = sanitizeDataText(roomName || 'this room', 28);
-	const url = `data:text/html,<body style=margin:0;background:%230b1220;color:white;font:22px sans-serif><b>Custom Companion 2026</b><p style=text-align:center;margin-top:35vh>Paired to ${room}`;
+	const url = `data:text/html,%3Cb%20style=position:fixed;top:8px;left:8px%3ECC26%3C/b%3E%3Ch1%20style=text-align:center;margin-top:35vh%3EPaired%20to%20${room}%3C/h1%3E`;
 
 	return url.length <= WEB_WIDGET_URL_LIMIT ? url : url.slice(0, WEB_WIDGET_URL_LIMIT);
 }
