@@ -140,6 +140,8 @@ The `ParentReadyRequest` payload currently includes return-path credentials:
 - `Board.Username`
 - `Board.Password`
 
+Board serial, board name, and MAC address are not stored in base config. The board pulls those values from local xAPI at runtime and places them in the message envelope when needed.
+
 The `ConfigSync` payload currently includes:
 
 - `Config`

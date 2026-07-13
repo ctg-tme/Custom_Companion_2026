@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.2
+ * Version:                 1.0.3
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -129,8 +129,9 @@ async function connectPeripheralToOnlineParents(options) {
 async function getRuntimeCompanionBoardInformation(XAPIObject, configuredBoardInformation, log) {
 	const boardInformation = configuredBoardInformation || {};
 	const productPlatform = await getProductPlatform(XAPIObject, log);
-	const serial = await getBoardSerialNumber(XAPIObject, boardInformation.serial, log);
-	const macAddress = await getActiveNetworkMacAddress(XAPIObject, boardInformation.macAddress, log);
+	const serial = await getBoardSerialNumber(XAPIObject, log);
+	const macAddress = await getActiveNetworkMacAddress(XAPIObject, log);
+	const name = await getBoardName(XAPIObject, log);
 
 	return {
 		serial: serial,
@@ -139,7 +140,7 @@ async function getRuntimeCompanionBoardInformation(XAPIObject, configuredBoardIn
 		password: boardInformation.password || '',
 		macAddress: macAddress,
 		productPlatform: productPlatform,
-		name: 'Custom Companion Device 2026'
+		name: name
 	};
 }
 
@@ -152,16 +153,25 @@ async function getProductPlatform(XAPIObject, log) {
 	}
 }
 
-async function getBoardSerialNumber(XAPIObject, fallbackSerial, log) {
+async function getBoardSerialNumber(XAPIObject, log) {
 	try {
 		return await XAPIObject.Status.SystemUnit.Hardware.Module.SerialNumber.get();
 	} catch (error) {
 		log.warn({ Message: 'Failed to fetch board serial number for peripheral registration', Error: error.message || error.code || 'Unknown serial number error' });
-		return fallbackSerial || '';
+		return '';
 	}
 }
 
-async function getActiveNetworkMacAddress(XAPIObject, fallbackMacAddress, log) {
+async function getBoardName(XAPIObject, log) {
+	try {
+		return await XAPIObject.Status.SystemUnit.BroadcastName.get();
+	} catch (error) {
+		log.warn({ Message: 'Failed to fetch board name for companion registration', Error: error.message || error.code || 'Unknown board name error' });
+		return 'Custom Companion Device 2026';
+	}
+}
+
+async function getActiveNetworkMacAddress(XAPIObject, log) {
 	try {
 		const networkStatus = await XAPIObject.Status.Network.get();
 		const networkEntries = normalizeNetworkEntries(networkStatus);
@@ -179,7 +189,7 @@ async function getActiveNetworkMacAddress(XAPIObject, fallbackMacAddress, log) {
 		log.warn({ Message: 'Failed to fetch network MAC address for peripheral ID', Error: error.message || error.code || 'Unknown network status error' });
 	}
 
-	return fallbackMacAddress || '';
+	return '';
 }
 
 function normalizeNetworkEntries(networkStatus) {

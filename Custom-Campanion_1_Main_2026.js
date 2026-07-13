@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.1.5
+ * Version:                 0.1.1.6
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -449,7 +449,7 @@ async function sendParentConfigMessage(message) {
 }
 
 function createBoardState(parentSerial) {
-	return companionState.createBoardState(parentSerial, parentDevices, getConfiguredCompanionBoardInformation());
+	return companionState.createBoardState(parentSerial, parentDevices, getStandaloneCompanionBoardInformation());
 }
 
 function findParentDeviceByHost(host) {
@@ -468,12 +468,21 @@ function getConfiguredCompanionBoardInformation() {
 	const boardInformation = config.CompanionBoardInformation || {};
 
 	return {
-		serial: boardInformation.serial || companionState.STAND_ALONE_PARENT_SERIAL,
-		name: boardInformation.name || companionState.STAND_ALONE_PARENT_SERIAL,
 		host: boardInformation.host || '',
 		username: boardInformation.username || '',
-		password: boardInformation.password || '',
-		macAddress: boardInformation.macAddress || ''
+		password: boardInformation.password || ''
+	};
+}
+
+function getStandaloneCompanionBoardInformation() {
+	const boardInformation = getConfiguredCompanionBoardInformation();
+
+	return {
+		serial: companionState.STAND_ALONE_PARENT_SERIAL,
+		name: companionState.STAND_ALONE_PARENT_SERIAL,
+		host: boardInformation.host,
+		username: boardInformation.username,
+		password: boardInformation.password
 	};
 }
 
