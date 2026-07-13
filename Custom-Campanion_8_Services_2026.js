@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.9
+ * Version:                 1.0.10
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -308,7 +308,7 @@ async function applyWebWidgetMode(options) {
 
 	const webWidgetConfig = options.userInterfaceConfig.CompanionWidget || {};
 	const standaloneWebWidget = getStandaloneWebWidget(options.standaloneUiFeatureConfig);
-	const shouldRestoreStandaloneWebWidget = options.mode === 'StandAlone' && standaloneWebWidget && standaloneWebWidget.url;
+	const shouldRestoreStandaloneWebWidget = !!(webWidgetConfig.restoreStandaloneExisting && options.mode === 'StandAlone' && standaloneWebWidget && standaloneWebWidget.url);
 	const url = shouldRestoreStandaloneWebWidget ? standaloneWebWidget.url : options.companionUi.buildCompanionWebWidgetUrl({
 		mode: options.mode,
 		roomName: options.activeParentName,
