@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.10
+ * Version:                 1.0.11
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -306,14 +306,16 @@ async function applyWebWidgetMode(options) {
 		return;
 	}
 
-	const webWidgetConfig = options.userInterfaceConfig.CompanionWidget || {};
+	const webWidgetConfig = options.userInterfaceConfig.WebWidget || {};
+	const companionWidgetConfig = webWidgetConfig.CompanionWidget || {};
 	const standaloneWebWidget = getStandaloneWebWidget(options.standaloneUiFeatureConfig);
-	const shouldRestoreStandaloneWebWidget = !!(webWidgetConfig.restoreStandaloneExisting && options.mode === 'StandAlone' && standaloneWebWidget && standaloneWebWidget.url);
+	const shouldRestoreStandaloneWebWidget = !!(companionWidgetConfig.restoreStandaloneExisting && options.mode === 'StandAlone' && standaloneWebWidget && standaloneWebWidget.url);
 	const url = shouldRestoreStandaloneWebWidget ? standaloneWebWidget.url : options.companionUi.buildCompanionWebWidgetUrl({
 		mode: options.mode,
 		roomName: options.activeParentName,
 		themeName: options.themeName,
-		webWidgetConfig: webWidgetConfig
+		urlOverride: webWidgetConfig.urlOverride,
+		webWidgetConfig: companionWidgetConfig
 	});
 
 	try {
@@ -348,7 +350,7 @@ function getStandaloneWebWidget(standaloneUiFeatureConfig) {
 }
 
 function shouldManageWebWidget(userInterfaceConfig) {
-	return !!(userInterfaceConfig && userInterfaceConfig.CompanionWidget && userInterfaceConfig.CompanionWidget.enabled);
+	return !!(userInterfaceConfig && userInterfaceConfig.WebWidget && userInterfaceConfig.WebWidget.CompanionWidget && userInterfaceConfig.WebWidget.CompanionWidget.enabled);
 }
 
 async function getUserInterfaceThemeName(options) {

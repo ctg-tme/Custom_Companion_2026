@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.1.13
+ * Version:                 0.1.1.14
  *
  * Description:             User-facing configuration for the custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -41,7 +41,7 @@ or implied.
  */
 
 const config = {
-  version: '0.1.1.13',
+  version: '0.1.1.14',
   CompanionBoardInformation: {
     host: '10.0.0.120',
     username: '',
@@ -58,22 +58,24 @@ const config = {
     allowInsecureHTTPS: true
   },
   UserInterface: {
-    CompanionWidget: {
-      enabled: true,
+    WebWidget: {
       urlOverride: '',
-      restoreStandaloneExisting: false,
-      weather: true,
-      time: true,
-      timeZone: 'America/New_York',
-      standalone: {
-        info2: 'Use Companion Device Select to pair this board to a room.',
-        info3: '',
-        iconUrl: 'https://github.com/ctg-tme.png'
-      },
-      paired: {
-        info2: 'Use Companion Device Select to release this board or choose another room.',
-        info3: '',
-        iconUrl: 'https://github.com/ctg-tme.png'
+      CompanionWidget: {
+        enabled: true,
+        restoreStandaloneExisting: false,
+        weather: true,
+        time: true,
+        timeZone: 'America/New_York',
+        standalone: {
+          info2: 'Use Companion Device Select to pair this board to a room.',
+          info3: '',
+          iconUrl: 'https://github.com/ctg-tme.png'
+        },
+        paired: {
+          info2: 'Use Companion Device Select to release this board or choose another room.',
+          info3: '',
+          iconUrl: 'https://github.com/ctg-tme.png'
+        }
       }
     }
   }
