@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.1.3
+ * Version:                 0.1.1.4
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -397,12 +397,8 @@ async function sendActiveParentHeartbeat() {
 async function sendBoardRegistrationMessage(parentDevice, companionBoardInformation) {
 	await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.boardRegistration, {
 		Board: {
-			Serial: companionBoardInformation.serial,
-			Name: companionBoardInformation.name,
-			Host: companionBoardInformation.host,
 			Username: companionBoardInformation.username,
 			Password: companionBoardInformation.password,
-			MacAddress: companionBoardInformation.macAddress,
 			ProductPlatform: companionBoardInformation.productPlatform
 		},
 		Capabilities: {
@@ -413,18 +409,12 @@ async function sendBoardRegistrationMessage(parentDevice, companionBoardInformat
 		}
 	}, {
 		app: 'Companion Board 2026',
-		schemaVersion: '0.1',
 		serial: companionBoardInformation.serial,
 		source: {
 			Role: 'Board',
-			Serial: companionBoardInformation.serial,
 			Name: companionBoardInformation.name,
 			Host: companionBoardInformation.host,
 			MacAddress: companionBoardInformation.macAddress
-		},
-		target: {
-			Role: 'Parent',
-			Serial: parentDevice.serial
 		}
 	}, HTTP_CLIENT_CONFIG);
 }

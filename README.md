@@ -98,28 +98,19 @@ Every custom application message produced by `deviceComms.sendMessageCommand` us
 ```json
 {
   "App": "Companion Board 2026",
-  "SchemaVersion": "0.1",
-  "MessageId": "timestamp-random",
-  "CorrelationId": "optional inbound MessageId",
-  "Timestamp": "ISO timestamp",
   "Action": "Register",
   "Serial": "sending device serial",
   "Source": {
 	"Role": "Board",
-	"Serial": "sending device serial",
 	"Name": "source display name",
 	"Host": "source IP or host",
 	"MacAddress": "source MAC when known"
-  },
-  "Target": {
-	"Role": "Parent",
-	"Serial": "target device serial"
   },
   "Payload": {}
 }
 ```
 
-`Register` is intentionally allowed before the parent recognizes the board serial. Other parent-side custom actions require the sending serial to already exist in the parent `registeredBoards` memory list.
+The envelope is intentionally small because RoomOS `Message.Send` text is limited to 8192 characters. Timestamps are left to the macro logs, serial data is only sent once at the top level, and empty `Source` fields are omitted. `Register` is intentionally allowed before the parent recognizes the board serial. Other parent-side custom actions require the sending serial to already exist in the parent `registeredBoards` memory list.
 
 ## Board Registration
 
@@ -140,12 +131,8 @@ flowchart TD
 
 The `Register` payload currently includes:
 
-- `Board.Serial`
-- `Board.Name`
-- `Board.Host`
 - `Board.Username`
 - `Board.Password`
-- `Board.MacAddress`
 - `Board.ProductPlatform`
 - `Capabilities.CanJoinCall`
 - `Capabilities.CanMuteAudio`

@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.1.3
+ * Version:                 0.1.1.4
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -183,11 +183,8 @@ async function sendRegistrationResponse(action, inboundMessage, boardRecord, pay
 	try {
 		await deviceComms.sendMessageCommand(xapi, boardDevice, action, payload, {
 			app: 'Companion Board 2026',
-			schemaVersion: '0.1',
-			serial: parentSource.Serial,
-			source: parentSource,
-			target: { Role: 'Board', Serial: boardRecord.Serial },
-			correlationId: inboundMessage.MessageId
+			serial: await getParentSerial(),
+			source: parentSource
 		}, HTTP_CLIENT_CONFIG);
 	} catch (error) {
 		await xapi.Command.UserInterface.Message.Prompt.Display({
@@ -202,7 +199,6 @@ async function sendRegistrationResponse(action, inboundMessage, boardRecord, pay
 async function getParentSource() {
 	return {
 		Role: 'Parent',
-		Serial: await getParentSerial(),
 		Name: await getParentName(),
 		Host: ''
 	};

@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.7
+ * Version:                 1.0.8
  *
  * Description:             A macro module that facilitates device-to-device communication for a custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This module will provide HTTPClient, Message API, and putxml routing helpers. The xapi object must be passed in from the calling macro.
@@ -44,7 +44,6 @@ let activeRequestCount = 0;
 let maxConcurrentRequests = 3;
 const queuedRequests = [];
 const COMPANION_APP = 'Companion Board 2026';
-const SCHEMA_VERSION = '0.1';
 
 /**
  * Sets RoomOS HTTPClient configuration used by this solution.
@@ -159,16 +158,25 @@ function buildCompanionMessage(action, payload, options = {}) {
 
 	return {
 		App: options.app || COMPANION_APP,
-		SchemaVersion: options.schemaVersion || SCHEMA_VERSION,
-		MessageId: options.messageId || createMessageId(),
-		CorrelationId: options.correlationId || '',
-		Timestamp: new Date().toISOString(),
 		Action: action,
-		Serial: options.serial || source.Serial || '',
-		Source: source,
-		Target: options.target || {},
+		Serial: options.serial || '',
+		Source: buildMessageSource(source),
 		Payload: payload || {}
 	};
+}
+
+function buildMessageSource(source) {
+	const messageSource = {};
+	const sourceFields = ['Role', 'Name', 'Host', 'MacAddress'];
+
+	for (let index = 0; index < sourceFields.length; index++) {
+		const field = sourceFields[index];
+		if (source[field]) {
+			messageSource[field] = source[field];
+		}
+	}
+
+	return messageSource;
 }
 
 function parseCompanionMessage(text) {
@@ -185,10 +193,6 @@ function parseCompanionMessage(text) {
 	}
 
 	return message;
-}
-
-function createMessageId() {
-	return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 }
 
 /**
