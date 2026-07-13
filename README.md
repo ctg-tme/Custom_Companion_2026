@@ -202,7 +202,7 @@ flowchart TD
 
 The board switches between standalone and paired behavior based on the active parent selection.
 
-`config.UserInterface.WebWidget.enabled` is `true` by default. In standalone mode, the board reads the current Web Widget from `Status.UserInterface.WebView`, saves its URL and restore metadata once into memory, and restores it with `UserInterface.Extensions.WebWidget.Save` when unpaired. In paired mode, the board removes its own Companion widget when needed with `UserInterface.Extensions.WebWidget.Remove`, then saves `config.UserInterface.WebWidget.url` with Simple-WebWidget hash parameters. The URL defaults to `https://ctg-tme.github.io/Simple-WebWidget/`; configurable hash fields include weather, time, timeZone, context-specific info2, context-specific info3, and context-specific iconUrl. The board supplies theme, heading, and info1 in code, and re-saves the widget if `UserInterface Theme Name` changes.
+`config.UserInterface.CompanionWidget.enabled` is `true` by default. In standalone mode, the board reads the current Web Widget from `Status.UserInterface.WebView`, saves its URL and restore metadata once into memory, and restores it with `UserInterface.Extensions.WebWidget.Save` when unpaired. In paired mode, the board removes its own Companion widget when needed with `UserInterface.Extensions.WebWidget.Remove`, then saves the built-in Simple-WebWidget URL with hash parameters unless `config.UserInterface.CompanionWidget.urlOverride` is supplied. Configurable hash fields include weather, time, timeZone, context-specific info2, context-specific info3, and context-specific iconUrl. The board supplies theme, heading, and info1 in code, and re-saves the widget if `UserInterface Theme Name` changes.
 
 ```mermaid
 flowchart TD

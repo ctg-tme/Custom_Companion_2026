@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.8
+ * Version:                 1.0.9
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -306,7 +306,7 @@ async function applyWebWidgetMode(options) {
 		return;
 	}
 
-	const webWidgetConfig = options.userInterfaceConfig.WebWidget || {};
+	const webWidgetConfig = options.userInterfaceConfig.CompanionWidget || {};
 	const standaloneWebWidget = getStandaloneWebWidget(options.standaloneUiFeatureConfig);
 	const shouldRestoreStandaloneWebWidget = options.mode === 'StandAlone' && standaloneWebWidget && standaloneWebWidget.url;
 	const url = shouldRestoreStandaloneWebWidget ? standaloneWebWidget.url : options.companionUi.buildCompanionWebWidgetUrl({
@@ -348,7 +348,7 @@ function getStandaloneWebWidget(standaloneUiFeatureConfig) {
 }
 
 function shouldManageWebWidget(userInterfaceConfig) {
-	return !!(userInterfaceConfig && userInterfaceConfig.WebWidget && userInterfaceConfig.WebWidget.enabled);
+	return !!(userInterfaceConfig && userInterfaceConfig.CompanionWidget && userInterfaceConfig.CompanionWidget.enabled);
 }
 
 async function getUserInterfaceThemeName(options) {

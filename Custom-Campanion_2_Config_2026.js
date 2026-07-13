@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.1.11
+ * Version:                 0.1.1.12
  *
  * Description:             User-facing configuration for the custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -41,7 +41,7 @@ or implied.
  */
 
 const config = {
-  version: '0.1.1.11',
+  version: '0.1.1.12',
   CompanionBoardInformation: {
     host: '10.0.0.120',
     username: '',
@@ -58,12 +58,12 @@ const config = {
     allowInsecureHTTPS: true
   },
   UserInterface: {
-    WebWidget: {
+    CompanionWidget: {
       enabled: true,
-      url: 'https://ctg-tme.github.io/Simple-WebWidget/',
+      urlOverride: '',
       weather: true,
       time: true,
-      timeZone: '',
+      timeZone: 'America/New_York',
       standalone: {
         info2: 'Use Companion Device Select to pair this board to a room.',
         info3: '',
