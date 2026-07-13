@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.1.18
+ * Version:                 0.1.1.19
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -65,7 +65,6 @@ const HTTP_CLIENT_CONFIG = {
 const MESSAGE_CONFIG = {
 	service: 'CustomCampanion',
 	routes: {
-		heartbeat: 'parent.heartbeat',
 		parentReadyRequest: 'ParentReadyRequest',
 		configSync: 'ConfigSync',
 		callState: 'parent.callState',

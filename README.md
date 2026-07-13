@@ -229,7 +229,6 @@ The current source keeps a small route map in `Custom-Campanion_1_Main_2026`. Th
 | `ConfigAccepted` | Parent to board | Implemented | Parent confirms config was stored in `boardConfigs` and board identity was stored or updated in `registeredBoards`. |
 | `ConfigDenied` | Parent to board | Implemented | Parent rejects config from a new board when its 3-board registration limit is reached. |
 | `ConfigRequired` | Parent to board | Implemented guard response | Parent receives an unsupported action from an unknown board serial and asks the board to send config first. |
-| `parent.heartbeat` | Board to parent | Defined route | Legacy/custom route name reserved for parent heartbeat messaging. Current heartbeat uses `Peripherals.HeartBeat`. |
 | `parent.callState` | Parent to board | Defined route | Reserved for parent call-state updates. |
 | `board.joinCall` | Parent to board | Defined route | Reserved for instructing the board to join the selected parent call context. |
 
