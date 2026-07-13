@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.13
+ * Version:                 1.0.14
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -404,6 +404,7 @@ async function applyWebWidgetMode(options) {
 		roomName: options.activeParentName,
 		themeName: options.themeName,
 		urlOverride: webWidgetConfig.urlOverride,
+		runtimeInfo3: options.runtimeInfo3,
 		webWidgetConfig: companionWidgetConfig
 	});
 

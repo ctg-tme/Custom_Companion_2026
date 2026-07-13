@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.2.0
+ * Version:                 0.1.2.2
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -56,6 +56,11 @@ const PARENT_STATUS_INTERVAL_MS = 30000;
 const INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS = 5;
 const ACTIVE_PARENT_HEARTBEAT_TIMEOUT_SECONDS = 40;
 const OFFLINE_PARENT_SELECTION_RETRY_COUNT = 5;
+const STANDBY_SYNC_PROMPT_ID = 'cc26_standby_sync';
+const STANDBY_SYNC_APPLY_DELAY_MS = 30000;
+const STANDBY_SYNC_PROMPT_REFRESH_MS = 5000;
+const STANDBY_SYNC_SHORT_BYPASS_MS = 5 * 60 * 1000;
+const STANDBY_SYNC_LONG_BYPASS_MS = 30 * 60 * 1000;
 const PERIPHERAL_TYPE = 'ControlSystem';
 const HTTP_CLIENT_CONFIG = {
 	mode: 'On',
@@ -93,6 +98,13 @@ let userInterfaceThemeName = 'EveningFjord';
 let isApplyingUiFeatureConfig = false;
 let isApplyingStandbyConfig = false;
 let isHandlingSelection = false;
+let pendingStandbySyncTimer = null;
+let pendingStandbyPromptRefreshTimer = null;
+let pendingStandbySyncDeadline = 0;
+let pendingStandbySyncState = '';
+let standbySyncPromptDismissed = false;
+let standbyBypassUntil = 0;
+let standbyBypassTimer = null;
 
 async function init() {
 	try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
@@ -291,6 +303,32 @@ function registerUiEventHandlers() {
 			utils.softError({ Context: 'Failed to handle UI widget action', Event: event, Error: error });
 		});
 	});
+
+	xapi.Event.UserInterface.Message.Prompt.Response.on(event => {
+		handlePromptResponse(event).catch(error => {
+			utils.softError({ Context: 'Failed to handle prompt response', Event: event, Error: error });
+		});
+	});
+}
+
+async function handlePromptResponse(event) {
+	if (!event || event.FeedbackId !== STANDBY_SYNC_PROMPT_ID) {
+		return;
+	}
+
+	switch (String(event.OptionId || event.Option || '')) {
+		case '1':
+			await activateStandbyBypass(STANDBY_SYNC_SHORT_BYPASS_MS);
+			break;
+		case '2':
+			await activateStandbyBypass(STANDBY_SYNC_LONG_BYPASS_MS);
+			break;
+		case '3':
+			standbySyncPromptDismissed = true;
+			clearStandbyPromptRefreshTimer();
+			await companionUi.clearPrompt(xapi, STANDBY_SYNC_PROMPT_ID);
+			break;
+	}
 }
 
 async function handleWidgetAction(event) {
@@ -326,6 +364,7 @@ async function handleWidgetAction(event) {
 }
 
 async function selectStandAloneMode() {
+	clearStandbySyncState();
 	activeParentSerial = companionState.STAND_ALONE_PARENT_SERIAL;
 	boardState = createBoardState(activeParentSerial);
 	await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
@@ -373,8 +412,19 @@ async function selectParentByIndex(parentIndex) {
 	await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
 	await applyUiFeatureMode(boardState.mode);
 	await applyStandbyMode(boardState.mode);
+	await scheduleSelectedParentStandbySync(parentDevice);
 	await sendActiveParentHeartbeat();
 	log.info({ Message: 'Companion board paired to parent', Host: parentDevice.host, Serial: activeParentSerial, Name: parentStatus.name });
+}
+
+async function scheduleSelectedParentStandbySync(parentDevice) {
+	try {
+		const state = await deviceComms.parentStandbyStateRequest(xapi, parentDevice, HTTP_CLIENT_CONFIG);
+		await scheduleStandbySync(state);
+		log.info({ Message: 'Selected parent standby state fetched', Host: parentDevice.host, State: state });
+	} catch (error) {
+		log.warn({ Message: 'Failed to fetch selected parent standby state', Host: parentDevice.host, Error: error.code || error.message || 'Unknown parent standby state error' });
+	}
 }
 
 function findParentStatus(parentDevice) {
@@ -430,6 +480,7 @@ async function applyUiFeatureMode(mode) {
 			userInterfaceConfig: config.UserInterface,
 			activeParentName: boardState.activeParent.name,
 			themeName: userInterfaceThemeName,
+			runtimeInfo3: getStandbyBypassInfoText(),
 			companionUi: companionUi,
 			log: log
 		});
@@ -459,11 +510,144 @@ async function handleStandbySync(message) {
 		return;
 	}
 
+	await scheduleStandbySync(message.Payload && message.Payload.State);
+}
+
+async function scheduleStandbySync(state) {
+	if (state === 'EnteringStandby') {
+		log.debug({ Message: 'Ignored parent standby transition state', State: state });
+		return;
+	}
+
+	if (isStandbyBypassActive()) {
+		log.info({ Message: 'Ignored parent standby sync while bypass is active', State: state, BypassUntil: new Date(standbyBypassUntil).toISOString() });
+		return;
+	}
+
+	pendingStandbySyncState = state;
+
+	if (!pendingStandbySyncTimer) {
+		pendingStandbySyncDeadline = Date.now() + STANDBY_SYNC_APPLY_DELAY_MS;
+		standbySyncPromptDismissed = false;
+		pendingStandbySyncTimer = setTimeout(() => {
+			applyPendingStandbySync().catch(error => {
+				utils.softError({ Context: 'Failed to apply pending standby sync', State: pendingStandbySyncState, Error: error });
+			});
+		}, STANDBY_SYNC_APPLY_DELAY_MS);
+	}
+
+	await refreshStandbySyncPrompt();
+}
+
+async function applyPendingStandbySync() {
+	const state = pendingStandbySyncState;
+	clearStandbySyncTimers();
+
 	await boardServices.applyStandbySyncState({
 		xapi: xapi,
-		state: message.Payload && message.Payload.State,
+		state: state,
 		log: log
 	});
+}
+
+async function refreshStandbySyncPrompt() {
+	if (standbySyncPromptDismissed || !pendingStandbySyncState) {
+		return;
+	}
+
+	const remainingSeconds = Math.max(0, Math.ceil((pendingStandbySyncDeadline - Date.now()) / 1000));
+	await companionUi.showStandbySyncPrompt(xapi, {
+		feedbackId: STANDBY_SYNC_PROMPT_ID,
+		state: pendingStandbySyncState,
+		remainingSeconds: remainingSeconds
+	});
+
+	clearStandbyPromptRefreshTimer();
+	if (remainingSeconds > 0) {
+		pendingStandbyPromptRefreshTimer = setTimeout(() => {
+			refreshStandbySyncPrompt().catch(error => {
+				utils.softError({ Context: 'Failed to refresh standby sync prompt', Error: error });
+			});
+		}, STANDBY_SYNC_PROMPT_REFRESH_MS);
+	}
+}
+
+async function activateStandbyBypass(durationMs) {
+	standbyBypassUntil = Date.now() + durationMs;
+	clearStandbySyncTimers();
+	clearStandbyBypassTimer();
+	standbyBypassTimer = setTimeout(() => {
+		standbyBypassUntil = 0;
+		applyUiFeatureMode(boardState.mode).catch(error => {
+			utils.softError({ Context: 'Failed to clear expired standby bypass widget info', Error: error });
+		});
+	}, durationMs);
+	await applyUiFeatureMode(boardState.mode);
+	log.info({ Message: 'Standby sync bypass activated', BypassUntil: new Date(standbyBypassUntil).toISOString() });
+}
+
+function clearStandbySyncState() {
+	clearStandbySyncTimers();
+	clearStandbyBypassTimer();
+	standbyBypassUntil = 0;
+}
+
+function clearStandbySyncTimers() {
+	if (pendingStandbySyncTimer) {
+		clearTimeout(pendingStandbySyncTimer);
+	}
+	clearStandbyPromptRefreshTimer();
+	pendingStandbySyncTimer = null;
+	pendingStandbySyncDeadline = 0;
+	pendingStandbySyncState = '';
+	standbySyncPromptDismissed = false;
+	companionUi.clearPrompt(xapi, STANDBY_SYNC_PROMPT_ID).catch(error => {
+		utils.softError({ Context: 'Failed to clear standby sync prompt', Error: error });
+	});
+}
+
+function clearStandbyPromptRefreshTimer() {
+	if (pendingStandbyPromptRefreshTimer) {
+		clearTimeout(pendingStandbyPromptRefreshTimer);
+	}
+	pendingStandbyPromptRefreshTimer = null;
+}
+
+function clearStandbyBypassTimer() {
+	if (standbyBypassTimer) {
+		clearTimeout(standbyBypassTimer);
+	}
+	standbyBypassTimer = null;
+}
+
+function isStandbyBypassActive() {
+	if (!standbyBypassUntil) {
+		return false;
+	}
+
+	if (Date.now() < standbyBypassUntil) {
+		return true;
+	}
+
+	standbyBypassUntil = 0;
+	clearStandbyBypassTimer();
+	return false;
+}
+
+function getStandbyBypassInfoText() {
+	if (!isStandbyBypassActive()) {
+		return '';
+	}
+
+	return `Standby sync bypass until ${formatTime(new Date(standbyBypassUntil))}`;
+}
+
+function formatTime(date) {
+	const hours = date.getHours();
+	const minutes = String(date.getMinutes()).padStart(2, '0');
+	const suffix = hours >= 12 ? 'PM' : 'AM';
+	const displayHours = hours % 12 || 12;
+	return `${displayHours}:${minutes} ${suffix}`;
 }
 
 async function sendActiveParentHeartbeat() {

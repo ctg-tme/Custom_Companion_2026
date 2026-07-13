@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.9
+ * Version:                 1.0.10
  *
  * Description:             A macro module that facilitates device-to-device communication for a custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This module will provide HTTPClient, Message API, and putxml routing helpers. The xapi object must be passed in from the calling macro.
@@ -101,6 +101,30 @@ async function parentInitializationRequest(XAPIObject, parentDevice, httpClientC
 		username: parentDevice.username,
 		password: parentDevice.password
 	};
+}
+
+async function parentStandbyStateRequest(XAPIObject, parentDevice, httpClientConfig) {
+	validateParentDevice(parentDevice);
+
+	const url = `https://${parentDevice.host}/getxml?location=/Status/Standby/State`;
+	const response = await queuedHttpRequest(() => XAPIObject.Command.HttpClient.Get({
+		Url: url,
+		Header: buildHeaders(parentDevice),
+		AllowInsecureHTTPS: getAllowInsecureHTTPS(httpClientConfig)
+	}));
+
+	const body = response.Body || '';
+	const standbyState = getXmlPathValue(body, ['Standby', 'State']) || getXmlPathValue(body, ['State']);
+
+	if (!standbyState) {
+		throw buildError('Parent standby state response did not include State', {
+			Code: 'cc.parent-standby.1',
+			Host: parentDevice.host,
+			ResponseStatusCode: response.StatusCode
+		});
+	}
+
+	return standbyState;
 }
 
 /**
@@ -363,6 +387,7 @@ function buildError(message, context) {
 const deviceComms = {
 	initializeHttpClient,
 	parentInitializationRequest,
+	parentStandbyStateRequest,
 	installParentMacros,
 	sendMessageCommand,
 	buildCompanionMessage,
