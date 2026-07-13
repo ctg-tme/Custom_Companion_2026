@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.9
+ * Version:                 0.1.2.10
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -150,18 +150,12 @@ function armCallDetection() {
 		return;
 	}
 
-	const remoteNumberNode = xapi.Status.Call.RemoteNumber;
-	if (!remoteNumberNode || typeof remoteNumberNode.once !== 'function' || !xapi.Event.CallSuccessful || typeof xapi.Event.CallSuccessful.once !== 'function') {
-		log.warn({ Message: 'Call detection requires new-style once handlers' });
-		return;
-	}
-
 	callDetectionArmed = true;
 	callDetectionToken++;
 	const detectionToken = callDetectionToken;
 	pendingCallRemoteNumber = '';
 
-	remoteNumberNode.once(remoteNumber => {
+	xapi.Status.Call.RemoteNumber.once(remoteNumber => {
 		if (!callDetectionArmed || detectionToken !== callDetectionToken) {
 			return;
 		}
