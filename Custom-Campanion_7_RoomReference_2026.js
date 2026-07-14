@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.22
+ * Version:                 0.1.2.23
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -249,11 +249,18 @@ function registerActiveCallCountHandler() {
 }
 
 function registerParticipantListHandlers() {
+	if (xapi.Event.Conference && xapi.Event.Conference.ParticipantList && xapi.Event.Conference.ParticipantList.ParticipantUpdated && typeof xapi.Event.Conference.ParticipantList.ParticipantUpdated.on === 'function') {
+		xapi.Event.Conference.ParticipantList.ParticipantUpdated.on(event => {
+			log.debug({ Message: 'Conference participant list updated', Event: event });
+			queueCompanionAdmissionCheck('Conference.ParticipantList.ParticipantUpdated');
+		});
+		return;
+	}
+
 	const eventPaths = [
 		['Conference', 'ParticipantList', 'Changed'],
 		['Conference', 'ParticipantListUpdated'],
-		['Conference', 'ParticipantUpdated'],
-		['Conference', 'ParticipantList', 'ParticipantUpdated']
+		['Conference', 'ParticipantUpdated']
 	];
 	let registered = false;
 
@@ -409,7 +416,13 @@ async function sendAdmissionRequired(waitingMatches, hostCheck) {
 
 async function admitCompanionParticipant(callId, waitingMatch) {
 	const participantId = getValue(waitingMatch.participant.ParticipantId);
-	if (!participantId || admittedParticipantIds[participantId]) {
+	if (!participantId) {
+		return;
+	}
+
+	const validation = await validateBoardCallbackNumber(waitingMatch.board);
+	if (!validation.isValid) {
+		log.info({ Message: 'Companion admission skipped; board call callback did not match parent call', BoardName: waitingMatch.board.Name, CallbackNumbers: validation.callbackNumbers, ParentCall: activeParentCallDetails });
 		return;
 	}
 
@@ -421,6 +434,80 @@ async function admitCompanionParticipant(callId, waitingMatch) {
 		ParentIsHost: true
 	}, true);
 	log.info({ Message: 'Companion board admitted from lobby', DisplayName: getValue(waitingMatch.participant.DisplayName), ParticipantId: participantId, CallId: callId });
+}
+
+async function validateBoardCallbackNumber(board) {
+	if (!activeParentCallDetails) {
+		return { isValid: false, callbackNumbers: [] };
+	}
+
+	let boardCalls = [];
+	try {
+		boardCalls = await getBoardCallStatus(board);
+	} catch (error) {
+		log.warn({ Message: 'Failed to read companion board call status before admission', BoardName: board.Name, Host: board.Host, Error: error.message || error.code || 'Unknown board call status error' });
+		return { isValid: false, callbackNumbers: [] };
+	}
+
+	const callbackNumbers = [];
+	for (let index = 0; index < boardCalls.length; index++) {
+		const callbackNumber = getValue(boardCalls[index].CallbackNumber);
+		if (callbackNumber) {
+			callbackNumbers.push(callbackNumber);
+		}
+	}
+
+	return {
+		isValid: callbackNumbers.some(callbackNumber => doesCallbackMatchParentCall(callbackNumber)),
+		callbackNumbers: callbackNumbers
+	};
+}
+
+async function getBoardCallStatus(board) {
+	const response = await xapi.Command.HttpClient.Get({
+		Url: `https://${board.Host}/getxml?location=/Status/Call`,
+		Header: buildBoardHeaders(board),
+		AllowInsecureHTTPS: HTTP_CLIENT_CONFIG.allowInsecureHTTPS ? 'True' : 'False'
+	});
+
+	return parseCallStatusXml(response.Body || '');
+}
+
+function buildBoardHeaders(board) {
+	return [
+		'Content-Type: text/xml',
+		`Authorization: Basic ${btoa(`${board.Username}:${board.Password}`)}`
+	];
+}
+
+function parseCallStatusXml(xml) {
+	return getXmlNodes(xml, 'Call').map(callXml => ({
+		CallId: getXmlPathValue(callXml, ['CallId']),
+		RemoteNumber: getXmlPathValue(callXml, ['RemoteNumber']),
+		CallbackNumber: getXmlPathValue(callXml, ['CallbackNumber']),
+		RemoteURI: getXmlPathValue(callXml, ['RemoteURI']),
+		Protocol: getXmlPathValue(callXml, ['Protocol']),
+		Status: getXmlPathValue(callXml, ['Status']),
+		id: getXmlAttributeValue(callXml, 'id')
+	}));
+}
+
+function doesCallbackMatchParentCall(callbackNumber) {
+	const normalizedCallbackNumber = normalizeCallIdentity(callbackNumber);
+	const parentCallValues = [
+		activeParentCallDetails.DialedRemoteNumber,
+		activeParentCallDetails.RemoteNumber,
+		activeParentCallDetails.RemoteURI
+	];
+
+	for (let index = 0; index < parentCallValues.length; index++) {
+		const normalizedParentValue = normalizeCallIdentity(parentCallValues[index]);
+		if (normalizedParentValue && normalizedCallbackNumber === normalizedParentValue) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 async function getActiveCallId() {
@@ -571,6 +658,7 @@ async function getActiveParentCallDetails(remoteNumber, call) {
 
 	return {
 		CallId: getValue(sourceCall.CallId) || getValue(call.CallId) || '',
+		DialedRemoteNumber: remoteNumber || '',
 		RemoteNumber: getValue(sourceCall.RemoteNumber) || remoteNumber || getValue(call.RemoteNumber) || '',
 		RemoteURI: getValue(sourceCall.RemoteURI) || getValue(call.RemoteURI) || '',
 		Protocol: getValue(sourceCall.Protocol) || getValue(call.Protocol) || '',
@@ -608,6 +696,47 @@ function findMatchingCallStatus(calls, remoteNumber, call) {
 	}
 
 	return calls.length === 1 ? calls[0] : null;
+}
+
+function getXmlNodes(xml, tagName) {
+	const nodes = [];
+	const regex = new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)</${tagName}>`, 'gi');
+	let match = regex.exec(xml);
+
+	while (match) {
+		nodes.push(match[0]);
+		match = regex.exec(xml);
+	}
+
+	return nodes;
+}
+
+function getXmlPathValue(xml, path) {
+	let currentXml = xml;
+
+	for (let index = 0; index < path.length; index++) {
+		const match = currentXml.match(new RegExp(`<${path[index]}(?:\\s[^>]*)?>([\\s\\S]*?)</${path[index]}>`, 'i'));
+		if (!match) {
+			return '';
+		}
+		currentXml = match[1];
+	}
+
+	return unescapeXml(currentXml.trim());
+}
+
+function getXmlAttributeValue(xml, attributeName) {
+	const match = xml.match(new RegExp(`${attributeName}="([^"]*)"`, 'i'));
+	return match ? unescapeXml(match[1]) : '';
+}
+
+function unescapeXml(value) {
+	return String(value)
+		.replace(/&apos;/g, "'")
+		.replace(/&quot;/g, '"')
+		.replace(/&gt;/g, '>')
+		.replace(/&lt;/g, '<')
+		.replace(/&amp;/g, '&');
 }
 
 function normalizeCallIdentity(value) {
@@ -733,18 +862,20 @@ function normalizeBoardRecord(message) {
 	const source = message.Source || {};
 	const payload = message.Payload || {};
 	const board = payload.Board || {};
+	const serial = board.Serial || message.Serial;
+	const existingBoard = registeredBoards.find(item => item.Serial === serial) || {};
 	const now = new Date().toISOString();
 
 	return {
-		Serial: board.Serial || message.Serial,
+		Serial: serial,
 		Name: board.Name || source.Name || message.Serial,
-		Host: board.Host || source.Host || '',
-		Username: board.Username || '',
-		Password: board.Password || '',
+		Host: board.Host || source.Host || existingBoard.Host || '',
+		Username: board.Username || existingBoard.Username || '',
+		Password: board.Password || existingBoard.Password || '',
 		MacAddress: board.MacAddress || source.MacAddress || '',
 		ProductPlatform: board.ProductPlatform || '',
 		Capabilities: payload.Capabilities || {},
-		RegisteredAt: getRegisteredAt(board.Serial || message.Serial) || now,
+		RegisteredAt: getRegisteredAt(serial) || now,
 		LastMessageAt: now
 	};
 }
