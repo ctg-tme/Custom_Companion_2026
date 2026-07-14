@@ -575,7 +575,9 @@ async function handleParentCallSyncPayload(payload) {
 		return;
 	}
 
-	if (!isWebexCallPayload(payload)) {
+	const isWebexCall = isWebexCallPayload(payload);
+	log.debug({ Message: 'Call sync payload classified', IsWebexCall: isWebexCall, RemoteNumber: payload.RemoteNumber || '', MeetingPlatform: payload.MeetingPlatform || '', Protocol: payload.Protocol || '' });
+	if (!isWebexCall) {
 		callSyncToken++;
 		await setCallSyncInfo(getUnsupportedCallInfoText(payload));
 		log.info({ Message: 'Non-Webex call sync received; board join is out of scope', Payload: payload });
@@ -590,8 +592,11 @@ function isWebexCallPayload(payload) {
 	const meetingPlatform = String(payload.MeetingPlatform || '').toLowerCase();
 	const protocol = String(payload.Protocol || '').toLowerCase();
 	const remoteNumber = String(payload.RemoteNumber || '').toLowerCase();
+	const isWebexRemoteNumber = remoteNumber.indexOf('webex.com') >= 0;
+	const isWebexProtocol = protocol === 'spark';
+	const isKnownNonWebexPlatform = meetingPlatform && meetingPlatform !== 'unknown' && meetingPlatform.indexOf('webex') < 0;
 
-	if (meetingPlatform && meetingPlatform.indexOf('webex') < 0) {
+	if (isKnownNonWebexPlatform) {
 		return false;
 	}
 
@@ -599,7 +604,7 @@ function isWebexCallPayload(payload) {
 		return false;
 	}
 
-	return meetingPlatform.indexOf('webex') >= 0 || protocol === 'spark' || remoteNumber.indexOf('webex.com') >= 0;
+	return meetingPlatform.indexOf('webex') >= 0 || isWebexProtocol || isWebexRemoteNumber;
 }
 
 function getUnsupportedCallInfoText(payload) {
@@ -610,7 +615,7 @@ function getUnsupportedCallInfoText(payload) {
 function getUnsupportedCallPlatformName(payload) {
 	const meetingPlatform = String(payload.MeetingPlatform || '').trim();
 	const remoteNumber = String(payload.RemoteNumber || '').toLowerCase();
-	if (meetingPlatform) {
+	if (meetingPlatform && meetingPlatform.toLowerCase() !== 'unknown') {
 		return meetingPlatform;
 	}
 	if (remoteNumber.indexOf('zoom.') >= 0 || remoteNumber.indexOf('zoomcrc.') >= 0) {
