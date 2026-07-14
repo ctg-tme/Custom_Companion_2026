@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.21
+ * Version:                 1.0.22
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -400,7 +400,7 @@ async function joinParentCall(options) {
 		throw new Error('Cannot join parent call without RemoteNumber');
 	}
 
-	const zoomMeetingInfo = parseZoomSipAddress(remoteNumber);
+	const zoomMeetingInfo = parseZoomJoinTarget(remoteNumber);
 	if (zoomMeetingInfo) {
 		try {
 			return await options.xapi.Command.Zoom.Join(zoomMeetingInfo);
@@ -499,6 +499,28 @@ function dialParentCall(options, remoteNumber, protocol) {
 function isZoomMeetingIdTooShortError(error) {
 	const message = String((error && error.message) || '').toLowerCase();
 	return message.indexOf('meetingid') >= 0 && message.indexOf('too short') >= 0;
+}
+
+function parseZoomJoinTarget(remoteNumber) {
+	return parseZoomMeetingUrl(remoteNumber) || parseZoomSipAddress(remoteNumber);
+}
+
+function parseZoomMeetingUrl(remoteNumber) {
+	const value = String(remoteNumber || '').trim();
+	const lowerValue = value.toLowerCase();
+	if (lowerValue.indexOf('zoom.') < 0 || lowerValue.indexOf('/j/') < 0) {
+		return null;
+	}
+
+	const meetingIdMatch = value.match(/\/j\/([0-9]{1,40})/i);
+	if (!meetingIdMatch || !meetingIdMatch[1]) {
+		throw new Error(`Zoom Meeting ID failed parsing from ${remoteNumber}`);
+	}
+
+	return {
+		MeetingID: meetingIdMatch[1],
+		TrackingData: 'CustomCompanion2026'
+	};
 }
 
 function parseZoomSipAddress(remoteNumber) {
