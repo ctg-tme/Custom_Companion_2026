@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.11
+ * Version:                 0.1.2.12
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -58,6 +58,7 @@ const HTTP_CLIENT_CONFIG = {
 	maxConcurrentRequests: 3
 };
 const STANDBY_SYNC_DEBOUNCE_MS = 250;
+const CALL_REMOTE_NUMBER_INDEX_LIMIT = 10;
 
 const mem = new MemoryStorage(xapi, { StorageMacroName: STORAGE_MACRO_NAME });
 
@@ -155,12 +156,24 @@ function prepareCallDetection() {
 	const detectionToken = callDetectionToken;
 	pendingCallRemoteNumber = '';
 
-	xapi.Status.Call.RemoteNumber.once(remoteNumber => {
-		if (!isCallDetectionReady || detectionToken !== callDetectionToken) {
+	for (let index = 1; index <= CALL_REMOTE_NUMBER_INDEX_LIMIT; index++) {
+		listenForCallRemoteNumber(index, detectionToken);
+	}
+}
+
+function listenForCallRemoteNumber(index, detectionToken) {
+	xapi.Status.Call[index].RemoteNumber.once(remoteNumber => {
+		if (!isCallDetectionReady || detectionToken !== callDetectionToken || pendingCallRemoteNumber) {
 			return;
 		}
 
-		pendingCallRemoteNumber = normalizeEventValue(remoteNumber) || '';
+		const capturedRemoteNumber = normalizeEventValue(remoteNumber) || '';
+		if (!capturedRemoteNumber) {
+			return;
+		}
+
+		pendingCallRemoteNumber = capturedRemoteNumber;
+		log.info({ Message: 'Captured parent call remote number', CallIndex: index, RemoteNumber: pendingCallRemoteNumber });
 		xapi.Event.CallSuccessful.once(call => {
 			if (!isCallDetectionReady || detectionToken !== callDetectionToken) {
 				return;
