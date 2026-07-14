@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.15
+ * Version:                 0.1.2.16
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -81,6 +81,7 @@ async function init() {
 	registerMessageHandler();
 	registerStandbyStateHandler();
 	registerCallLifecycleHandlers();
+	registerActiveCallCountHandler();
 	registerByodHandlers();
 	prepareCallDetection();
 	log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredBoardCount: registeredBoards.length });
@@ -200,6 +201,19 @@ function registerCallLifecycleHandlers() {
 	});
 }
 
+function registerActiveCallCountHandler() {
+	xapi.Status.SystemUnit.State.NumberOfActiveCalls.on(callCount => {
+		const activeCallCount = Number(normalizeEventValue(callCount));
+		log.debug({ Message: 'Parent active call count updated', ActiveCallCount: activeCallCount });
+
+		if (activeCallCount < 1) {
+			sendCallDisconnectSync().catch(error => {
+				utils.softError({ Context: 'Failed to send call disconnect sync', ActiveCallCount: activeCallCount, Error: error });
+			});
+		}
+	});
+}
+
 function registerByodHandlers() {
 	const webcamModeNode = getStatusNode(['Video', 'Output', 'Webcam', 'Mode']);
 	if (webcamModeNode && typeof webcamModeNode.on === 'function') {
@@ -271,6 +285,17 @@ async function sendCallSync(remoteNumber, call) {
 	}
 
 	log.info({ Message: 'Parent call sync sent', RemoteNumber: remoteNumber || '', MeetingPlatform: callDetails.meetingPlatform, Protocol: callDetails.protocol, RegisteredBoardCount: registeredBoards.length });
+}
+
+async function sendCallDisconnectSync() {
+	for (let index = 0; index < registeredBoards.length; index++) {
+		await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredBoards[index], {
+			CallKind: 'Disconnect',
+			Reason: 'ParentCallCountZero'
+		}, true);
+	}
+
+	log.info({ Message: 'Parent call disconnect sync sent', RegisteredBoardCount: registeredBoards.length });
 }
 
 async function getParentCallDetails() {

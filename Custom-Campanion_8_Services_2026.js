@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.19
+ * Version:                 1.0.21
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -433,6 +433,55 @@ async function joinParentCall(options) {
 	return dialParentCall(options, remoteNumber, protocol);
 }
 
+async function disconnectAllCalls(options) {
+	try {
+		const calls = normalizeCallStatusList(await options.xapi.Status.Call.get());
+		if (calls.length < 1) {
+			options.log.info({ Message: 'Companion board has no active calls to disconnect' });
+			return;
+		}
+
+		for (let index = 0; index < calls.length; index++) {
+			const callId = calls[index].CallId || calls[index].id;
+			if (callId === undefined || callId === '') {
+				await options.xapi.Command.Call.Disconnect();
+			} else {
+				await options.xapi.Command.Call.Disconnect({ CallId: Number(callId) });
+			}
+		}
+
+		options.log.info({ Message: 'Companion board disconnected all calls', CallCount: calls.length });
+	} catch (error) {
+		options.log.warn({ Message: 'Companion board call disconnect failed', Error: error.message || error.code || 'Unknown disconnect error' });
+		await options.xapi.Command.Call.Disconnect();
+	}
+}
+
+function normalizeCallStatusList(callStatus) {
+	if (!callStatus) {
+		return [];
+	}
+	if (Array.isArray(callStatus)) {
+		return callStatus;
+	}
+	if (Array.isArray(callStatus.Call)) {
+		return callStatus.Call;
+	}
+	if (callStatus.CallId !== undefined || callStatus.id !== undefined) {
+		return [callStatus];
+	}
+
+	const calls = [];
+	const keys = Object.keys(callStatus);
+	for (let index = 0; index < keys.length; index++) {
+		if (callStatus[keys[index]] && typeof callStatus[keys[index]] === 'object') {
+			calls.push(callStatus[keys[index]]);
+		}
+	}
+
+	return calls;
+}
+
 function dialParentCall(options, remoteNumber, protocol) {
 	const normalizedProtocol = String(protocol || '').toLowerCase();
 	const dialParameters = { Number: remoteNumber, CallType: 'Video', TrackingData: 'CustomCompanion2026' };
@@ -686,6 +735,7 @@ const boardServices = {
 	applyUiFeatureMode,
 	applyStandbyMode,
 	applyStandbySyncState,
+	disconnectAllCalls,
 	joinParentCall,
 	sanitizeHttpResponse
 };

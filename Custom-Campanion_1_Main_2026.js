@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.2.15
+ * Version:                 0.1.2.16
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -108,6 +108,7 @@ let standbySyncPromptDismissed = false;
 let standbyBypassUntil = 0;
 let standbyBypassTimer = null;
 let callSyncInfoText = '';
+let callSyncToken = 0;
 
 async function init() {
 	try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
@@ -555,6 +556,14 @@ async function handleCallSync(message) {
 }
 
 async function handleParentCallSyncPayload(payload) {
+	if (payload.CallKind === 'Disconnect') {
+		callSyncToken++;
+		await boardServices.disconnectAllCalls({ xapi: xapi, log: log });
+		await setCallSyncInfo('');
+		log.info({ Message: 'Parent call disconnect sync received', Payload: payload });
+		return;
+	}
+
 	if (payload.CallKind === 'BYOD') {
 		await setCallSyncInfo('Call from Laptop/BYOD calls are not supported.');
 		await xapi.Command.UserInterface.Message.Alert.Display({
@@ -566,15 +575,25 @@ async function handleParentCallSyncPayload(payload) {
 		return;
 	}
 
-	await joinParentCallWithRetries(payload);
+	callSyncToken++;
+	await joinParentCallWithRetries(payload, callSyncToken);
 }
 
-async function joinParentCallWithRetries(payload) {
+async function joinParentCallWithRetries(payload, joinToken) {
 	let lastError = null;
 
 	for (let attempt = 1; attempt <= CALL_JOIN_RETRY_COUNT; attempt++) {
+		if (joinToken !== callSyncToken) {
+			log.info({ Message: 'Companion board parent call join canceled', Attempt: attempt, Payload: payload });
+			return;
+		}
+
 		try {
 			await boardServices.joinParentCall({ xapi: xapi, payload: payload, log: log });
+			if (joinToken !== callSyncToken) {
+				log.info({ Message: 'Companion board parent call join completed after cancellation', Attempt: attempt, Payload: payload });
+				return;
+			}
 			await setCallSyncInfo(getCallJoinInfoText(payload));
 			log.info({ Message: 'Companion board joined parent call', Attempt: attempt, Payload: payload });
 			return;
