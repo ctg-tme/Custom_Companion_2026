@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.16
+ * Version:                 1.0.18
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -400,8 +400,13 @@ async function joinParentCall(options) {
 		throw new Error('Cannot join parent call without RemoteNumber');
 	}
 
-	if (meetingPlatform.indexOf('zoom') >= 0 || remoteNumber.indexOf('zoomcrc.com') >= 0) {
-		return options.xapi.Command.Zoom.Join({ DialCode: remoteNumber, TrackingData: 'CustomCompanion2026' });
+	const zoomMeetingInfo = parseZoomSipAddress(remoteNumber);
+	if (zoomMeetingInfo) {
+		return options.xapi.Command.Zoom.Join(zoomMeetingInfo);
+	}
+
+	if (meetingPlatform.indexOf('zoom') >= 0) {
+		throw new Error(`Zoom call sync missing a parsable Zoom SIP address: ${remoteNumber}`);
 	}
 
 	if (meetingPlatform.indexOf('webex') >= 0 || protocol === 'spark') {
@@ -426,6 +431,81 @@ async function joinParentCall(options) {
 	}
 
 	return options.xapi.Command.Dial(dialParameters);
+}
+
+function parseZoomSipAddress(remoteNumber) {
+	const splitNumber = String(remoteNumber || '').split('@');
+	const meetingInfo = splitNumber[0] || '';
+	const domain = splitNumber[1] || '';
+
+	if (domain.toLowerCase().indexOf('zoom') < 0) {
+		return null;
+	}
+	if (meetingInfo.indexOf('.') < 0) {
+		if (!/^[0-9]{1,40}$/.test(meetingInfo)) {
+			throw new Error(`Zoom Meeting ID failed parsing from ${remoteNumber}`);
+		}
+
+		return {
+			MeetingID: meetingInfo,
+			Domain: domain,
+			TrackingData: 'CustomCompanion2026'
+		};
+	}
+
+	const splitMeeting = meetingInfo.split('.');
+	const parsedMeetingInfo = {
+		meetingID: splitMeeting[0] || '',
+		passcode: splitMeeting[1] || '',
+		command: splitMeeting[2] || '',
+		hostKey: splitMeeting[3] || '',
+		reserved: splitMeeting[4] || '',
+		dialCode: splitMeeting[5] || ''
+	};
+	const zoomValidators = {
+		meetingID: /^[0-9]{5,40}\b/,
+		passcode: /^[0-9a-zA-Z].*\b/,
+		command: /^[0-9].*\b/,
+		hostKey: /^[0-9]{6}\b/,
+		reserved: /^[0-9a-zA-Z].*\b/,
+		dialCode: /^[0-9a-zA-Z].*\b/
+	};
+
+	if (!zoomValidators.meetingID.test(parsedMeetingInfo.meetingID)) {
+		throw new Error(`Zoom Meeting ID failed parsing from ${remoteNumber}`);
+	}
+	if (parsedMeetingInfo.passcode && !zoomValidators.passcode.test(parsedMeetingInfo.passcode)) {
+		throw new Error(`Zoom passcode failed parsing from ${remoteNumber}`);
+	}
+	if (parsedMeetingInfo.command && !zoomValidators.command.test(parsedMeetingInfo.command)) {
+		throw new Error(`Zoom command failed parsing from ${remoteNumber}`);
+	}
+	if (parsedMeetingInfo.hostKey && !zoomValidators.hostKey.test(parsedMeetingInfo.hostKey)) {
+		throw new Error(`Zoom host key failed parsing from ${remoteNumber}`);
+	}
+	if (parsedMeetingInfo.reserved && !zoomValidators.reserved.test(parsedMeetingInfo.reserved)) {
+		throw new Error(`Zoom reserved code failed parsing from ${remoteNumber}`);
+	}
+	if (parsedMeetingInfo.dialCode && !zoomValidators.dialCode.test(parsedMeetingInfo.dialCode)) {
+		throw new Error(`Zoom dial code failed parsing from ${remoteNumber}`);
+	}
+
+	const zoomJoinParameters = {
+		MeetingID: parsedMeetingInfo.meetingID,
+		Domain: domain,
+		TrackingData: 'CustomCompanion2026'
+	};
+	if (parsedMeetingInfo.passcode) {
+		zoomJoinParameters.MeetingPasscode = parsedMeetingInfo.passcode;
+	}
+	if (parsedMeetingInfo.hostKey) {
+		zoomJoinParameters.HostKey = parsedMeetingInfo.hostKey;
+	}
+	if (parsedMeetingInfo.dialCode) {
+		zoomJoinParameters.DialCode = parsedMeetingInfo.dialCode;
+	}
+
+	return zoomJoinParameters;
 }
 
 async function applyWebWidgetMode(options) {
