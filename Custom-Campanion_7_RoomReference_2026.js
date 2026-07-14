@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.16
+ * Version:                 0.1.2.17
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -68,6 +68,7 @@ let lastStandbyState = '';
 let isCallDetectionReady = false;
 let pendingCallRemoteNumber = '';
 let callDetectionToken = 0;
+let parentActiveCallCount = 0;
 let nativeByodActive = false;
 let hdmiByodActive = false;
 let isByodSessionActive = false;
@@ -172,16 +173,26 @@ function prepareCallDetection() {
 
 		pendingCallRemoteNumber = capturedRemoteNumber;
 		log.info({ Message: 'Captured parent call remote number', RemoteNumber: pendingCallRemoteNumber });
-		xapi.Event.CallSuccessful.once(call => {
-			if (!isCallDetectionReady || detectionToken !== callDetectionToken) {
-				return;
-			}
+		if (parentActiveCallCount > 0) {
+			sendPendingCallSync(detectionToken, { Trigger: 'ActiveCallCount', ActiveCallCount: parentActiveCallCount });
+			return;
+		}
 
-			isCallDetectionReady = false;
-			sendCallSync(pendingCallRemoteNumber, call).catch(error => {
-				utils.softError({ Context: 'Failed to send call sync', RemoteNumber: pendingCallRemoteNumber, Call: call, Error: error });
-			});
+		xapi.Event.CallSuccessful.once(call => {
+			sendPendingCallSync(detectionToken, call);
 		});
+	});
+}
+
+function sendPendingCallSync(detectionToken, call) {
+	if (!isCallDetectionReady || detectionToken !== callDetectionToken || !pendingCallRemoteNumber) {
+		return;
+	}
+
+	const remoteNumber = pendingCallRemoteNumber;
+	isCallDetectionReady = false;
+	sendCallSync(remoteNumber, call || {}).catch(error => {
+		utils.softError({ Context: 'Failed to send call sync', RemoteNumber: remoteNumber, Call: call, Error: error });
 	});
 }
 
@@ -204,7 +215,13 @@ function registerCallLifecycleHandlers() {
 function registerActiveCallCountHandler() {
 	xapi.Status.SystemUnit.State.NumberOfActiveCalls.on(callCount => {
 		const activeCallCount = Number(normalizeEventValue(callCount));
+		parentActiveCallCount = activeCallCount;
 		log.debug({ Message: 'Parent active call count updated', ActiveCallCount: activeCallCount });
+
+		if (activeCallCount > 0) {
+			sendPendingCallSync(callDetectionToken, { Trigger: 'ActiveCallCount', ActiveCallCount: activeCallCount });
+			return;
+		}
 
 		if (activeCallCount < 1) {
 			sendCallDisconnectSync().catch(error => {
