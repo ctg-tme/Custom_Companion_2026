@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.22
+ * Version:                 1.0.23
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -400,38 +400,42 @@ async function joinParentCall(options) {
 		throw new Error('Cannot join parent call without RemoteNumber');
 	}
 
-	const zoomMeetingInfo = parseZoomJoinTarget(remoteNumber);
-	if (zoomMeetingInfo) {
-		try {
-			return await options.xapi.Command.Zoom.Join(zoomMeetingInfo);
-		} catch (error) {
-			if (isZoomMeetingIdTooShortError(error)) {
-				options.log.warn({ Message: 'Zoom MeetingID too short; falling back to Dial', RemoteNumber: remoteNumber, Error: error.message || error.code || 'Unknown Zoom join error' });
-				return dialParentCall(options, remoteNumber, 'sip');
-			}
-
-			throw error;
-		}
-	}
-
-	if (meetingPlatform.indexOf('zoom') >= 0) {
-		throw new Error(`Zoom call sync missing a parsable Zoom SIP address: ${remoteNumber}`);
-	}
-
 	if (meetingPlatform.indexOf('webex') >= 0 || protocol === 'spark') {
 		return options.xapi.Command.Webex.Join({ Number: remoteNumber, TrackingData: 'CustomCompanion2026' });
 	}
 
-	if (meetingPlatform.indexOf('google') >= 0) {
-		return options.xapi.Command.WebRTC.Join({ Type: 'GoogleMeet', Url: remoteNumber, TrackingData: 'CustomCompanion2026' });
-	}
-
-	if (meetingPlatform.indexOf('microsoft') >= 0 || meetingPlatform.indexOf('teams') >= 0) {
-		return options.xapi.Command.MicrosoftTeams.Join({ Url: remoteNumber, TrackingData: 'CustomCompanion2026' });
-	}
-
-	return dialParentCall(options, remoteNumber, protocol);
+	throw new Error('Only Webex call sync join is in scope for this Companion solution');
 }
+
+/*
+ * Out of scope: non-Webex join handling.
+ * Zoom, Microsoft Teams, Google Meet, SIP, and H.323 auto-join paths are intentionally disabled.
+ * Zoom has additional limitations, especially when the Zoom App experience or generic Zoom bridge
+ * formats are involved. Keep non-Webex detection in the main macro so the Web Widget info block can
+ * tell users that the Companion Device will only join Webex calls.
+ *
+ * Previous reference implementation, retained for future investigation:
+ *
+ * const zoomMeetingInfo = parseZoomJoinTarget(remoteNumber);
+ * if (zoomMeetingInfo) {
+ *   try {
+ *     return await options.xapi.Command.Zoom.Join(zoomMeetingInfo);
+ *   } catch (error) {
+ *     if (isZoomMeetingIdTooShortError(error)) {
+ *       options.log.warn({ Message: 'Zoom MeetingID too short; falling back to Dial', RemoteNumber: remoteNumber, Error: error.message || error.code || 'Unknown Zoom join error' });
+ *       return dialParentCall(options, remoteNumber, 'sip');
+ *     }
+ *     throw error;
+ *   }
+ * }
+ * if (meetingPlatform.indexOf('google') >= 0) {
+ *   return options.xapi.Command.WebRTC.Join({ Type: 'GoogleMeet', Url: remoteNumber, TrackingData: 'CustomCompanion2026' });
+ * }
+ * if (meetingPlatform.indexOf('microsoft') >= 0 || meetingPlatform.indexOf('teams') >= 0) {
+ *   return options.xapi.Command.MicrosoftTeams.Join({ Url: remoteNumber, TrackingData: 'CustomCompanion2026' });
+ * }
+ * return dialParentCall(options, remoteNumber, protocol);
+ */
 
 async function disconnectAllCalls(options) {
 	try {
@@ -482,121 +486,12 @@ function normalizeCallStatusList(callStatus) {
 	return calls;
 }
 
-function dialParentCall(options, remoteNumber, protocol) {
-	const normalizedProtocol = String(protocol || '').toLowerCase();
-	const dialParameters = { Number: remoteNumber, CallType: 'Video', TrackingData: 'CustomCompanion2026' };
-	if (normalizedProtocol === 'sip') {
-		dialParameters.Protocol = 'Sip';
-	} else if (normalizedProtocol === 'h323') {
-		dialParameters.Protocol = 'H323';
-	} else if (normalizedProtocol === 'spark') {
-		dialParameters.Protocol = 'Spark';
-	}
-
-	return options.xapi.Command.Dial(dialParameters);
-}
-
-function isZoomMeetingIdTooShortError(error) {
-	const message = String((error && error.message) || '').toLowerCase();
-	return message.indexOf('meetingid') >= 0 && message.indexOf('too short') >= 0;
-}
-
-function parseZoomJoinTarget(remoteNumber) {
-	return parseZoomMeetingUrl(remoteNumber) || parseZoomSipAddress(remoteNumber);
-}
-
-function parseZoomMeetingUrl(remoteNumber) {
-	const value = String(remoteNumber || '').trim();
-	const lowerValue = value.toLowerCase();
-	if (lowerValue.indexOf('zoom.') < 0 || lowerValue.indexOf('/j/') < 0) {
-		return null;
-	}
-
-	const meetingIdMatch = value.match(/\/j\/([0-9]{1,40})/i);
-	if (!meetingIdMatch || !meetingIdMatch[1]) {
-		throw new Error(`Zoom Meeting ID failed parsing from ${remoteNumber}`);
-	}
-
-	return {
-		MeetingID: meetingIdMatch[1],
-		TrackingData: 'CustomCompanion2026'
-	};
-}
-
-function parseZoomSipAddress(remoteNumber) {
-	const splitNumber = String(remoteNumber || '').split('@');
-	const meetingInfo = splitNumber[0] || '';
-	const domain = splitNumber[1] || '';
-
-	if (domain.toLowerCase().indexOf('zoom') < 0) {
-		return null;
-	}
-	if (meetingInfo.indexOf('.') < 0) {
-		if (!/^[0-9]{1,40}$/.test(meetingInfo)) {
-			throw new Error(`Zoom Meeting ID failed parsing from ${remoteNumber}`);
-		}
-
-		return {
-			MeetingID: meetingInfo,
-			Domain: domain,
-			TrackingData: 'CustomCompanion2026'
-		};
-	}
-
-	const splitMeeting = meetingInfo.split('.');
-	const parsedMeetingInfo = {
-		meetingID: splitMeeting[0] || '',
-		passcode: splitMeeting[1] || '',
-		command: splitMeeting[2] || '',
-		hostKey: splitMeeting[3] || '',
-		reserved: splitMeeting[4] || '',
-		dialCode: splitMeeting[5] || ''
-	};
-	const zoomValidators = {
-		meetingID: /^[0-9]{1,40}$/,
-		passcode: /^[0-9a-zA-Z].*\b/,
-		command: /^[0-9].*\b/,
-		hostKey: /^[0-9]{6}\b/,
-		reserved: /^[0-9a-zA-Z].*\b/,
-		dialCode: /^[0-9a-zA-Z].*\b/
-	};
-
-	if (!zoomValidators.meetingID.test(parsedMeetingInfo.meetingID)) {
-		throw new Error(`Zoom Meeting ID failed parsing from ${remoteNumber}`);
-	}
-	if (parsedMeetingInfo.passcode && !zoomValidators.passcode.test(parsedMeetingInfo.passcode)) {
-		throw new Error(`Zoom passcode failed parsing from ${remoteNumber}`);
-	}
-	if (parsedMeetingInfo.command && !zoomValidators.command.test(parsedMeetingInfo.command)) {
-		throw new Error(`Zoom command failed parsing from ${remoteNumber}`);
-	}
-	if (parsedMeetingInfo.hostKey && !zoomValidators.hostKey.test(parsedMeetingInfo.hostKey)) {
-		throw new Error(`Zoom host key failed parsing from ${remoteNumber}`);
-	}
-	if (parsedMeetingInfo.reserved && !zoomValidators.reserved.test(parsedMeetingInfo.reserved)) {
-		throw new Error(`Zoom reserved code failed parsing from ${remoteNumber}`);
-	}
-	if (parsedMeetingInfo.dialCode && !zoomValidators.dialCode.test(parsedMeetingInfo.dialCode)) {
-		throw new Error(`Zoom dial code failed parsing from ${remoteNumber}`);
-	}
-
-	const zoomJoinParameters = {
-		MeetingID: parsedMeetingInfo.meetingID,
-		Domain: domain,
-		TrackingData: 'CustomCompanion2026'
-	};
-	if (parsedMeetingInfo.passcode) {
-		zoomJoinParameters.MeetingPasscode = parsedMeetingInfo.passcode;
-	}
-	if (parsedMeetingInfo.hostKey) {
-		zoomJoinParameters.HostKey = parsedMeetingInfo.hostKey;
-	}
-	if (parsedMeetingInfo.dialCode) {
-		zoomJoinParameters.DialCode = parsedMeetingInfo.dialCode;
-	}
-
-	return zoomJoinParameters;
-}
+// Out of scope reference functions kept commented for future investigation:
+// function dialParentCall(options, remoteNumber, protocol) { ... }
+// function isZoomMeetingIdTooShortError(error) { ... }
+// function parseZoomJoinTarget(remoteNumber) { ... }
+// function parseZoomMeetingUrl(remoteNumber) { ... }
+// function parseZoomSipAddress(remoteNumber) { ... }
 
 async function applyWebWidgetMode(options) {
 	if (!shouldManageWebWidget(options.userInterfaceConfig)) {

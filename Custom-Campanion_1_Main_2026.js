@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.2.17
+ * Version:                 0.1.2.18
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -565,18 +565,65 @@ async function handleParentCallSyncPayload(payload) {
 	}
 
 	if (payload.CallKind === 'BYOD') {
-		await setCallSyncInfo('Call from Laptop/BYOD calls are not supported.');
+		await setCallSyncInfo('Companion Device will only join Webex calls. Laptop/BYOD calls are not supported.');
 		await xapi.Command.UserInterface.Message.Alert.Display({
 			Title: 'Unsupported Call Type',
-			Text: 'Call from Laptop/BYOD calls are not supported on the companion board.',
+			Text: 'The Companion Device will only join Webex calls. Laptop/BYOD calls are not supported.',
 			Duration: 15
 		});
 		log.info({ Message: 'BYOD call sync received; board join not supported', Payload: payload });
 		return;
 	}
 
+	if (!isWebexCallPayload(payload)) {
+		callSyncToken++;
+		await setCallSyncInfo(getUnsupportedCallInfoText(payload));
+		log.info({ Message: 'Non-Webex call sync received; board join is out of scope', Payload: payload });
+		return;
+	}
+
 	callSyncToken++;
 	await joinParentCallWithRetries(payload, callSyncToken);
+}
+
+function isWebexCallPayload(payload) {
+	const meetingPlatform = String(payload.MeetingPlatform || '').toLowerCase();
+	const protocol = String(payload.Protocol || '').toLowerCase();
+	const remoteNumber = String(payload.RemoteNumber || '').toLowerCase();
+
+	if (meetingPlatform && meetingPlatform.indexOf('webex') < 0) {
+		return false;
+	}
+
+	if (remoteNumber.indexOf('zoom.') >= 0 || remoteNumber.indexOf('zoomcrc.') >= 0 || remoteNumber.indexOf('teams.') >= 0 || remoteNumber.indexOf('google.') >= 0) {
+		return false;
+	}
+
+	return meetingPlatform.indexOf('webex') >= 0 || protocol === 'spark' || remoteNumber.indexOf('webex.com') >= 0;
+}
+
+function getUnsupportedCallInfoText(payload) {
+	const meetingPlatform = getUnsupportedCallPlatformName(payload);
+	return `Companion Device will only join Webex calls. Join ${meetingPlatform} manually from the room system.`;
+}
+
+function getUnsupportedCallPlatformName(payload) {
+	const meetingPlatform = String(payload.MeetingPlatform || '').trim();
+	const remoteNumber = String(payload.RemoteNumber || '').toLowerCase();
+	if (meetingPlatform) {
+		return meetingPlatform;
+	}
+	if (remoteNumber.indexOf('zoom.') >= 0 || remoteNumber.indexOf('zoomcrc.') >= 0) {
+		return 'Zoom';
+	}
+	if (remoteNumber.indexOf('teams.') >= 0 || remoteNumber.indexOf('microsoft.') >= 0) {
+		return 'Microsoft Teams';
+	}
+	if (remoteNumber.indexOf('google.') >= 0 || remoteNumber.indexOf('meet.google') >= 0) {
+		return 'Google Meet';
+	}
+
+	return 'this meeting';
 }
 
 async function joinParentCallWithRetries(payload, joinToken) {
