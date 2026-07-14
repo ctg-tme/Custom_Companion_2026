@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.2.20
+ * Version:                 0.1.2.21
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -109,6 +109,8 @@ let standbyBypassUntil = 0;
 let standbyBypassTimer = null;
 let callSyncInfoText = '';
 let callSyncToken = 0;
+let lastWebexCallSyncPayload = null;
+let isCallRejoinInProgress = false;
 
 async function init() {
 	try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
@@ -126,6 +128,7 @@ async function init() {
 	await installParentMacrosOnOnlineParents();
 	await connectPeripheralToOnlineParents();
 	registerUiEventHandlers();
+	registerBoardCallCountHandler();
 	startParentStatusInterval();
 
 	companionState.warnIfCredentialsAreStored(parentDevices, log);
@@ -558,6 +561,7 @@ async function handleCallSync(message) {
 async function handleParentCallSyncPayload(payload) {
 	if (payload.CallKind === 'Disconnect') {
 		callSyncToken++;
+		lastWebexCallSyncPayload = null;
 		await boardServices.disconnectAllCalls({ xapi: xapi, log: log });
 		await setCallSyncInfo('');
 		log.info({ Message: 'Parent call disconnect sync received', Payload: payload });
@@ -597,7 +601,93 @@ async function handleParentCallSyncPayload(payload) {
 	}
 
 	callSyncToken++;
+	lastWebexCallSyncPayload = payload;
 	await joinParentCallWithRetries(payload, callSyncToken);
+}
+
+function registerBoardCallCountHandler() {
+	xapi.Status.SystemUnit.State.NumberOfActiveCalls.on(callCount => {
+		const activeCallCount = Number(getXapiValue(callCount));
+		if (activeCallCount < 1) {
+			handleBoardCallCountZero().catch(error => {
+				utils.softError({ Context: 'Failed to handle companion board call count zero', Error: error });
+			});
+		}
+	});
+}
+
+async function handleBoardCallCountZero() {
+	if (boardState.mode !== 'Paired' || !lastWebexCallSyncPayload || isCallRejoinInProgress) {
+		return;
+	}
+
+	const activeParentDevice = companionState.findActiveParentDevice(boardState, parentDevices);
+	if (!activeParentDevice) {
+		log.warn({ Message: 'Board call ended; active parent unavailable for rejoin check' });
+		return;
+	}
+
+	let parentCalls = [];
+	try {
+		parentCalls = await deviceComms.parentCallStatusRequest(xapi, activeParentDevice, HTTP_CLIENT_CONFIG);
+	} catch (error) {
+		log.warn({ Message: 'Failed to check parent call status after board call ended', Host: activeParentDevice.host, Error: error.message || error.code || 'Unknown parent call status error' });
+		return;
+	}
+
+	const matchingParentCall = findMatchingParentCall(parentCalls, lastWebexCallSyncPayload);
+	if (!matchingParentCall) {
+		const skippedPayload = lastWebexCallSyncPayload;
+		lastWebexCallSyncPayload = null;
+		await setCallSyncInfo('');
+		log.info({ Message: 'Board call ended and active parent call did not match last synced call; rejoin skipped', Host: activeParentDevice.host, ParentCallCount: parentCalls.length, Payload: skippedPayload });
+		return;
+	}
+
+	isCallRejoinInProgress = true;
+	callSyncToken++;
+	const rejoinToken = callSyncToken;
+	await setCallSyncInfo('Rejoining Webex call from active parent.');
+	log.info({ Message: 'Board call ended while parent is still in same call; rejoining companion board', Host: activeParentDevice.host, ParentCall: matchingParentCall, Payload: lastWebexCallSyncPayload });
+
+	try {
+		await joinParentCallWithRetries(lastWebexCallSyncPayload, rejoinToken);
+	} finally {
+		isCallRejoinInProgress = false;
+	}
+}
+
+function findMatchingParentCall(parentCalls, payload) {
+	const parentCall = payload.ParentCall || {};
+	const expectedCallId = normalizeCallIdentity(parentCall.CallId);
+	const expectedRemoteUri = normalizeCallIdentity(parentCall.RemoteURI);
+	const expectedRemoteNumber = normalizeCallIdentity(payload.RemoteNumber || parentCall.RemoteNumber);
+
+	for (let index = 0; index < parentCalls.length; index++) {
+		const parentCallStatus = parentCalls[index];
+		if (expectedCallId && normalizeCallIdentity(parentCallStatus.CallId) === expectedCallId) {
+			return parentCallStatus;
+		}
+		if (expectedRemoteUri && normalizeCallIdentity(parentCallStatus.RemoteURI) === expectedRemoteUri) {
+			return parentCallStatus;
+		}
+		if (expectedRemoteNumber && normalizeCallIdentity(parentCallStatus.RemoteNumber) === expectedRemoteNumber) {
+			return parentCallStatus;
+		}
+	}
+
+	return null;
+}
+
+function normalizeCallIdentity(value) {
+	return String(value || '').trim().toLowerCase();
+}
+
+function getXapiValue(value) {
+	if (value && typeof value === 'object' && value.Value !== undefined) {
+		return value.Value;
+	}
+	return value;
 }
 
 function isWebexCallPayload(payload) {
