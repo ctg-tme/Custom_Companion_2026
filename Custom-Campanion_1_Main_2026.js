@@ -695,7 +695,8 @@ function findMatchingParentCall(parentCalls, payload) {
 	const parentCall = payload.ParentCall || {};
 	const expectedCallId = normalizeCallIdentity(parentCall.CallId);
 	const expectedRemoteUri = normalizeCallIdentity(parentCall.RemoteURI);
-	const expectedRemoteNumber = normalizeCallIdentity(payload.RemoteNumber || parentCall.RemoteNumber);
+	const expectedParentRemoteNumber = normalizeCallIdentity(parentCall.RemoteNumber);
+	const expectedDialedRemoteNumber = normalizeCallIdentity(payload.RemoteNumber);
 
 	for (let index = 0; index < parentCalls.length; index++) {
 		const parentCallStatus = parentCalls[index];
@@ -705,7 +706,10 @@ function findMatchingParentCall(parentCalls, payload) {
 		if (expectedRemoteUri && normalizeCallIdentity(parentCallStatus.RemoteURI) === expectedRemoteUri) {
 			return parentCallStatus;
 		}
-		if (expectedRemoteNumber && normalizeCallIdentity(parentCallStatus.RemoteNumber) === expectedRemoteNumber) {
+		if (expectedParentRemoteNumber && normalizeCallIdentity(parentCallStatus.RemoteNumber) === expectedParentRemoteNumber) {
+			return parentCallStatus;
+		}
+		if (!expectedParentRemoteNumber && expectedDialedRemoteNumber && normalizeCallIdentity(parentCallStatus.RemoteNumber) === expectedDialedRemoteNumber) {
 			return parentCallStatus;
 		}
 	}
