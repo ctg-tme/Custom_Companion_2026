@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.24
+ * Version:                 1.0.25
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -402,7 +402,7 @@ async function joinParentCall(options) {
 	}
 
 	if (meetingPlatform.indexOf('webex') >= 0 || protocol === 'spark' || (normalizedRemoteNumber.indexOf('webex') >= 0 && normalizedRemoteNumber.indexOf('com') >= 0)) {
-		return options.xapi.Command.Webex.Join({ Number: remoteNumber, TrackingData: 'CustomCompanion2026' });
+		return options.xapi.Command.Webex.Join({ Number: remoteNumber, ParticipantRole: 'Guest', TrackingData: 'CustomCompanion2026' });
 	}
 
 	throw new Error('Only Webex call sync join is in scope for this Companion solution');
