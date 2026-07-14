@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.2.18
+ * Version:                 0.1.2.19
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -592,7 +592,7 @@ function isWebexCallPayload(payload) {
 	const meetingPlatform = String(payload.MeetingPlatform || '').toLowerCase();
 	const protocol = String(payload.Protocol || '').toLowerCase();
 	const remoteNumber = String(payload.RemoteNumber || '').toLowerCase();
-	const isWebexRemoteNumber = remoteNumber.indexOf('webex.com') >= 0;
+	const isWebexRemoteNumber = remoteNumber.indexOf('webex') >= 0 && remoteNumber.indexOf('com') >= 0;
 	const isWebexProtocol = protocol === 'spark';
 	const isKnownNonWebexPlatform = meetingPlatform && meetingPlatform !== 'unknown' && meetingPlatform.indexOf('webex') < 0;
 
@@ -658,13 +658,25 @@ async function joinParentCallWithRetries(payload, joinToken) {
 		}
 	}
 
-	await setCallSyncInfo('Unable to join parent call. Add this board manually from the room system.');
+	await setCallSyncInfo(getCallJoinFailureInfoText(payload));
 	await xapi.Command.UserInterface.Message.Alert.Display({
 		Title: 'Call Sync Failed',
-		Text: 'The board could not join the parent call. Add this board manually from the room system.',
+		Text: getCallJoinFailureAlertText(payload),
 		Duration: 20
 	});
 	utils.softError({ Context: 'Failed to join parent call after retries', Error: lastError, Payload: payload });
+}
+
+function getCallJoinFailureInfoText(payload) {
+	return `⚠️ Failed to join call: ${getCallRemoteNumberText(payload)} ⚠️`;
+}
+
+function getCallJoinFailureAlertText(payload) {
+	return `Failed to join call: ${getCallRemoteNumberText(payload)}`;
+}
+
+function getCallRemoteNumberText(payload) {
+	return payload.RemoteNumber || 'Unknown remote number';
 }
 
 function getCallJoinInfoText(payload) {
