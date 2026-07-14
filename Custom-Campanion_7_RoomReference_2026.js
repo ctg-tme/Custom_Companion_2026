@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.20
+ * Version:                 0.1.2.22
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -69,6 +69,7 @@ let lastStandbyState = '';
 let admissionCheckTimeout = null;
 let admittedParticipantIds = {};
 let admissionNoticeSerials = {};
+let activeParentCallDetails = null;
 let isCallDetectionReady = false;
 let pendingCallRemoteNumber = '';
 let callDetectionToken = 0;
@@ -206,6 +207,7 @@ function registerCallLifecycleHandlers() {
 	xapi.Event.CallDisconnect.on(() => {
 		callDetectionToken++;
 		pendingCallRemoteNumber = '';
+		activeParentCallDetails = null;
 		isCallDetectionReady = false;
 		admittedParticipantIds = {};
 		admissionNoticeSerials = {};
@@ -217,6 +219,7 @@ function registerCallLifecycleHandlers() {
 		callDetectionToken++;
 		isCallDetectionReady = false;
 		pendingCallRemoteNumber = '';
+		activeParentCallDetails = null;
 		prepareCallDetection();
 	});
 }
@@ -234,6 +237,7 @@ function registerActiveCallCountHandler() {
 		}
 
 		if (activeCallCount < 1) {
+			activeParentCallDetails = null;
 			admittedParticipantIds = {};
 			admissionNoticeSerials = {};
 			clearAdmissionCheckTimeout();
@@ -545,6 +549,7 @@ async function sendByodSync(source, state) {
 
 async function sendCallSync(remoteNumber, call) {
 	const callDetails = await getParentCallDetails();
+	activeParentCallDetails = await getActiveParentCallDetails(remoteNumber, call || {});
 
 	for (let index = 0; index < registeredBoards.length; index++) {
 		await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredBoards[index], {
@@ -552,11 +557,61 @@ async function sendCallSync(remoteNumber, call) {
 			RemoteNumber: remoteNumber || '',
 			MeetingPlatform: callDetails.meetingPlatform,
 			Protocol: callDetails.protocol,
-			ParentCall: call || {}
+			ParentCall: activeParentCallDetails || call || {}
 		}, true);
 	}
 
-	log.info({ Message: 'Parent call sync sent', RemoteNumber: remoteNumber || '', MeetingPlatform: callDetails.meetingPlatform, Protocol: callDetails.protocol, RegisteredBoardCount: registeredBoards.length });
+	log.info({ Message: 'Parent call sync sent', RemoteNumber: remoteNumber || '', MeetingPlatform: callDetails.meetingPlatform, Protocol: callDetails.protocol, ParentCall: activeParentCallDetails, RegisteredBoardCount: registeredBoards.length });
+}
+
+async function getActiveParentCallDetails(remoteNumber, call) {
+	const calls = await getCurrentCallStatus();
+	const matchedCall = findMatchingCallStatus(calls, remoteNumber, call || {});
+	const sourceCall = matchedCall || call || {};
+
+	return {
+		CallId: getValue(sourceCall.CallId) || getValue(call.CallId) || '',
+		RemoteNumber: getValue(sourceCall.RemoteNumber) || remoteNumber || getValue(call.RemoteNumber) || '',
+		RemoteURI: getValue(sourceCall.RemoteURI) || getValue(call.RemoteURI) || '',
+		Protocol: getValue(sourceCall.Protocol) || getValue(call.Protocol) || '',
+		Direction: getValue(sourceCall.Direction) || getValue(call.Direction) || '',
+		Status: getValue(sourceCall.Status) || getValue(call.Status) || '',
+		id: getValue(sourceCall.id) || getValue(call.id) || ''
+	};
+}
+
+async function getCurrentCallStatus() {
+	try {
+		return normalizeCallStatus(await xapi.Status.Call.get());
+	} catch (error) {
+		log.debug({ Message: 'Failed to read current parent call status', Error: error.message || error.code || 'Unknown call status error' });
+		return [];
+	}
+}
+
+function findMatchingCallStatus(calls, remoteNumber, call) {
+	const expectedCallId = normalizeCallIdentity(getValue(call.CallId));
+	const expectedRemoteUri = normalizeCallIdentity(getValue(call.RemoteURI));
+	const expectedRemoteNumber = normalizeCallIdentity(remoteNumber || getValue(call.RemoteNumber));
+
+	for (let index = 0; index < calls.length; index++) {
+		const currentCall = calls[index];
+		if (expectedCallId && normalizeCallIdentity(getValue(currentCall.CallId)) === expectedCallId) {
+			return currentCall;
+		}
+		if (expectedRemoteUri && normalizeCallIdentity(getValue(currentCall.RemoteURI)) === expectedRemoteUri) {
+			return currentCall;
+		}
+		if (expectedRemoteNumber && normalizeCallIdentity(getValue(currentCall.RemoteNumber)) === expectedRemoteNumber) {
+			return currentCall;
+		}
+	}
+
+	return calls.length === 1 ? calls[0] : null;
+}
+
+function normalizeCallIdentity(value) {
+	return String(value || '').trim().toLowerCase();
 }
 
 async function sendCallDisconnectSync() {
@@ -609,7 +664,23 @@ async function handleCompanionMessage(message) {
 		return;
 	}
 
+	if (message.Action === 'ActiveCallDetailsRequest') {
+		await handleActiveCallDetailsRequest(message);
+		return;
+	}
+
 	log.debug({ Message: 'Companion message received', Action: message.Action, Serial: message.Serial });
+}
+
+async function handleActiveCallDetailsRequest(message) {
+	const boardRecord = registeredBoards.find(board => board.Serial === message.Serial) || normalizeBoardRecord(message);
+	await sendRegistrationResponse('CallSync', message, boardRecord, {
+		CallKind: 'ActiveCallDetails',
+		ParentHasActiveCall: !!activeParentCallDetails,
+		ParentCall: activeParentCallDetails || {},
+		Request: message.Payload || {}
+	}, true);
+	log.info({ Message: 'Parent active call details sent to board', Serial: message.Serial, ParentHasActiveCall: !!activeParentCallDetails, ParentCall: activeParentCallDetails });
 }
 
 async function handleParentReadyRequest(message) {

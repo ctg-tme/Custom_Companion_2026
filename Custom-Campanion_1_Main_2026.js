@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.2.21
+ * Version:                 0.1.2.22
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -74,6 +74,7 @@ const MESSAGE_CONFIG = {
 	routes: {
 		parentReadyRequest: 'ParentReadyRequest',
 		configSync: 'ConfigSync',
+		activeCallDetailsRequest: 'ActiveCallDetailsRequest',
 		callState: 'parent.callState',
 		joinCall: 'board.joinCall'
 	}
@@ -591,6 +592,11 @@ async function handleParentCallSyncPayload(payload) {
 		return;
 	}
 
+	if (payload.CallKind === 'ActiveCallDetails') {
+		await handleActiveCallDetailsResponse(payload);
+		return;
+	}
+
 	const isWebexCall = isWebexCallPayload(payload);
 	log.debug({ Message: 'Call sync payload classified', IsWebexCall: isWebexCall, RemoteNumber: payload.RemoteNumber || '', MeetingPlatform: payload.MeetingPlatform || '', Protocol: payload.Protocol || '' });
 	if (!isWebexCall) {
@@ -627,28 +633,56 @@ async function handleBoardCallCountZero() {
 		return;
 	}
 
-	let parentCalls = [];
+	isCallRejoinInProgress = true;
+	await setCallSyncInfo('Checking active parent call before rejoining.');
 	try {
-		parentCalls = await deviceComms.parentCallStatusRequest(xapi, activeParentDevice, HTTP_CLIENT_CONFIG);
+		await sendActiveCallDetailsRequest(activeParentDevice);
 	} catch (error) {
-		log.warn({ Message: 'Failed to check parent call status after board call ended', Host: activeParentDevice.host, Error: error.message || error.code || 'Unknown parent call status error' });
+		isCallRejoinInProgress = false;
+		log.warn({ Message: 'Failed to request parent call details after board call ended', Host: activeParentDevice.host, Error: error.message || error.code || 'Unknown parent call details request error' });
 		return;
 	}
 
-	const matchingParentCall = findMatchingParentCall(parentCalls, lastWebexCallSyncPayload);
+	log.info({ Message: 'Requested active parent call details after board call ended', Host: activeParentDevice.host, Payload: lastWebexCallSyncPayload });
+}
+
+async function sendActiveCallDetailsRequest(parentDevice) {
+	const companionBoardInformation = await boardServices.getRuntimeCompanionBoardInformation(xapi, getConfiguredCompanionBoardInformation(), log);
+	await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.activeCallDetailsRequest, {
+		Reason: 'BoardCallEnded',
+		LastSyncedCall: lastWebexCallSyncPayload || {}
+	}, {
+		app: 'Companion Board 2026',
+		serial: companionBoardInformation.serial,
+		source: {
+			Role: 'Board',
+			Name: companionBoardInformation.name,
+			Host: companionBoardInformation.host,
+			MacAddress: companionBoardInformation.macAddress
+		}
+	}, HTTP_CLIENT_CONFIG);
+}
+
+async function handleActiveCallDetailsResponse(payload) {
+	if (!isCallRejoinInProgress || !lastWebexCallSyncPayload) {
+		log.debug({ Message: 'Ignored active call details response without pending rejoin', Payload: payload });
+		return;
+	}
+
+	const matchingParentCall = findMatchingParentCall([payload.ParentCall || {}], lastWebexCallSyncPayload);
 	if (!matchingParentCall) {
 		const skippedPayload = lastWebexCallSyncPayload;
 		lastWebexCallSyncPayload = null;
+		isCallRejoinInProgress = false;
 		await setCallSyncInfo('');
-		log.info({ Message: 'Board call ended and active parent call did not match last synced call; rejoin skipped', Host: activeParentDevice.host, ParentCallCount: parentCalls.length, Payload: skippedPayload });
+		log.info({ Message: 'Board call ended and active parent call did not match last synced call; rejoin skipped', ParentHasActiveCall: !!payload.ParentHasActiveCall, ParentCall: payload.ParentCall || {}, Payload: skippedPayload });
 		return;
 	}
 
-	isCallRejoinInProgress = true;
 	callSyncToken++;
 	const rejoinToken = callSyncToken;
 	await setCallSyncInfo('Rejoining Webex call from active parent.');
-	log.info({ Message: 'Board call ended while parent is still in same call; rejoining companion board', Host: activeParentDevice.host, ParentCall: matchingParentCall, Payload: lastWebexCallSyncPayload });
+	log.info({ Message: 'Board call ended while parent is still in same call; rejoining companion board', ParentCall: matchingParentCall, Payload: lastWebexCallSyncPayload });
 
 	try {
 		await joinParentCallWithRetries(lastWebexCallSyncPayload, rejoinToken);

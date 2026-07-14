@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.11
+ * Version:                 1.0.12
  *
  * Description:             A macro module that facilitates device-to-device communication for a custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This module will provide HTTPClient, Message API, and putxml routing helpers. The xapi object must be passed in from the calling macro.
@@ -125,28 +125,6 @@ async function parentStandbyStateRequest(XAPIObject, parentDevice, httpClientCon
 	}
 
 	return standbyState;
-}
-
-
-async function parentCallStatusRequest(XAPIObject, parentDevice, httpClientConfig) {
-	validateParentDevice(parentDevice);
-
-	const url = `https://${parentDevice.host}/getxml?location=/Status/Call`;
-	const response = await queuedHttpRequest(() => XAPIObject.Command.HttpClient.Get({
-		Url: url,
-		Header: buildHeaders(parentDevice),
-		AllowInsecureHTTPS: getAllowInsecureHTTPS(httpClientConfig)
-	}));
-
-	const body = response.Body || '';
-	return getXmlNodes(body, 'Call').map(callXml => ({
-		CallId: getXmlPathValue(callXml, ['CallId']),
-		RemoteNumber: getXmlPathValue(callXml, ['RemoteNumber']),
-		RemoteURI: getXmlPathValue(callXml, ['RemoteURI']),
-		Protocol: getXmlPathValue(callXml, ['Protocol']),
-		Status: getXmlPathValue(callXml, ['Status']),
-		id: getXmlAttributeValue(callXml, 'id')
-	}));
 }
 
 /**
@@ -381,24 +359,6 @@ function getXmlPathValue(xml, path) {
 	return unescapeXml(currentXml.trim());
 }
 
-function getXmlNodes(xml, tagName) {
-	const nodes = [];
-	const regex = new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)</${tagName}>`, 'gi');
-	let match = regex.exec(xml);
-
-	while (match) {
-		nodes.push(match[0]);
-		match = regex.exec(xml);
-	}
-
-	return nodes;
-}
-
-function getXmlAttributeValue(xml, attributeName) {
-	const match = xml.match(new RegExp(`${attributeName}="([^"]*)"`, 'i'));
-	return match ? unescapeXml(match[1]) : '';
-}
-
 function escapeXml(value) {
 	return String(value)
 		.replace(/&/g, '&amp;')
@@ -428,7 +388,6 @@ const deviceComms = {
 	initializeHttpClient,
 	parentInitializationRequest,
 	parentStandbyStateRequest,
-	parentCallStatusRequest,
 	installParentMacros,
 	sendMessageCommand,
 	buildCompanionMessage,
