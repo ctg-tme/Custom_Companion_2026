@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.2.19
+ * Version:                 0.1.2.20
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -575,6 +575,18 @@ async function handleParentCallSyncPayload(payload) {
 		return;
 	}
 
+	if (payload.CallKind === 'AdmissionRequired') {
+		await setCallSyncInfo('Host needs to admit this board to the Webex call.');
+		log.info({ Message: 'Parent cannot auto-admit companion board because it is not host', Payload: payload });
+		return;
+	}
+
+	if (payload.CallKind === 'AdmissionAdmitted') {
+		await setCallSyncInfo('');
+		log.info({ Message: 'Companion board admitted by parent host', Payload: payload });
+		return;
+	}
+
 	const isWebexCall = isWebexCallPayload(payload);
 	log.debug({ Message: 'Call sync payload classified', IsWebexCall: isWebexCall, RemoteNumber: payload.RemoteNumber || '', MeetingPlatform: payload.MeetingPlatform || '', Protocol: payload.Protocol || '' });
 	if (!isWebexCall) {
@@ -681,7 +693,8 @@ function getCallRemoteNumberText(payload) {
 
 function getCallJoinInfoText(payload) {
 	const meetingPlatform = String(payload.MeetingPlatform || '').toLowerCase();
-	if (meetingPlatform.indexOf('webex') >= 0) {
+	const remoteNumber = String(payload.RemoteNumber || '').toLowerCase();
+	if (meetingPlatform.indexOf('webex') >= 0 || (remoteNumber.indexOf('webex') >= 0 && remoteNumber.indexOf('com') >= 0)) {
 		return '';
 	}
 

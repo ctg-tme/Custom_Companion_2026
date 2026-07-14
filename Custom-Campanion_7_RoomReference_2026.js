@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.17
+ * Version:                 0.1.2.20
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -58,6 +58,7 @@ const HTTP_CLIENT_CONFIG = {
 	maxConcurrentRequests: 3
 };
 const STANDBY_SYNC_DEBOUNCE_MS = 250;
+const ADMISSION_CHECK_DEBOUNCE_MS = 1500;
 
 const mem = new MemoryStorage(xapi, { StorageMacroName: STORAGE_MACRO_NAME });
 
@@ -65,6 +66,9 @@ let registeredBoards = [];
 let boardConfigs = {};
 let standbySyncTimeout = null;
 let lastStandbyState = '';
+let admissionCheckTimeout = null;
+let admittedParticipantIds = {};
+let admissionNoticeSerials = {};
 let isCallDetectionReady = false;
 let pendingCallRemoteNumber = '';
 let callDetectionToken = 0;
@@ -83,6 +87,7 @@ async function init() {
 	registerStandbyStateHandler();
 	registerCallLifecycleHandlers();
 	registerActiveCallCountHandler();
+	registerParticipantListHandlers();
 	registerByodHandlers();
 	prepareCallDetection();
 	log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredBoardCount: registeredBoards.length });
@@ -194,6 +199,7 @@ function sendPendingCallSync(detectionToken, call) {
 	sendCallSync(remoteNumber, call || {}).catch(error => {
 		utils.softError({ Context: 'Failed to send call sync', RemoteNumber: remoteNumber, Call: call, Error: error });
 	});
+	queueCompanionAdmissionCheck('CallSync');
 }
 
 function registerCallLifecycleHandlers() {
@@ -201,6 +207,9 @@ function registerCallLifecycleHandlers() {
 		callDetectionToken++;
 		pendingCallRemoteNumber = '';
 		isCallDetectionReady = false;
+		admittedParticipantIds = {};
+		admissionNoticeSerials = {};
+		clearAdmissionCheckTimeout();
 		prepareCallDetection();
 	});
 
@@ -220,15 +229,261 @@ function registerActiveCallCountHandler() {
 
 		if (activeCallCount > 0) {
 			sendPendingCallSync(callDetectionToken, { Trigger: 'ActiveCallCount', ActiveCallCount: activeCallCount });
+			queueCompanionAdmissionCheck('ActiveCallCount');
 			return;
 		}
 
 		if (activeCallCount < 1) {
+			admittedParticipantIds = {};
+			admissionNoticeSerials = {};
+			clearAdmissionCheckTimeout();
 			sendCallDisconnectSync().catch(error => {
 				utils.softError({ Context: 'Failed to send call disconnect sync', ActiveCallCount: activeCallCount, Error: error });
 			});
 		}
 	});
+}
+
+function registerParticipantListHandlers() {
+	const eventPaths = [
+		['Conference', 'ParticipantList', 'Changed'],
+		['Conference', 'ParticipantListUpdated'],
+		['Conference', 'ParticipantUpdated'],
+		['Conference', 'ParticipantList', 'ParticipantUpdated']
+	];
+	let registered = false;
+
+	for (let index = 0; index < eventPaths.length; index++) {
+		const node = getXapiNode(xapi.Event, eventPaths[index]);
+		if (!node || typeof node.on !== 'function') {
+			continue;
+		}
+
+		node.on(event => {
+			queueCompanionAdmissionCheck(eventPaths[index].join('.'));
+		});
+		registered = true;
+	}
+
+	if (!registered) {
+		log.debug({ Message: 'Participant list event subscription unavailable' });
+	}
+}
+
+function queueCompanionAdmissionCheck(reason) {
+	if (parentActiveCallCount < 1) {
+		return;
+	}
+
+	clearAdmissionCheckTimeout();
+	admissionCheckTimeout = setTimeout(() => {
+		admissionCheckTimeout = null;
+		processCompanionAdmission(reason).catch(error => {
+			utils.softError({ Context: 'Failed to process companion admission', Reason: reason, Error: error });
+		});
+	}, ADMISSION_CHECK_DEBOUNCE_MS);
+}
+
+function clearAdmissionCheckTimeout() {
+	if (admissionCheckTimeout) {
+		clearTimeout(admissionCheckTimeout);
+		admissionCheckTimeout = null;
+	}
+}
+
+async function processCompanionAdmission(reason) {
+	const roster = await getParticipantRoster();
+	if (!roster || roster.participants.length < 1) {
+		log.debug({ Message: 'Companion admission skipped; participant roster unavailable', Reason: reason });
+		return;
+	}
+
+	const hostCheck = getSelfHostStatus(roster);
+	const waitingMatches = getWaitingCompanionParticipants(roster.participants);
+	if (waitingMatches.length < 1) {
+		log.debug({ Message: 'Companion admission skipped; no waiting companion boards found', Reason: reason, IsHost: hostCheck.isHost });
+		return;
+	}
+
+	if (!hostCheck.isHost) {
+		await sendAdmissionRequired(waitingMatches, hostCheck);
+		log.info({ Message: 'Companion admission requires meeting host', Reason: reason, WaitingBoardCount: waitingMatches.length, ParentSelfParticipantId: roster.participantSelf });
+		return;
+	}
+
+	const callId = await getActiveCallId();
+	if (callId === null) {
+		log.warn({ Message: 'Companion admission skipped; active CallId unavailable', Reason: reason, WaitingBoardCount: waitingMatches.length });
+		return;
+	}
+
+	for (let index = 0; index < waitingMatches.length; index++) {
+		await admitCompanionParticipant(callId, waitingMatches[index]);
+	}
+}
+
+async function getParticipantRoster() {
+	try {
+		const response = await xapi.Command.Conference.ParticipantList.Search({ Limit: 1000 });
+		const result = getParticipantListResult(response);
+		return {
+			participants: normalizeParticipants(result.Participant),
+			participantSelf: getValue(result.ParticipantSelf),
+			provider: getValue(result.Provider)
+		};
+	} catch (error) {
+		log.warn({ Message: 'Failed to search conference participant list', Error: error.message || error.code || 'Unknown participant search error' });
+		return null;
+	}
+}
+
+function getParticipantListResult(response) {
+	if (response && response.CommandResponse && response.CommandResponse.ParticipantListSearchResult) {
+		return response.CommandResponse.ParticipantListSearchResult;
+	}
+	if (response && response.ParticipantListSearchResult) {
+		return response.ParticipantListSearchResult;
+	}
+	return response || {};
+}
+
+function normalizeParticipants(participants) {
+	if (!participants) {
+		return [];
+	}
+	if (Array.isArray(participants)) {
+		return participants;
+	}
+	return [participants];
+}
+
+function getSelfHostStatus(roster) {
+	const selfParticipant = roster.participants.find(participant => getValue(participant.ParticipantId) === roster.participantSelf);
+	return {
+		isHost: !!(selfParticipant && getValue(selfParticipant.IsHost) === 'True'),
+		participant: selfParticipant || null
+	};
+}
+
+function getWaitingCompanionParticipants(participants) {
+	const matches = [];
+
+	for (let boardIndex = 0; boardIndex < registeredBoards.length; boardIndex++) {
+		const board = registeredBoards[boardIndex];
+		const boardName = normalizeName(board.Name);
+		if (!boardName) {
+			continue;
+		}
+
+		for (let participantIndex = 0; participantIndex < participants.length; participantIndex++) {
+			const participant = participants[participantIndex];
+			if (normalizeName(getValue(participant.DisplayName)) === boardName && normalizeName(getValue(participant.Status)) === 'waiting') {
+				matches.push({ board: board, participant: participant });
+			}
+		}
+	}
+
+	return matches;
+}
+
+async function sendAdmissionRequired(waitingMatches, hostCheck) {
+	for (let index = 0; index < waitingMatches.length; index++) {
+		const match = waitingMatches[index];
+		if (admissionNoticeSerials[match.board.Serial]) {
+			continue;
+		}
+
+		await sendRegistrationResponse('CallSync', { MessageId: '' }, match.board, {
+			CallKind: 'AdmissionRequired',
+			Reason: 'ParentNotHost',
+			DisplayName: getValue(match.participant.DisplayName) || match.board.Name,
+			ParentIsHost: false
+		}, true);
+		admissionNoticeSerials[match.board.Serial] = true;
+	}
+}
+
+async function admitCompanionParticipant(callId, waitingMatch) {
+	const participantId = getValue(waitingMatch.participant.ParticipantId);
+	if (!participantId || admittedParticipantIds[participantId]) {
+		return;
+	}
+
+	await xapi.Command.Conference.Participant.Admit({ CallId: Number(callId), ParticipantId: participantId });
+	admittedParticipantIds[participantId] = true;
+	await sendRegistrationResponse('CallSync', { MessageId: '' }, waitingMatch.board, {
+		CallKind: 'AdmissionAdmitted',
+		DisplayName: getValue(waitingMatch.participant.DisplayName) || waitingMatch.board.Name,
+		ParentIsHost: true
+	}, true);
+	log.info({ Message: 'Companion board admitted from lobby', DisplayName: getValue(waitingMatch.participant.DisplayName), ParticipantId: participantId, CallId: callId });
+}
+
+async function getActiveCallId() {
+	try {
+		const callId = await xapi.Status.Call[1].CallId.get();
+		if (callId !== undefined && callId !== '') {
+			return Number(callId);
+		}
+	} catch (error) {
+		// Fall through to aggregate call status.
+	}
+
+	try {
+		const calls = normalizeCallStatus(await xapi.Status.Call.get());
+		if (calls.length > 0) {
+			const callId = calls[0].CallId || calls[0].id;
+			return callId === undefined || callId === '' ? null : Number(callId);
+		}
+	} catch (error) {
+		return null;
+	}
+
+	return null;
+}
+
+function normalizeCallStatus(callStatus) {
+	if (!callStatus) {
+		return [];
+	}
+	if (Array.isArray(callStatus)) {
+		return callStatus;
+	}
+	if (callStatus.CallId !== undefined || callStatus.id !== undefined) {
+		return [callStatus];
+	}
+
+	const calls = [];
+	const keys = Object.keys(callStatus);
+	for (let index = 0; index < keys.length; index++) {
+		if (callStatus[keys[index]] && typeof callStatus[keys[index]] === 'object') {
+			calls.push(callStatus[keys[index]]);
+		}
+	}
+
+	return calls;
+}
+
+function getValue(value) {
+	if (value && typeof value === 'object' && value.Value !== undefined) {
+		return value.Value;
+	}
+	return value;
+}
+
+function normalizeName(value) {
+	return String(value || '').trim().toLowerCase();
+}
+
+function getXapiNode(root, path) {
+	let node = root;
+	for (let index = 0; index < path.length; index++) {
+		if (!node || node[path[index]] === undefined) {
+			return null;
+		}
+		node = node[path[index]];
+	}
+	return node;
 }
 
 function registerByodHandlers() {
