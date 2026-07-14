@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.13
+ * Version:                 0.1.2.15
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -68,6 +68,9 @@ let lastStandbyState = '';
 let isCallDetectionReady = false;
 let pendingCallRemoteNumber = '';
 let callDetectionToken = 0;
+let nativeByodActive = false;
+let hdmiByodActive = false;
+let isByodSessionActive = false;
 
 async function init() {
 	try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
@@ -78,6 +81,7 @@ async function init() {
 	registerMessageHandler();
 	registerStandbyStateHandler();
 	registerCallLifecycleHandlers();
+	registerByodHandlers();
 	prepareCallDetection();
 	log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredBoardCount: registeredBoards.length });
 }
@@ -196,15 +200,100 @@ function registerCallLifecycleHandlers() {
 	});
 }
 
-async function sendCallSync(remoteNumber, call) {
+function registerByodHandlers() {
+	const webcamModeNode = getStatusNode(['Video', 'Output', 'Webcam', 'Mode']);
+	if (webcamModeNode && typeof webcamModeNode.on === 'function') {
+		webcamModeNode.on(value => {
+			nativeByodActive = normalizeEventValue(value) !== 'Disconnected';
+			updateByodState('NativeUsbC', normalizeEventValue(value));
+		});
+	}
+
+	const hdmiPassthroughNode = getStatusNode(['Video', 'Output', 'HDMI', 'Passthrough', 'Status']);
+	if (hdmiPassthroughNode && typeof hdmiPassthroughNode.on === 'function') {
+		hdmiPassthroughNode.on(value => {
+			hdmiByodActive = normalizeEventValue(value) === 'Active';
+			updateByodState('HdmiPassthrough', normalizeEventValue(value));
+		});
+	}
+}
+
+function getStatusNode(path) {
+	let node = xapi.Status;
+
+	for (let index = 0; index < path.length; index++) {
+		if (!node || node[path[index]] === undefined) {
+			return null;
+		}
+		node = node[path[index]];
+	}
+
+	return node;
+}
+
+function updateByodState(source, state) {
+	const nextByodState = nativeByodActive || hdmiByodActive;
+	if (nextByodState === isByodSessionActive) {
+		return;
+	}
+
+	isByodSessionActive = nextByodState;
+	if (isByodSessionActive) {
+		sendByodSync(source, state).catch(error => {
+			utils.softError({ Context: 'Failed to send BYOD call sync', Source: source, State: state, Error: error });
+		});
+	}
+}
+
+async function sendByodSync(source, state) {
 	for (let index = 0; index < registeredBoards.length; index++) {
 		await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredBoards[index], {
+			CallKind: 'BYOD',
+			ByodSource: source,
+			ByodState: state
+		}, true);
+	}
+
+	log.info({ Message: 'Parent BYOD call sync sent', Source: source, State: state, RegisteredBoardCount: registeredBoards.length });
+}
+
+async function sendCallSync(remoteNumber, call) {
+	const callDetails = await getParentCallDetails();
+
+	for (let index = 0; index < registeredBoards.length; index++) {
+		await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredBoards[index], {
+			CallKind: 'Network',
 			RemoteNumber: remoteNumber || '',
+			MeetingPlatform: callDetails.meetingPlatform,
+			Protocol: callDetails.protocol,
 			ParentCall: call || {}
 		}, true);
 	}
 
-	log.info({ Message: 'Parent call sync sent', RemoteNumber: remoteNumber || '', RegisteredBoardCount: registeredBoards.length });
+	log.info({ Message: 'Parent call sync sent', RemoteNumber: remoteNumber || '', MeetingPlatform: callDetails.meetingPlatform, Protocol: callDetails.protocol, RegisteredBoardCount: registeredBoards.length });
+}
+
+async function getParentCallDetails() {
+	return {
+		meetingPlatform: await getMeetingPlatform(),
+		protocol: await getCallProtocol()
+	};
+}
+
+async function getMeetingPlatform() {
+	try {
+		return await xapi.Status.Conference.Call.MeetingPlatform.get();
+	} catch (error) {
+		return '';
+	}
+}
+
+async function getCallProtocol() {
+	try {
+		return await xapi.Status.Call[1].Protocol.get();
+	} catch (error) {
+		return '';
+	}
 }
 
 async function handleCompanionMessage(message) {

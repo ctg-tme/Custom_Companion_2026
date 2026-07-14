@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.14
+ * Version:                 1.0.16
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -390,6 +390,44 @@ async function applyStandbySyncState(options) {
 	}
 }
 
+async function joinParentCall(options) {
+	const payload = options.payload || {};
+	const remoteNumber = payload.RemoteNumber || '';
+	const meetingPlatform = String(payload.MeetingPlatform || '').toLowerCase();
+	const protocol = String(payload.Protocol || '').toLowerCase();
+
+	if (!remoteNumber) {
+		throw new Error('Cannot join parent call without RemoteNumber');
+	}
+
+	if (meetingPlatform.indexOf('zoom') >= 0 || remoteNumber.indexOf('zoomcrc.com') >= 0) {
+		return options.xapi.Command.Zoom.Join({ DialCode: remoteNumber, TrackingData: 'CustomCompanion2026' });
+	}
+
+	if (meetingPlatform.indexOf('webex') >= 0 || protocol === 'spark') {
+		return options.xapi.Command.Webex.Join({ Number: remoteNumber, TrackingData: 'CustomCompanion2026' });
+	}
+
+	if (meetingPlatform.indexOf('google') >= 0) {
+		return options.xapi.Command.WebRTC.Join({ Type: 'GoogleMeet', Url: remoteNumber, TrackingData: 'CustomCompanion2026' });
+	}
+
+	if (meetingPlatform.indexOf('microsoft') >= 0 || meetingPlatform.indexOf('teams') >= 0) {
+		return options.xapi.Command.MicrosoftTeams.Join({ Url: remoteNumber, TrackingData: 'CustomCompanion2026' });
+	}
+
+	const dialParameters = { Number: remoteNumber, CallType: 'Video', TrackingData: 'CustomCompanion2026' };
+	if (protocol === 'sip') {
+		dialParameters.Protocol = 'Sip';
+	} else if (protocol === 'h323') {
+		dialParameters.Protocol = 'H323';
+	} else if (protocol === 'spark') {
+		dialParameters.Protocol = 'Spark';
+	}
+
+	return options.xapi.Command.Dial(dialParameters);
+}
+
 async function applyWebWidgetMode(options) {
 	if (!shouldManageWebWidget(options.userInterfaceConfig)) {
 		return;
@@ -549,6 +587,7 @@ const boardServices = {
 	applyUiFeatureMode,
 	applyStandbyMode,
 	applyStandbySyncState,
+	joinParentCall,
 	sanitizeHttpResponse
 };
 

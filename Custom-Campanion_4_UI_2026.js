@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 1.0.16
+ * Version:                 1.0.17
  *
  * Description:             A macro module that facilitates the custom Companion Solution user interface for Board Series endpoints with Wheel Kits.
  *                          This module will provide PIN-protected parent-device management UI helpers. The xapi object must be passed in from the calling macro.
@@ -164,7 +164,7 @@ function buildParentWidgetXml(parentDevice, parentStatus, index) {
 					<WidgetId>${offlineWidgetId}</WidgetId>
 					<Name>${escapeXml(parentName)} Offline</Name>
 					<Type>Text</Type>
-					<Options>size=2;fontSize=small;align=center</Options>
+					<Options>size=4;fontSize=small;align=center</Options>
 				</Widget>`;
 	}
 
@@ -172,7 +172,7 @@ function buildParentWidgetXml(parentDevice, parentStatus, index) {
 					<WidgetId>${selectWidgetId}</WidgetId>
 					<Name>${escapeXml(parentName)}</Name>
 					<Type>Button</Type>
-					<Options>size=2</Options>
+					<Options>size=4</Options>
 				</Widget>`;
 }
 

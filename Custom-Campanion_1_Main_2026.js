@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.2.13
+ * Version:                 0.1.2.15
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -61,6 +61,8 @@ const STANDBY_SYNC_APPLY_DELAY_MS = 30000;
 const STANDBY_SYNC_PROMPT_REFRESH_MS = 5000;
 const STANDBY_SYNC_SHORT_BYPASS_MS = 5 * 60 * 1000;
 const STANDBY_SYNC_LONG_BYPASS_MS = 30 * 60 * 1000;
+const CALL_JOIN_RETRY_COUNT = 5;
+const CALL_JOIN_RETRY_DELAY_MS = 5000;
 const PERIPHERAL_TYPE = 'ControlSystem';
 const HTTP_CLIENT_CONFIG = {
 	mode: 'On',
@@ -105,6 +107,7 @@ let pendingStandbySyncState = '';
 let standbySyncPromptDismissed = false;
 let standbyBypassUntil = 0;
 let standbyBypassTimer = null;
+let callSyncInfoText = '';
 
 async function init() {
 	try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
@@ -484,7 +487,7 @@ async function applyUiFeatureMode(mode) {
 			userInterfaceConfig: config.UserInterface,
 			activeParentName: boardState.activeParent.name,
 			themeName: userInterfaceThemeName,
-			runtimeInfo3: getStandbyBypassInfoText(),
+			runtimeInfo3: getRuntimeInfo3Text(),
 			companionUi: companionUi,
 			log: log
 		});
@@ -514,7 +517,31 @@ async function handleStandbySync(message) {
 		return;
 	}
 
-	await scheduleStandbySync(message.Payload && message.Payload.State);
+	const state = message.Payload && message.Payload.State;
+	if (pendingStandbySyncTimer) {
+		await scheduleStandbySync(state);
+		return;
+	}
+
+	await applyImmediateStandbySync(state);
+}
+
+async function applyImmediateStandbySync(state) {
+	if (state === 'EnteringStandby') {
+		log.debug({ Message: 'Ignored parent standby transition state', State: state });
+		return;
+	}
+
+	if (isStandbyBypassActive()) {
+		log.info({ Message: 'Ignored parent standby sync while bypass is active', State: state, BypassUntil: new Date(standbyBypassUntil).toISOString() });
+		return;
+	}
+
+	await boardServices.applyStandbySyncState({
+		xapi: xapi,
+		state: state,
+		log: log
+	});
 }
 
 async function handleCallSync(message) {
@@ -524,7 +551,67 @@ async function handleCallSync(message) {
 	}
 
 	clearStandbySyncState();
-	log.info({ Message: 'Parent call sync received', Source: message.Source, Payload: message.Payload });
+	await handleParentCallSyncPayload(message.Payload || {});
+}
+
+async function handleParentCallSyncPayload(payload) {
+	if (payload.CallKind === 'BYOD') {
+		await setCallSyncInfo('Call from Laptop/BYOD calls are not supported.');
+		await xapi.Command.UserInterface.Message.Alert.Display({
+			Title: 'Unsupported Call Type',
+			Text: 'Call from Laptop/BYOD calls are not supported on the companion board.',
+			Duration: 15
+		});
+		log.info({ Message: 'BYOD call sync received; board join not supported', Payload: payload });
+		return;
+	}
+
+	await joinParentCallWithRetries(payload);
+}
+
+async function joinParentCallWithRetries(payload) {
+	let lastError = null;
+
+	for (let attempt = 1; attempt <= CALL_JOIN_RETRY_COUNT; attempt++) {
+		try {
+			await boardServices.joinParentCall({ xapi: xapi, payload: payload, log: log });
+			await setCallSyncInfo(getCallJoinInfoText(payload));
+			log.info({ Message: 'Companion board joined parent call', Attempt: attempt, Payload: payload });
+			return;
+		} catch (error) {
+			lastError = error;
+			log.warn({ Message: 'Companion board parent call join failed', Attempt: attempt, Error: error.message || error.code || 'Unknown call join error', Payload: payload });
+			if (attempt < CALL_JOIN_RETRY_COUNT) {
+				await delay(CALL_JOIN_RETRY_DELAY_MS);
+			}
+		}
+	}
+
+	await setCallSyncInfo('Unable to join parent call. Add this board manually from the room system.');
+	await xapi.Command.UserInterface.Message.Alert.Display({
+		Title: 'Call Sync Failed',
+		Text: 'The board could not join the parent call. Add this board manually from the room system.',
+		Duration: 20
+	});
+	utils.softError({ Context: 'Failed to join parent call after retries', Error: lastError, Payload: payload });
+}
+
+function getCallJoinInfoText(payload) {
+	const meetingPlatform = String(payload.MeetingPlatform || '').toLowerCase();
+	if (meetingPlatform.indexOf('webex') >= 0) {
+		return '';
+	}
+
+	return 'Joining parent call. Admit this board from the meeting lobby if needed.';
+}
+
+async function setCallSyncInfo(value) {
+	callSyncInfoText = value || '';
+	await applyUiFeatureMode(boardState.mode);
+}
+
+function delay(milliseconds) {
+	return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
 async function scheduleStandbySync(state) {
@@ -654,6 +741,10 @@ function getStandbyBypassInfoText() {
 	}
 
 	return `Standby sync bypass until ${formatTime(new Date(standbyBypassUntil))}`;
+}
+
+function getRuntimeInfo3Text() {
+	return callSyncInfoText || getStandbyBypassInfoText();
 }
 
 function formatTime(date) {
