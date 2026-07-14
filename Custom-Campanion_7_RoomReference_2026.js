@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.23
+ * Version:                 0.1.2.24
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -59,6 +59,8 @@ const HTTP_CLIENT_CONFIG = {
 };
 const STANDBY_SYNC_DEBOUNCE_MS = 250;
 const ADMISSION_CHECK_DEBOUNCE_MS = 1500;
+const ADMISSION_POLL_INTERVAL_MS = 3000;
+const ADMISSION_POLL_TIMEOUT_MS = 2 * 60 * 1000;
 
 const mem = new MemoryStorage(xapi, { StorageMacroName: STORAGE_MACRO_NAME });
 
@@ -67,6 +69,9 @@ let boardConfigs = {};
 let standbySyncTimeout = null;
 let lastStandbyState = '';
 let admissionCheckTimeout = null;
+let admissionPollInterval = null;
+let admissionPollDeadline = 0;
+let admissionPollSawWaiting = false;
 let admittedParticipantIds = {};
 let admissionNoticeSerials = {};
 let activeParentCallDetails = null;
@@ -212,6 +217,7 @@ function registerCallLifecycleHandlers() {
 		admittedParticipantIds = {};
 		admissionNoticeSerials = {};
 		clearAdmissionCheckTimeout();
+		stopAdmissionPolling('CallDisconnect');
 		prepareCallDetection();
 	});
 
@@ -233,6 +239,7 @@ function registerActiveCallCountHandler() {
 		if (activeCallCount > 0) {
 			sendPendingCallSync(callDetectionToken, { Trigger: 'ActiveCallCount', ActiveCallCount: activeCallCount });
 			queueCompanionAdmissionCheck('ActiveCallCount');
+			startAdmissionPolling('ActiveCallCount');
 			return;
 		}
 
@@ -241,6 +248,7 @@ function registerActiveCallCountHandler() {
 			admittedParticipantIds = {};
 			admissionNoticeSerials = {};
 			clearAdmissionCheckTimeout();
+			stopAdmissionPolling('ParentCallCountZero');
 			sendCallDisconnectSync().catch(error => {
 				utils.softError({ Context: 'Failed to send call disconnect sync', ActiveCallCount: activeCallCount, Error: error });
 			});
@@ -253,6 +261,7 @@ function registerParticipantListHandlers() {
 		xapi.Event.Conference.ParticipantList.ParticipantUpdated.on(event => {
 			log.debug({ Message: 'Conference participant list updated', Event: event });
 			queueCompanionAdmissionCheck('Conference.ParticipantList.ParticipantUpdated');
+			startAdmissionPolling('Conference.ParticipantList.ParticipantUpdated');
 		});
 		return;
 	}
@@ -272,12 +281,60 @@ function registerParticipantListHandlers() {
 
 		node.on(event => {
 			queueCompanionAdmissionCheck(eventPaths[index].join('.'));
+			startAdmissionPolling(eventPaths[index].join('.'));
 		});
 		registered = true;
 	}
 
 	if (!registered) {
 		log.debug({ Message: 'Participant list event subscription unavailable' });
+	}
+}
+
+function startAdmissionPolling(reason) {
+	if (parentActiveCallCount < 1 || admissionPollInterval) {
+		return;
+	}
+
+	admissionPollSawWaiting = false;
+	admissionPollDeadline = Date.now() + ADMISSION_POLL_TIMEOUT_MS;
+	admissionPollInterval = setInterval(() => {
+		runAdmissionPoll(reason).catch(error => {
+			utils.softError({ Context: 'Failed to poll companion admission', Reason: reason, Error: error });
+		});
+	}, ADMISSION_POLL_INTERVAL_MS);
+	log.info({ Message: 'Companion admission polling started', Reason: reason, IntervalMs: ADMISSION_POLL_INTERVAL_MS, TimeoutMs: ADMISSION_POLL_TIMEOUT_MS });
+}
+
+function stopAdmissionPolling(reason) {
+	if (admissionPollInterval) {
+		clearInterval(admissionPollInterval);
+		admissionPollInterval = null;
+		log.info({ Message: 'Companion admission polling stopped', Reason: reason, SawWaiting: admissionPollSawWaiting });
+	}
+	admissionPollDeadline = 0;
+	admissionPollSawWaiting = false;
+}
+
+async function runAdmissionPoll(reason) {
+	if (parentActiveCallCount < 1) {
+		stopAdmissionPolling('ParentCallEnded');
+		return;
+	}
+
+	const result = await processCompanionAdmission(`Poll:${reason}`);
+	if (result.waitingCount > 0) {
+		admissionPollSawWaiting = true;
+		return;
+	}
+
+	if (admissionPollSawWaiting) {
+		stopAdmissionPolling('CompanionBoardNoLongerWaiting');
+		return;
+	}
+
+	if (Date.now() > admissionPollDeadline) {
+		stopAdmissionPolling('AdmissionPollTimeout');
 	}
 }
 
@@ -306,31 +363,33 @@ async function processCompanionAdmission(reason) {
 	const roster = await getParticipantRoster();
 	if (!roster || roster.participants.length < 1) {
 		log.debug({ Message: 'Companion admission skipped; participant roster unavailable', Reason: reason });
-		return;
+		return { waitingCount: 0 };
 	}
 
 	const hostCheck = getSelfHostStatus(roster);
 	const waitingMatches = getWaitingCompanionParticipants(roster.participants);
 	if (waitingMatches.length < 1) {
 		log.debug({ Message: 'Companion admission skipped; no waiting companion boards found', Reason: reason, IsHost: hostCheck.isHost });
-		return;
+		return { waitingCount: 0, isHost: hostCheck.isHost };
 	}
 
 	if (!hostCheck.isHost) {
 		await sendAdmissionRequired(waitingMatches, hostCheck);
 		log.info({ Message: 'Companion admission requires meeting host', Reason: reason, WaitingBoardCount: waitingMatches.length, ParentSelfParticipantId: roster.participantSelf });
-		return;
+		return { waitingCount: waitingMatches.length, isHost: false };
 	}
 
 	const callId = await getActiveCallId();
 	if (callId === null) {
 		log.warn({ Message: 'Companion admission skipped; active CallId unavailable', Reason: reason, WaitingBoardCount: waitingMatches.length });
-		return;
+		return { waitingCount: waitingMatches.length, isHost: true };
 	}
 
 	for (let index = 0; index < waitingMatches.length; index++) {
 		await admitCompanionParticipant(callId, waitingMatches[index]);
 	}
+
+	return { waitingCount: waitingMatches.length, isHost: true };
 }
 
 async function getParticipantRoster() {
@@ -649,6 +708,7 @@ async function sendCallSync(remoteNumber, call) {
 	}
 
 	log.info({ Message: 'Parent call sync sent', RemoteNumber: remoteNumber || '', MeetingPlatform: callDetails.meetingPlatform, Protocol: callDetails.protocol, ParentCall: activeParentCallDetails, RegisteredBoardCount: registeredBoards.length });
+	startAdmissionPolling('CallSync');
 }
 
 async function getActiveParentCallDetails(remoteNumber, call) {
@@ -809,6 +869,7 @@ async function handleActiveCallDetailsRequest(message) {
 		ParentCall: activeParentCallDetails || {},
 		Request: message.Payload || {}
 	}, true);
+	startAdmissionPolling('ActiveCallDetailsRequest');
 	log.info({ Message: 'Parent active call details sent to board', Serial: message.Serial, ParentHasActiveCall: !!activeParentCallDetails, ParentCall: activeParentCallDetails });
 }
 
