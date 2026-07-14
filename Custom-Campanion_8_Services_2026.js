@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 10, 2026
- * Version:                 1.0.18
+ * Version:                 1.0.19
  *
  * Description:             Board-local service helpers for the Custom Companion Solution.
  *
@@ -402,7 +402,16 @@ async function joinParentCall(options) {
 
 	const zoomMeetingInfo = parseZoomSipAddress(remoteNumber);
 	if (zoomMeetingInfo) {
-		return options.xapi.Command.Zoom.Join(zoomMeetingInfo);
+		try {
+			return await options.xapi.Command.Zoom.Join(zoomMeetingInfo);
+		} catch (error) {
+			if (isZoomMeetingIdTooShortError(error)) {
+				options.log.warn({ Message: 'Zoom MeetingID too short; falling back to Dial', RemoteNumber: remoteNumber, Error: error.message || error.code || 'Unknown Zoom join error' });
+				return dialParentCall(options, remoteNumber, 'sip');
+			}
+
+			throw error;
+		}
 	}
 
 	if (meetingPlatform.indexOf('zoom') >= 0) {
@@ -421,16 +430,26 @@ async function joinParentCall(options) {
 		return options.xapi.Command.MicrosoftTeams.Join({ Url: remoteNumber, TrackingData: 'CustomCompanion2026' });
 	}
 
+	return dialParentCall(options, remoteNumber, protocol);
+}
+
+function dialParentCall(options, remoteNumber, protocol) {
+	const normalizedProtocol = String(protocol || '').toLowerCase();
 	const dialParameters = { Number: remoteNumber, CallType: 'Video', TrackingData: 'CustomCompanion2026' };
-	if (protocol === 'sip') {
+	if (normalizedProtocol === 'sip') {
 		dialParameters.Protocol = 'Sip';
-	} else if (protocol === 'h323') {
+	} else if (normalizedProtocol === 'h323') {
 		dialParameters.Protocol = 'H323';
-	} else if (protocol === 'spark') {
+	} else if (normalizedProtocol === 'spark') {
 		dialParameters.Protocol = 'Spark';
 	}
 
 	return options.xapi.Command.Dial(dialParameters);
+}
+
+function isZoomMeetingIdTooShortError(error) {
+	const message = String((error && error.message) || '').toLowerCase();
+	return message.indexOf('meetingid') >= 0 && message.indexOf('too short') >= 0;
 }
 
 function parseZoomSipAddress(remoteNumber) {
@@ -463,7 +482,7 @@ function parseZoomSipAddress(remoteNumber) {
 		dialCode: splitMeeting[5] || ''
 	};
 	const zoomValidators = {
-		meetingID: /^[0-9]{5,40}\b/,
+		meetingID: /^[0-9]{1,40}$/,
 		passcode: /^[0-9a-zA-Z].*\b/,
 		command: /^[0-9].*\b/,
 		hostKey: /^[0-9]{6}\b/,
