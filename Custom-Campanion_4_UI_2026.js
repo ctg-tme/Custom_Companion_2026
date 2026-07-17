@@ -41,6 +41,8 @@ or implied.
  */
 
 const PANEL_ID = 'cc26';
+const ERROR_PANEL_ID = 'cc26_error';
+const ERROR_PROMPT_ID = 'cc26_error_prompt';
 const SELECT_DEVICE_PAGE_ID = `${PANEL_ID}~SelectDevice`;
 const CONFIG_PAGE_ID = `${PANEL_ID}~Config`;
 const RELEASE_DEVICE_WIDGET_ID = `${SELECT_DEVICE_PAGE_ID}~ReleaseDevice`;
@@ -51,6 +53,22 @@ const WEB_WIDGET_PANEL_ID = `${PANEL_ID}WebWidget`;
 const WEB_WIDGET_NAME = 'Custom Companion 2026';
 const WEB_WIDGET_REFRESH_INTERVAL = 0;
 const WEB_WIDGET_DEFAULT_URL = 'https://ctg-tme.github.io/Simple-WebWidget/';
+
+function buildErrorPanelXml() {
+	return `<Extensions>
+	<Version>1.11</Version>
+	<Panel>
+		<Order>4</Order>
+		<PanelId>${ERROR_PANEL_ID}</PanelId>
+		<Origin>local</Origin>
+		<Location>HomeScreen</Location>
+		<Icon>Input</Icon>
+		<Color>#6B7280</Color>
+		<Name>Companion Unavailable</Name>
+		<ActivityType>Custom</ActivityType>
+	</Panel>
+</Extensions>`;
+}
 
 function buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial) {
 	const parentRowsXml = buildParentRowsXml(parentDevices, parentDeviceStatus);
@@ -177,8 +195,40 @@ function buildParentWidgetXml(parentDevice, parentStatus, index) {
 }
 
 async function savePanel(XAPIObject, parentDevices, parentDeviceStatus, activeParentSerial) {
+	await removePanel(XAPIObject, ERROR_PANEL_ID);
 	await XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: PANEL_ID }, buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial));
 	await setSelectedParent(XAPIObject, parentDevices, activeParentSerial);
+}
+
+async function saveErrorPanel(XAPIObject) {
+	await removePanel(XAPIObject, PANEL_ID);
+	await XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: ERROR_PANEL_ID }, buildErrorPanelXml());
+}
+
+async function removeErrorPanel(XAPIObject) {
+	await removePanel(XAPIObject, ERROR_PANEL_ID);
+}
+
+async function removePanel(XAPIObject, panelId) {
+	try {
+		await XAPIObject.Command.UserInterface.Extensions.Panel.Remove({ PanelId: panelId });
+	} catch (error) {
+		// Removing an absent panel is an expected idempotent operation.
+	}
+}
+
+function isErrorPanel(panelId) {
+	return String(panelId || '') === ERROR_PANEL_ID;
+}
+
+async function showErrorPrompt(XAPIObject) {
+	await XAPIObject.Command.UserInterface.Message.Prompt.Display({
+		Title: 'Companion Unavailable',
+		Text: 'Contact a Device Administrator.',
+		FeedbackId: ERROR_PROMPT_ID,
+		'Option.1': 'Dismiss',
+		Duration: 30
+	});
 }
 
 async function setSelectedParent(XAPIObject, parentDevices, activeParentSerial) {
@@ -396,9 +446,14 @@ function escapeXml(value) {
 
 const companionUi = {
 	PANEL_ID,
+	ERROR_PANEL_ID,
 	RELEASE_DEVICE_WIDGET_ID,
 	RELEASE_INFO_WIDGET_ID,
 	savePanel,
+	saveErrorPanel,
+	removeErrorPanel,
+	isErrorPanel,
+	showErrorPrompt,
 	setSelectedParent,
 	showReleaseInfo,
 	getCurrentWebWidget,

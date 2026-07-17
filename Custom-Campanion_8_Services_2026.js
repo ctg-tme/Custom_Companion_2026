@@ -39,15 +39,29 @@ or implied.
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
 
-const UI_FEATURE_CONFIGS = [
-	{ key: 'call', path: ['UserInterface', 'Features', 'Call', 'Start'], pairedValue: 'Hidden' },
-	{ key: 'share', path: ['UserInterface', 'Features', 'Share', 'Start'], pairedValue: 'Hidden' },
+const PAIRED_UI_FEATURE_POLICY = [
 	{ key: 'aiNotes', path: ['UserInterface', 'Features', 'Call', 'AINotes'], pairedValue: 'Hidden' },
-	{ key: 'webex', path: ['UserInterface', 'Features', 'Call', 'JoinWebex'], pairedValue: 'Hidden' },
+	{ key: 'audioMute', path: ['UserInterface', 'Features', 'Call', 'AudioMute'], pairedValue: 'Hidden' },
+	{ key: 'cameraControls', path: ['UserInterface', 'Features', 'Call', 'CameraControls'], pairedValue: 'Hidden' },
+	{ key: 'callEnd', path: ['UserInterface', 'Features', 'Call', 'End'], pairedValue: 'Hidden' },
+	{ key: 'hdmiPassthrough', path: ['UserInterface', 'Features', 'Call', 'HdmiPassthrough'], pairedValue: 'Hidden' },
+	{ key: 'googleMeet', path: ['UserInterface', 'Features', 'Call', 'JoinGoogleMeet'], pairedValue: 'Hidden' },
 	{ key: 'microsoftTeamsCvi', path: ['UserInterface', 'Features', 'Call', 'JoinMicrosoftTeamsCVI'], pairedValue: 'Hidden' },
 	{ key: 'microsoftTeamsDirectGuestJoin', path: ['UserInterface', 'Features', 'Call', 'JoinMicrosoftTeamsDirectGuestJoin'], pairedValue: 'Hidden' },
-	{ key: 'googleMeet', path: ['UserInterface', 'Features', 'Call', 'JoinGoogleMeet'], pairedValue: 'Hidden' },
+	{ key: 'webex', path: ['UserInterface', 'Features', 'Call', 'JoinWebex'], pairedValue: 'Hidden' },
 	{ key: 'zoom', path: ['UserInterface', 'Features', 'Call', 'JoinZoom'], pairedValue: 'Hidden' },
+	{ key: 'keypad', path: ['UserInterface', 'Features', 'Call', 'Keypad'], pairedValue: 'Hidden' },
+	{ key: 'layoutControls', path: ['UserInterface', 'Features', 'Call', 'LayoutControls'], pairedValue: 'Hidden' },
+	{ key: 'midCallControls', path: ['UserInterface', 'Features', 'Call', 'MidCallControls'], pairedValue: 'Hidden' },
+	{ key: 'musicMode', path: ['UserInterface', 'Features', 'Call', 'MusicMode'], pairedValue: 'Hidden' },
+	{ key: 'participantList', path: ['UserInterface', 'Features', 'Call', 'ParticipantList'], pairedValue: 'Auto' },
+	{ key: 'selfviewControls', path: ['UserInterface', 'Features', 'Call', 'SelfviewControls'], pairedValue: 'Hidden' },
+	{ key: 'simultaneousInterpretation', path: ['UserInterface', 'Features', 'Call', 'SimultaneousInterpretation'], pairedValue: 'Hidden' },
+	{ key: 'call', path: ['UserInterface', 'Features', 'Call', 'Start'], pairedValue: 'Hidden' },
+	{ key: 'videoMute', path: ['UserInterface', 'Features', 'Call', 'VideoMute'], pairedValue: 'Auto' },
+	{ key: 'webcam', path: ['UserInterface', 'Features', 'Call', 'Webcam'], pairedValue: 'Hidden' },
+	{ key: 'share', path: ['UserInterface', 'Features', 'Share', 'Start'], pairedValue: 'Hidden' },
+	{ key: 'whiteboard', path: ['UserInterface', 'Features', 'Whiteboard', 'Start'], pairedValue: 'Auto' },
 	{ key: 'scanToPair', path: ['BYOD', 'QRCodePairing'], pairedValue: 'Disabled' }
 ];
 const STANDBY_CONFIGS = [
@@ -241,8 +255,8 @@ async function ensureStandaloneUiFeatureConfig(options) {
 	let hasUpdates = false;
 	const standaloneConfig = options.standaloneUiFeatureConfig || {};
 
-	for (let index = 0; index < UI_FEATURE_CONFIGS.length; index++) {
-		const feature = UI_FEATURE_CONFIGS[index];
+	for (let index = 0; index < PAIRED_UI_FEATURE_POLICY.length; index++) {
+		const feature = PAIRED_UI_FEATURE_POLICY[index];
 
 		if (standaloneConfig[feature.key] !== undefined) {
 			continue;
@@ -306,8 +320,8 @@ async function ensureStandaloneStandbyConfig(options) {
 }
 
 function registerStandaloneUiFeatureSubscriptions(options) {
-	for (let index = 0; index < UI_FEATURE_CONFIGS.length; index++) {
-		const feature = UI_FEATURE_CONFIGS[index];
+	for (let index = 0; index < PAIRED_UI_FEATURE_POLICY.length; index++) {
+		const feature = PAIRED_UI_FEATURE_POLICY[index];
 		const node = getXapiConfigNode(options.xapi, feature.path);
 
 		if (!node || typeof node.on !== 'function') {
@@ -342,9 +356,13 @@ function registerStandaloneStandbySubscriptions(options) {
 }
 
 async function applyUiFeatureMode(options) {
-	for (let index = 0; index < UI_FEATURE_CONFIGS.length; index++) {
-		const feature = UI_FEATURE_CONFIGS[index];
-		const value = options.mode === 'StandAlone' ? options.standaloneUiFeatureConfig[feature.key] : feature.pairedValue;
+	for (let index = 0; index < PAIRED_UI_FEATURE_POLICY.length; index++) {
+		const feature = PAIRED_UI_FEATURE_POLICY[index];
+		let value = options.mode === 'StandAlone' ? options.standaloneUiFeatureConfig[feature.key] : feature.pairedValue;
+
+		if (options.mode === 'Paired' && feature.key === 'callEnd' && options.callEndOverride) {
+			value = options.callEndOverride;
+		}
 
 		if (value === undefined || value === null) {
 			continue;

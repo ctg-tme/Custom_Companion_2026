@@ -63,11 +63,19 @@ async function softError(options) {
 }
 
 
-async function hardError(options) {
-  const msg = options;
+function hardError(options) {
+  const diagnostic = options || {};
+  const error = diagnostic.Error instanceof Error
+    ? diagnostic.Error
+    : new Error(diagnostic.Context || 'Custom Companion hard error');
 
-  log.error(msg);
-  return;
+  error.Diagnostic = diagnostic;
+  if (diagnostic.Code && !error.code) {
+    error.code = diagnostic.Code;
+  }
+
+  log.error(diagnostic);
+  throw error;
 }
 
 const utils = {
