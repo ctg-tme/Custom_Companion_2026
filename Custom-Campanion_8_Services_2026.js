@@ -89,7 +89,7 @@ async function installParentMacrosOnOnlineParents(options) {
 			await options.deviceComms.installParentMacros(options.xapi, parentDevice, macroPayloads, options.installConfig, options.httpClientConfig);
 			options.log.info({ Message: 'Parent macro installation completed', Host: parentDevice.host, MacroName: options.installConfig.roomReferenceTargetMacroName });
 		} catch (error) {
-			options.log.warn({ Message: 'Parent macro installation failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown parent macro installation error' });
+			options.log.warn({ Message: 'Parent macro installation failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown parent macro installation error', ErrorContext: error.Context || {} });
 		}
 	}
 }
@@ -138,7 +138,7 @@ async function connectPeripheralToOnlineParents(options) {
 			options.log.info({ Message: 'Companion board initial peripheral heartbeat HTTP response', Host: parentDevice.host, Response: sanitizeHttpResponse(heartbeatResponse), Timeout: options.initialHeartbeatTimeout });
 			options.log.info({ Message: 'Companion board peripheral connected to parent', Host: parentDevice.host, PeripheralID: peripheralInfo.ID, Type: peripheralInfo.Type });
 		} catch (error) {
-			options.log.warn({ Message: 'Companion board peripheral connect failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown peripheral connect error' });
+			options.log.warn({ Message: 'Companion board peripheral connect failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown peripheral connect error', ErrorContext: error.Context || {} });
 		}
 	}
 
@@ -669,6 +669,7 @@ const boardServices = {
 	getUserInterfaceThemeName,
 	registerUserInterfaceThemeSubscription,
 	applyUiFeatureMode,
+	applyWebWidgetMode,
 	applyStandbyMode,
 	applyStandbySyncState,
 	disconnectAllCalls,

@@ -5,12 +5,12 @@ Custom Companion 2026 is a Cisco RoomOS macro solution for Board Pro Series endp
 ## High-Level Scope
 
 - Maintain a board-local list of parent room devices using `Memory-Storage-Functions-V2`.
-- Provide a PIN-protected custom UI for adding, validating, confirming, listing, and removing parent devices.
+- Provide the Companion Device Select UI for listing configured parents, selecting an online parent, and returning the board to StandAlone. The visible Config/PIN widgets are placeholders; parent-management and PIN behavior are not implemented in the current runtime.
 - Initialize and use RoomOS HTTPClient for device-to-device communication.
 - Use Message API and putxml-based routing to sanitize and handle custom communication between the movable board and parent room devices.
-- Hide base board UI surfaces except whiteboard, files, and solution-owned custom UI elements.
-- When a parent room joins a call, instruct the movable board to join the same meeting or call context.
-- Keep the board camera muted by default, microphones muted, and volume effectively inaudible while preventing accidental user changes where needed.
+- Apply an explicit Paired UI policy that keeps Video Mute, Participants, and Whiteboard available while hiding the other known call/share controls; native Raise Hand remains subject to device acceptance testing.
+- When a parent room joins a supported Webex call, instruct the movable board to join the same call context.
+- Keep microphones muted and volume at level 1 while Paired, while leaving Video Mute available as a user control.
 
 ## Current Runtime Roles
 
@@ -21,27 +21,25 @@ Custom Companion 2026 is a Cisco RoomOS macro solution for Board Pro Series endp
 
 ## Initialization
 
-The companion board initializes first. It loads local state, validates known parent devices, installs the parent-side runtime package, connects itself as a peripheral, and asks each online parent to confirm that the runtime is ready before sending board-owned configuration.
+The companion board initializes first. It registers the error-panel interaction, initializes HTTPClient and MemoryStorage, loads local state, registers call/media subscriptions, validates known parent devices, applies local mode policy, installs the parent-side runtime package, connects itself as a peripheral, and asks each online parent to confirm that the runtime is ready before sending board-owned configuration. HTTPClient or MemoryStorage failure stops initialization, logs a stable administrator diagnostic, removes `cc26`, and installs the gray widgetless `cc26_error` action panel.
 
 ```mermaid
 flowchart TD
-	A[Custom-Campanion_1_Main_2026 starts] --> B[Enable HTTPClient]
-	B --> C[Initialize MemoryStorage]
-	C --> D[Read parentDevices]
-	D --> E{More than 6 parents?}
-	E -- Yes --> F[Trim parentDevices to first 6 and write memory]
-	E -- No --> G[Read activeParentSerial]
-	F --> G
-	G --> H[Read standalone UI feature config]
-	H --> I[Refresh parent identities with HTTP GET]
-	I --> J[Apply standalone or paired UI feature mode]
-	J --> K[Render Companion Device Select panel]
-	K --> L[Subscribe to Message.Send]
-	L --> M[Install parent runtime package on online parents]
-	M --> N[Connect board as parent peripheral]
-	N --> O[Send initial peripheral heartbeat]
-	O --> P[Send ParentReadyRequest]
-	P --> Q[Start parent status and heartbeat interval]
+	A[Custom-Campanion_1_Main_2026 starts] --> B[Register UI handlers]
+	B --> C[Enable HTTPClient]
+	C --> D[Initialize MemoryStorage]
+	C -- Failure --> X[Log diagnostic and install cc26_error]
+	D -- Failure --> X
+	D --> E[Read stored parent and mode state]
+	E --> F[Register message, call-count, microphone-mute, and volume subscriptions]
+	F --> G[Perform initial call, UI, standby, and media reads]
+	G --> H[Refresh parent identities with HTTP GET]
+	H --> I[Apply StandAlone or Paired policy]
+	I --> J[Render Companion Device Select panel]
+	J --> K[Install parent runtime package on online parents]
+	K --> L[Connect board as parent peripheral]
+	L --> M[Send initial heartbeat and ParentReadyRequest]
+	M --> N[Start parent status and heartbeat interval]
 ```
 
 ## Parent Macro Installation
@@ -69,7 +67,9 @@ flowchart TD
 
 ## Codec to Codec Communication
 
-Codec-to-codec commands use the board or parent HTTPClient to post XML to the remote codec `/putxml` endpoint. Custom application messages are carried inside RoomOS `Message.Send` as a JSON envelope.
+Codec-to-codec commands use the board or parent HTTPClient to post XML to the remote codec `/putxml` endpoint. Custom application messages are carried inside RoomOS `Message.Send` as a JSON envelope. DeviceComms is the only HTTPClient call site: it allows three active requests, limits the pending queue to 50, applies an internal three-second timeout, requests `PlainText` response bodies, accepts only HTTP 200–299, and never retries. Equivalent periodic identity, call-status, and heartbeat work is coalesced; all other state-changing commands are admitted FIFO and never coalesced.
+
+DeviceComms parses the RoomOS response XML without external dependencies. The QuickJS-compatible parser supports declarations, comments, elements, self-closing elements, attributes, repeated siblings, text, standard/numeric entities, and CDATA. It rejects malformed XML, document-type/entity declarations, non-2xx responses, `<Error>` elements, and `status="Error"` markers. Administrator diagnostics include stable codes plus method, host, path, status/reason when available, and a bounded response excerpt; credentials and submitted payloads are not logged.
 
 ```mermaid
 sequenceDiagram
@@ -184,18 +184,25 @@ If the parent accepts or denies configuration but cannot send the response back 
 
 ## Parent Selection and Ongoing Heartbeat
 
-The board keeps tracking parent availability and maintains the active parent peripheral heartbeat.
+The board keeps tracking parent availability and maintains the active parent peripheral heartbeat. Selecting a parent runs a serial-verified identity check with up to five attempts and five seconds between completed failures. `info3` shows `Connecting to {room} — attempt {N} of 5`. A failed selection never restores the previous parent: the board enters StandAlone, shows the neutral `Room Unavailable` prompt, and displays `Unable to connect to {room}. Running Stand Alone.` for 60 seconds.
+
+An active Paired parent that becomes unavailable follows the same five-attempt path. If the board has no active call, it enters StandAlone. If a call is active, it enters Call Preservation State, keeps the current parent assignment and call intact, exposes the native End Call control, and continues one serial-verified network attempt every five seconds. `info3` remains `{room} is temporarily unavailable. Your call will continue.` until communication recovers or the call ends. A matching serial response restores normal Paired controls; a call ending before recovery returns the board to StandAlone.
 
 ```mermaid
 flowchart TD
-	A[30 second interval fires] --> B[Refresh parent identities and reachability]
-	B --> C{Availability changed?}
-	C -- Yes --> D[Re-render Companion Device Select panel]
-	C -- No --> E[Keep current UI]
-	D --> F{Active parent online?}
-	E --> F
-	F -- Yes --> G[Send Peripherals.HeartBeat with 40 second timeout]
-	F -- No --> H[Log active parent offline and skip heartbeat]
+	A[30 second interval fires] --> B{Selection or recovery already active?}
+	B -- Yes --> C[Skip overlapping interval work]
+	B -- No --> D[Refresh parent identities]
+	D --> E{Selected parent serial verified?}
+	E -- Yes --> F[Send Peripherals.HeartBeat]
+	E -- No --> G[Run five connection attempts]
+	G --> H{Board call active?}
+	H -- No --> I[Enter StandAlone]
+	H -- Yes --> J[Enter Call Preservation]
+	J --> K{Serial resynchronized?}
+	K -- Yes --> F
+	K -- No, call ended --> I
+	K -- No, call active --> J
 ```
 
 ## UI Feature Mode
@@ -204,7 +211,11 @@ The board switches between standalone and paired behavior based on the active pa
 
 `config.UserInterface.WebWidget.CompanionWidget.enabled` is `true` by default. The board reads the current Web Widget from `Status.UserInterface.WebView` and saves its URL and restore metadata once into memory. By default, Companion Widget is shown in both standalone and paired modes; set `config.UserInterface.WebWidget.CompanionWidget.restoreStandaloneExisting` to `true` to restore the original Web Widget when unpaired. In paired mode, the board removes its own Companion widget when needed with `UserInterface.Extensions.WebWidget.Remove`, then saves the built-in Simple-WebWidget URL with hash parameters unless `config.UserInterface.WebWidget.urlOverride` is supplied. Configurable CompanionWidget hash fields include weather.mode, weather.latitude, weather.longitude, weather.temperatureUnit, time.mode, time.timeZone, context-specific info2, context-specific info3, and context-specific iconUrl. The board supplies theme, heading, info1, and `hideSettings=true` in code, and re-saves the widget if `UserInterface Theme Name` changes.
 
-Standalone standby preferences are saved in board memory for `Standby Control`, `Standby Halfwake Mode`, and `Time OfficeHours Enabled`. In paired mode, the board forces those values to `Off`, `Manual`, and `False` so it does not enter standby independently. When a parent is selected, the board clears any pending standby sync or bypass state, reads that parent's current `Status.Standby.State` directly, and shows one 30-second prompt before applying `Off`, `Standby`, or `Halfwake`. Parent rooms also subscribe to `Status.Standby.State` and send debounced `StandbySync` messages to registered boards; after pairing, the board follows those active-parent standby commands immediately without showing a prompt. The board ignores `EnteringStandby`. A user can start 5-minute or 30-minute bypass windows; while bypass is active, parent standby commands are ignored and the Web Widget `info3` shows `Standby sync bypass until HH:MM AM/PM`.
+Standalone standby preferences are saved in board memory for `Standby Control`, `Standby Halfwake Mode`, and `Time OfficeHours Enabled`. In paired mode, the board forces those values to `Off`, `Manual`, and `False` so it does not enter standby independently. When a parent is selected, the board clears any pending standby sync or bypass state, reads that parent's current `Status.Standby.State` directly, and shows one 30-second prompt before applying `Off`, `Standby`, or `Halfwake`. Parent rooms also subscribe to `Status.Standby.State` and send debounced `StandbySync` messages to registered boards; after pairing, the board follows those active-parent standby commands immediately without showing a prompt. The board ignores `EnteringStandby`. A user can start 5-minute or 30-minute bypass windows; while bypass is active, parent standby commands are ignored and the Web Widget `info3` shows `Standby sync bypass until HH:MM AM/PM`. Runtime `info3` precedence is parent connectivity/Call Preservation, call synchronization, then standby.
+
+The editable Paired UI policy is in `Custom-Campanion_8_Services_2026`. It captures supported StandAlone values and restores them on release. Video Mute, Participant List, and Whiteboard Start are set to `Auto`; the other known call controls plus Share Start are set to `Hidden`. Call End is `Hidden` during normal Paired operation and temporarily `Auto` during Call Preservation or an active-call Unhealthy State. Unsupported optional feature paths are logged and skipped. Because RoomOS does not expose a dedicated Raise Hand visibility configuration, device acceptance must confirm Raise Hand remains available with MidCallControls hidden.
+
+While Paired, the board performs initial reads and subscribes to `Status.Audio.Microphones.Mute` and `Status.Audio.Volume`. An observed unmute invokes `Command.Audio.Microphones.Mute` once; a volume other than 1 invokes `Command.Audio.Volume.Set` once with `Level: 1` and no `Device` parameter. Local command failures are not retried. Leaving Paired keeps the microphone state muted. If no call is active, the board immediately reads `Config.Audio.DefaultVolume`, restores that value, and reminds the user to unmute. If a call is active, the board enters StandAlone immediately and asks whether to restore volume; decline, dismissal, or prompt failure leaves the level unchanged.
 
 ```mermaid
 flowchart TD
@@ -218,6 +229,26 @@ flowchart TD
 	H --> I[Hide paired-mode UI features]
 	I --> J[Send active parent heartbeat]
 ```
+
+## Unhealthy State and Administrator Communication
+
+Required local prerequisite failures and required Paired microphone/volume enforcement failures enter an Unhealthy State. The console logs a stable code, component, context, remediation, and original error without credentials. The normal selection panel is replaced by the gray widgetless `cc26_error` action panel, blocking parent selection. Clicking it shows `Contact a Device Administrator.` for up to 30 seconds with a Dismiss option. Recovery requires correcting the local macro/xAPI issue and restarting the Macro Runtime; no background initialization retry or self-restart is attempted.
+
+If required media enforcement fails during an active call, the board remains assigned, exposes End Call, and leaves the call, microphone, and volume unchanged. When the call ends it enters StandAlone, attempts the now-safe default-volume restoration once, and remains Unhealthy until restart.
+
+## Explicit RoomOS xAPI Contracts
+
+| Purpose | Initial read or command | Subscription |
+| --- | --- | --- |
+| Local call safety | `xapi.Status.SystemUnit.State.NumberOfActiveCalls.get()` | `xapi.Status.SystemUnit.State.NumberOfActiveCalls.on(...)` |
+| Paired microphone enforcement | `xapi.Status.Audio.Microphones.Mute.get()` and `xapi.Command.Audio.Microphones.Mute()` | `xapi.Status.Audio.Microphones.Mute.on(...)` |
+| Paired volume enforcement | `xapi.Status.Audio.Volume.get()` and `xapi.Command.Audio.Volume.Set({ Level: 1 })` | `xapi.Status.Audio.Volume.on(...)` |
+| StandAlone volume restoration | `xapi.Config.Audio.DefaultVolume.get()` and `xapi.Command.Audio.Volume.Set({ Level })` | None; current default is read at the release boundary |
+| Error action button | `xapi.Command.UserInterface.Extensions.Panel.Save/Remove` | `xapi.Event.UserInterface.Extensions.Panel.Clicked.on(...)`, gated to `cc26_error` |
+| Parent identity | `xapi.Command.HttpClient.Get` for `/getxml?location=/Status/SystemUnit` | Five-second workflow retries; no HTTP transport retry |
+| Parent standby | `xapi.Command.HttpClient.Get` for `/getxml?location=/Status/Standby/State` | Parent `xapi.Status.Standby.State.on(...)` sends `StandbySync` |
+| Board call validation | `xapi.Command.HttpClient.Get` for `/getxml?location=/Status/Call` | Parent admission workflow invokes the queued read |
+| Remote commands/messages | `xapi.Command.HttpClient.Post` to `/putxml` | Remote `xapi.Event.Message.Send.on(...)` receives Custom Companion envelopes |
 
 ## Custom Routes and Actions
 

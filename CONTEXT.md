@@ -38,11 +38,13 @@ During Call Preservation, `info3` remains visible with `{room} is temporarily un
 
 RoomOS HTTPClient requests use an internal three-second timeout. The timeout is an implementation policy in DeviceComms, not deployment configuration, so developers can tune it without expanding the administrator-facing configuration surface.
 
-Repeatable periodic parent identity checks and heartbeats are coalesced by parent and operation while an equivalent request is queued or in flight. State-changing requests remain ordered and are never coalesced.
+Repeatable periodic parent identity, call-status, and heartbeat requests are coalesced by parent and operation while an equivalent request is queued or in flight. All other state-changing requests are admitted FIFO and are never coalesced.
 
 The shared HTTP queue has an internal global capacity of 50 pending requests. When full, the new request fails immediately with a stable administrator-facing transport code; an already queued request is never evicted. Queue capacity is an internal DeviceComms policy rather than deployment configuration.
 
 The shared transport does not retry requests. Retry ownership remains explicit in the calling workflow: parent reachability uses its defined retry policy, periodic heartbeats retry on their next cycle, and state-changing `/putxml` commands are not replayed after an ambiguous failure.
+
+HTTPClient requests explicitly ask RoomOS for `PlainText` response bodies so response validation can inspect XML. The QuickJS parser accepts the RoomOS response subset—declarations, comments, elements, self-closing elements, attributes, repeated siblings, text, standard and numeric entities, and CDATA—and rejects malformed XML, document-type declarations, and custom entities.
 
 ## Local xAPI Commands
 
@@ -50,7 +52,7 @@ Local xAPI commands are attempted once and are never retried. A local command fa
 
 A failed required paired microphone-mute or volume-level enforcement command immediately enters the Unhealthy State. The console identifies the failed enforcement path with a stable diagnostic code, the normal `cc26` panel is replaced by `cc26_error`, and parent selection remains blocked until the Macro Runtime restarts. Optional UI feature-policy paths are logged and skipped when unavailable.
 
-If required media enforcement fails during an active call, the companion board remains assigned to its current parent until that call ends. The native End Call control and `cc26_error` action button are shown; volume, microphone mute, parent assignment, and the active call are otherwise left unchanged. When the call ends, the board releases to StandAlone but remains Unhealthy and blocks parent selection until restart.
+If required media enforcement fails during an active call, the companion board remains assigned to its current parent until that call ends. The native End Call control and `cc26_error` action button are shown; volume, microphone mute, parent assignment, and the active call are otherwise left unchanged. When the call ends, the board releases to StandAlone and attempts the now-safe default-volume restoration once, but remains Unhealthy and blocks parent selection until restart.
 
 ## Paired UI Feature Policy
 

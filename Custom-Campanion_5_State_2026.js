@@ -53,7 +53,13 @@ async function readMemoryOrDefault(mem, key, defaultValue, utils) {
 			return defaultValue;
 		}
 
-		utils.hardError({ Context: `Failed to fetch memory key [${key}]`, Error: error });
+		utils.hardError({
+			Code: 'CC26-INIT-MEMORY',
+			Component: 'MemoryStorage',
+			Context: `Failed to fetch memory key [${key}]`,
+			Remediation: 'Verify Memory-Storage-Functions-V2 and the generated storage macro, then restart the Macro Runtime.',
+			Error: error
+		});
 		return defaultValue;
 	}
 }
@@ -67,7 +73,13 @@ async function readMemoryOrInitialize(mem, key, defaultValue, utils) {
 			return defaultValue;
 		}
 
-		utils.hardError({ Context: `Failed to fetch memory key [${key}]`, Error: error });
+		utils.hardError({
+			Code: 'CC26-INIT-MEMORY',
+			Component: 'MemoryStorage',
+			Context: `Failed to fetch memory key [${key}]`,
+			Remediation: 'Verify Memory-Storage-Functions-V2 and the generated storage macro, then restart the Macro Runtime.',
+			Error: error
+		});
 		return defaultValue;
 	}
 }
@@ -84,6 +96,11 @@ async function refreshParentDeviceIdentities(options) {
 
 		try {
 			const refreshedDevice = await options.deviceComms.parentInitializationRequest(options.xapi, device, options.httpClientConfig);
+			if (device.serial && refreshedDevice.serial !== device.serial) {
+				const mismatchError = new Error('Parent identity serial changed for an existing parent record');
+				mismatchError.code = 'CC26-PARENT-IDENTITY-MISMATCH';
+				throw mismatchError;
+			}
 			const updatedDevice = {
 				serial: refreshedDevice.serial,
 				name: refreshedDevice.name,
@@ -116,7 +133,7 @@ async function refreshParentDeviceIdentities(options) {
 				lastError: error.code || error.message || 'Unknown parent refresh error',
 				lastHeartbeat: device.lastHeartbeat || ''
 			});
-			errorLog({ Message: 'Parent device identity refresh failed', Host: device.host, Error: error.code || error.message || 'Unknown parent refresh error' });
+			errorLog({ Message: 'Parent device identity refresh failed', Host: device.host, Error: error.code || error.message || 'Unknown parent refresh error', ErrorContext: error.Context || {} });
 		}
 	}
 
@@ -133,25 +150,80 @@ async function refreshParentDeviceIdentities(options) {
 
 async function refreshParentStatusWithRetries(options) {
 	let latestStatus = null;
-	let parentDeviceStatus = options.parentDeviceStatus;
-	let parentDevices = options.parentDevices;
+	let parentDeviceStatus = (options.parentDeviceStatus || []).slice();
+	let parentDevices = (options.parentDevices || []).slice();
+	const retryDelayMs = Number(options.retryDelayMs) || 0;
 
-	for (let attempt = 0; attempt < options.retryCount; attempt++) {
-		const refreshResult = await refreshParentDeviceIdentities({
-			xapi: options.xapi,
-			mem: options.mem,
-			parentDevices: parentDevices,
-			deviceComms: options.deviceComms,
-			httpClientConfig: options.httpClientConfig,
-			log: options.log,
-			isInterval: true
-		});
-		parentDevices = refreshResult.parentDevices;
-		parentDeviceStatus = refreshResult.parentDeviceStatus;
-		latestStatus = parentDeviceStatus.find(status => status.host === options.parentDevice.host || status.serial === options.parentDevice.serial) || null;
+	for (let attempt = 1; attempt <= options.retryCount; attempt++) {
+		if (options.isCanceled && options.isCanceled()) {
+			return { parentDevices, parentDeviceStatus, parentStatus: latestStatus, canceled: true, attempt: attempt };
+		}
 
-		if (latestStatus && latestStatus.online) {
-			return { parentDevices, parentDeviceStatus, parentStatus: latestStatus };
+		if (options.onAttempt) {
+			await options.onAttempt(attempt, options.retryCount);
+		}
+
+		try {
+			const refreshedDevice = await options.deviceComms.parentInitializationRequest(options.xapi, options.parentDevice, options.httpClientConfig);
+			if (options.expectedSerial && refreshedDevice.serial !== options.expectedSerial) {
+				const mismatchError = new Error('Parent identity serial did not match the selected parent');
+				mismatchError.code = 'CC26-PARENT-IDENTITY-MISMATCH';
+				throw mismatchError;
+			}
+
+			if (options.isCanceled && options.isCanceled()) {
+				return { parentDevices, parentDeviceStatus, parentStatus: latestStatus, canceled: true, attempt: attempt };
+			}
+
+			const parentIndex = parentDevices.findIndex(device => device.host === options.parentDevice.host || device.serial === options.parentDevice.serial);
+			const updatedDevice = {
+				serial: refreshedDevice.serial,
+				name: refreshedDevice.name,
+				host: options.parentDevice.host,
+				username: options.parentDevice.username,
+				password: options.parentDevice.password
+			};
+			if (parentIndex >= 0) {
+				const existingDevice = parentDevices[parentIndex];
+				parentDevices[parentIndex] = updatedDevice;
+				if (existingDevice.serial !== updatedDevice.serial || existingDevice.name !== updatedDevice.name) {
+					await options.mem.write(PARENT_DEVICES_STORAGE_KEY, parentDevices);
+				}
+			}
+
+			latestStatus = {
+				host: updatedDevice.host,
+				serial: updatedDevice.serial,
+				name: updatedDevice.name,
+				online: true,
+				lastHeartbeat: new Date().toISOString(),
+				lastError: ''
+			};
+			parentDeviceStatus = replaceParentStatus(parentDeviceStatus, latestStatus, options.parentDevice);
+
+			return { parentDevices, parentDeviceStatus, parentStatus: latestStatus, canceled: false, attempt: attempt };
+		} catch (error) {
+			latestStatus = {
+				host: options.parentDevice.host,
+				serial: options.parentDevice.serial,
+				name: options.parentDevice.name,
+				online: false,
+				lastError: error.code || error.message || 'Unknown parent refresh error',
+				lastHeartbeat: ''
+			};
+			parentDeviceStatus = replaceParentStatus(parentDeviceStatus, latestStatus, options.parentDevice);
+			options.log.debug({
+				Message: 'Parent connection attempt failed',
+				Host: options.parentDevice.host,
+				Attempt: attempt,
+				AttemptCount: options.retryCount,
+				Error: latestStatus.lastError,
+				ErrorContext: error.Context || {}
+			});
+		}
+
+		if (attempt < options.retryCount && retryDelayMs > 0) {
+			await delay(retryDelayMs);
 		}
 	}
 
@@ -165,8 +237,25 @@ async function refreshParentStatusWithRetries(options) {
 			online: false,
 			lastError: 'Parent offline after retry',
 			lastHeartbeat: ''
-		}
+		},
+		canceled: false,
+		attempt: options.retryCount
 	};
+}
+
+function replaceParentStatus(parentDeviceStatus, replacementStatus, parentDevice) {
+	const updatedStatus = parentDeviceStatus.slice();
+	const statusIndex = updatedStatus.findIndex(status => status.host === parentDevice.host || status.serial === parentDevice.serial);
+	if (statusIndex >= 0) {
+		updatedStatus[statusIndex] = replacementStatus;
+	} else {
+		updatedStatus.push(replacementStatus);
+	}
+	return updatedStatus;
+}
+
+function delay(milliseconds) {
+	return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
 function createBoardState(parentSerial, parentDevices, companionBoardInformation) {

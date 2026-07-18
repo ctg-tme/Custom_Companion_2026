@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 10, 2026
- * Version:                 0.1.2.24
+ * Version:                 0.1.2.25
  *
  * Description:             Main orchestrator for the Custom Companion Solution for Board Series endpoints with Wheel Kits.
  *
@@ -56,7 +56,12 @@ const PARENT_STATUS_INTERVAL_MS = 30000;
 const INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS = 5;
 const ACTIVE_PARENT_HEARTBEAT_TIMEOUT_SECONDS = 40;
 const OFFLINE_PARENT_SELECTION_RETRY_COUNT = 5;
+const PARENT_CONNECTION_RETRY_DELAY_MS = 5000;
+const PARENT_CONNECTION_FAILURE_INFO_MS = 60000;
+const REQUIRED_PAIRED_VOLUME_LEVEL = 1;
+const ALLOW_STANDALONE_DURING_ACTIVE_CALL = true;
 const STANDBY_SYNC_PROMPT_ID = 'cc26_standby_sync';
+const RESTORE_VOLUME_PROMPT_ID = 'cc26_restore_volume';
 const STANDBY_SYNC_APPLY_DELAY_MS = 30000;
 const STANDBY_SYNC_PROMPT_REFRESH_MS = 5000;
 const STANDBY_SYNC_SHORT_BYPASS_MS = 5 * 60 * 1000;
@@ -112,28 +117,99 @@ let callSyncInfoText = '';
 let callSyncToken = 0;
 let lastWebexCallSyncPayload = null;
 let isCallRejoinInProgress = false;
+let parentConnectivityInfoText = '';
+let parentConnectivityClearTimer = null;
+let parentConnectionToken = 0;
+let activeParentRecoveryPromise = null;
+let isCallPreservationActive = false;
+let isUnhealthy = false;
+let unhealthyReleasePending = false;
+let areUiEventHandlersRegistered = false;
+let isEnforcingMicrophoneMute = false;
+let isEnforcingVolume = false;
+let isVolumeRestorePromptActive = false;
 
 async function init() {
-	try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
-	try { await mem.init() } catch (error) { utils.hardError({ Context: 'Failed to initialize memory', Error: error }) };
+	try {
+		registerUiEventHandlers();
+		try {
+			await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG);
+		} catch (error) {
+			utils.hardError({
+				Code: 'CC26-INIT-HTTPCLIENT',
+				Component: 'BoardMain',
+				Context: 'Failed to initialize RoomOS HTTPClient',
+				Remediation: 'Correct the HTTPClient configuration or macro permissions, then restart the Macro Runtime.',
+				Error: error
+			});
+		}
 
-	await loadMemoryState();
-	await initializeUiFeatureMode();
-	await initializeStandbyMode();
-	await refreshParents({ isInterval: false });
-	boardState = createBoardState(activeParentSerial);
-	await applyUiFeatureMode(boardState.mode);
-	await applyStandbyMode(boardState.mode);
-	await renderSelectDeviceUi();
-	registerCompanionMessageHandlers();
-	await installParentMacrosOnOnlineParents();
-	await connectPeripheralToOnlineParents();
-	registerUiEventHandlers();
-	registerBoardCallCountHandler();
-	startParentStatusInterval();
+		try {
+			await mem.init();
+		} catch (error) {
+			utils.hardError({
+				Code: 'CC26-INIT-MEMORY',
+				Component: 'BoardMain',
+				Context: 'Failed to initialize Memory-Storage-Functions-V2',
+				Remediation: 'Verify the Memory-Storage-Functions-V2 dependency and storage macro, then restart the Macro Runtime.',
+				Error: error
+			});
+		}
 
-	companionState.warnIfCredentialsAreStored(parentDevices, log);
-	log.info({ Message: 'Custom Campanion initialized', Version: config.version, ActiveParent: boardState.activeParent.name });
+		await loadMemoryState();
+		registerCompanionMessageHandlers();
+		registerBoardCallCountHandler();
+		registerPairedMediaHandlers();
+		await initializeBoardActiveCallCount();
+		await initializeUiFeatureMode();
+		await initializeStandbyMode();
+		await refreshParents({ isInterval: false });
+		boardState = createBoardState(activeParentSerial);
+		await applyUiFeatureMode(boardState.mode);
+		await applyStandbyMode(boardState.mode);
+		if (boardState.mode === 'Paired') {
+			await enforceInitialPairedMediaState();
+		}
+		if (isUnhealthy) {
+			return;
+		}
+		await renderSelectDeviceUi();
+		await installParentMacrosOnOnlineParents();
+		await connectPeripheralToOnlineParents();
+		startParentStatusInterval();
+		await evaluateActiveParentAvailability();
+
+		companionState.warnIfCredentialsAreStored(parentDevices, log);
+		log.info({ Message: 'Custom Campanion initialized', Version: config.version, ActiveParent: boardState.activeParent.name });
+	} catch (error) {
+		await handleInitializationFailure(error);
+	}
+}
+
+async function handleInitializationFailure(error) {
+	const diagnostic = error.Diagnostic || {};
+	isUnhealthy = true;
+	stopParentStatusInterval();
+	log.error({
+		Message: 'Custom Campanion board initialization stopped',
+		Code: diagnostic.Code || error.code || 'CC26-INIT-UNKNOWN',
+		Component: diagnostic.Component || 'BoardMain',
+		Context: diagnostic.Context || 'Unhandled initialization failure',
+		Remediation: diagnostic.Remediation || 'Diagnose the logged xAPI failure, then restart the Macro Runtime.',
+		Error: error
+	});
+
+	try {
+		await companionUi.saveErrorPanel(xapi);
+	} catch (panelError) {
+		log.error({
+			Code: 'CC26-INIT-ERROR-PANEL',
+			Component: 'CompanionUI',
+			Context: 'Failed to install the Companion Unavailable action panel',
+			Remediation: 'Diagnose the UserInterface Extensions xAPI failure, then restart the Macro Runtime.',
+			Error: panelError
+		});
+	}
 }
 
 async function loadMemoryState() {
@@ -290,17 +366,35 @@ function startParentStatusInterval() {
 	}, PARENT_STATUS_INTERVAL_MS);
 }
 
+function stopParentStatusInterval() {
+	if (parentStatusInterval) {
+		clearInterval(parentStatusInterval);
+	}
+	parentStatusInterval = null;
+}
+
 async function runParentStatusInterval() {
+	if (isUnhealthy || isHandlingSelection || activeParentRecoveryPromise) {
+		return;
+	}
+
 	const previousAvailabilitySignature = getParentAvailabilitySignature();
 	await refreshParents({ isInterval: true });
 	const currentAvailabilitySignature = getParentAvailabilitySignature();
 	if (previousAvailabilitySignature !== currentAvailabilitySignature) {
 		await renderSelectDeviceUi();
 	}
-	await sendActiveParentHeartbeat();
+	await evaluateActiveParentAvailability();
+	if (!activeParentRecoveryPromise && !isCallPreservationActive) {
+		await sendActiveParentHeartbeat();
+	}
 }
 
 async function renderSelectDeviceUi() {
+	if (isUnhealthy) {
+		return;
+	}
+
 	try {
 		await companionUi.savePanel(xapi, parentDevices, parentDeviceStatus, activeParentSerial);
 	} catch (error) {
@@ -309,6 +403,11 @@ async function renderSelectDeviceUi() {
 }
 
 function registerUiEventHandlers() {
+	if (areUiEventHandlersRegistered) {
+		return;
+	}
+	areUiEventHandlersRegistered = true;
+
 	xapi.Event.UserInterface.Extensions.Widget.Action.on(event => {
 		handleWidgetAction(event).catch(error => {
 			utils.softError({ Context: 'Failed to handle UI widget action', Event: event, Error: error });
@@ -320,10 +419,23 @@ function registerUiEventHandlers() {
 			utils.softError({ Context: 'Failed to handle prompt response', Event: event, Error: error });
 		});
 	});
+
+	xapi.Event.UserInterface.Extensions.Panel.Clicked.on(event => {
+		handlePanelClicked(event).catch(error => {
+			utils.softError({ Context: 'Failed to handle UI panel click', Event: event, Error: error });
+		});
+	});
 }
 
 async function handlePromptResponse(event) {
-	if (!event || event.FeedbackId !== STANDBY_SYNC_PROMPT_ID) {
+	if (!event) {
+		return;
+	}
+	if (event.FeedbackId === RESTORE_VOLUME_PROMPT_ID) {
+		await handleRestoreVolumePromptResponse(event);
+		return;
+	}
+	if (event.FeedbackId !== STANDBY_SYNC_PROMPT_ID) {
 		return;
 	}
 
@@ -342,8 +454,18 @@ async function handlePromptResponse(event) {
 	}
 }
 
+async function handlePanelClicked(event) {
+	if (!event || !companionUi.isErrorPanel(event.PanelId)) {
+		return;
+	}
+	await companionUi.showErrorPrompt(xapi);
+}
+
 async function handleWidgetAction(event) {
 	if (!event || event.Type !== 'released' || !companionUi.isSelectDeviceWidget(event.WidgetId)) {
+		return;
+	}
+	if (isUnhealthy) {
 		return;
 	}
 
@@ -375,14 +497,16 @@ async function handleWidgetAction(event) {
 }
 
 async function selectStandAloneMode() {
-	clearStandbySyncState();
-	activeParentSerial = companionState.STAND_ALONE_PARENT_SERIAL;
-	boardState = createBoardState(activeParentSerial);
-	await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
-	await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
-	await applyUiFeatureMode(boardState.mode);
-	await applyStandbyMode(boardState.mode);
-	log.info({ Message: 'Companion board released to StandAlone mode' });
+	if (!ALLOW_STANDALONE_DURING_ACTIVE_CALL && await isBoardInActiveCall()) {
+		await xapi.Command.UserInterface.Message.Prompt.Display({
+			Title: 'Call In Progress',
+			Text: 'End the active call before running this board Stand Alone.',
+			Duration: 10
+		});
+		return;
+	}
+
+	await transitionToStandalone({ Reason: 'UserSelection' });
 }
 
 async function selectParentByIndex(parentIndex) {
@@ -391,42 +515,461 @@ async function selectParentByIndex(parentIndex) {
 	if (!parentDevice) {
 		return;
 	}
+	isVolumeRestorePromptActive = false;
+	await companionUi.clearPrompt(xapi, RESTORE_VOLUME_PROMPT_ID);
 
-	let parentStatus = findParentStatus(parentDevice);
-
-	if (!parentStatus || !parentStatus.online) {
-		const refreshResult = await companionState.refreshParentStatusWithRetries({
-			xapi: xapi,
-			mem: mem,
-			parentDevices: parentDevices,
-			parentDeviceStatus: parentDeviceStatus,
-			parentDevice: parentDevice,
-			retryCount: OFFLINE_PARENT_SELECTION_RETRY_COUNT,
-			deviceComms: deviceComms,
-			httpClientConfig: HTTP_CLIENT_CONFIG,
-			log: log
-		});
-		parentDevices = refreshResult.parentDevices;
-		parentDeviceStatus = refreshResult.parentDeviceStatus;
-		parentStatus = refreshResult.parentStatus;
-		await renderSelectDeviceUi();
+	cancelParentConnectionWork(true);
+	const connectionToken = parentConnectionToken;
+	const refreshResult = await runParentConnectionAttempts(parentDevice, connectionToken, OFFLINE_PARENT_SELECTION_RETRY_COUNT, true);
+	if (refreshResult.canceled) {
+		return;
 	}
+	await renderSelectDeviceUi();
 
-	if (!parentStatus.online) {
-		await showSelectedParentOfflinePrompt(parentDevice);
+	if (!refreshResult.parentStatus || !refreshResult.parentStatus.online) {
+		await finishParentUnavailableFallback(parentDevice, connectionToken);
 		return;
 	}
 
+	const parentStatus = refreshResult.parentStatus;
+	const refreshedParentDevice = findParentDeviceBySerial(parentStatus.serial) || parentDevice;
+
 	clearStandbySyncState();
+	cancelCallSynchronization();
 	activeParentSerial = parentStatus.serial;
+	boardState = createBoardState(activeParentSerial);
+	await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
+	await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
+	await setParentConnectivityInfo('');
+	await applyUiFeatureMode(boardState.mode);
+	await applyStandbyMode(boardState.mode);
+	await enforceInitialPairedMediaState();
+	if (isUnhealthy) {
+		return;
+	}
+	await scheduleSelectedParentStandbySync(refreshedParentDevice);
+	await sendActiveParentHeartbeat();
+	log.info({ Message: 'Companion board paired to parent', Host: refreshedParentDevice.host, Serial: activeParentSerial, Name: parentStatus.name });
+}
+
+async function runParentConnectionAttempts(parentDevice, connectionToken, retryCount, showAttemptInfo) {
+	const refreshResult = await companionState.refreshParentStatusWithRetries({
+		xapi: xapi,
+		mem: mem,
+		parentDevices: parentDevices,
+		parentDeviceStatus: parentDeviceStatus,
+		parentDevice: parentDevice,
+		expectedSerial: parentDevice.serial,
+		retryCount: retryCount,
+		retryDelayMs: PARENT_CONNECTION_RETRY_DELAY_MS,
+		deviceComms: deviceComms,
+		httpClientConfig: HTTP_CLIENT_CONFIG,
+		log: log,
+		isCanceled: () => connectionToken !== parentConnectionToken || isUnhealthy,
+		onAttempt: showAttemptInfo ? async (attempt, attemptCount) => {
+			await setParentConnectivityInfo(`Connecting to ${getParentDisplayName(parentDevice)} — attempt ${attempt} of ${attemptCount}`);
+		} : null
+	});
+
+	parentDevices = refreshResult.parentDevices;
+	parentDeviceStatus = refreshResult.parentDeviceStatus;
+	return refreshResult;
+}
+
+async function evaluateActiveParentAvailability() {
+	if (isUnhealthy || isHandlingSelection || boardState.mode !== 'Paired') {
+		return;
+	}
+
+	const activeParentDevice = companionState.findActiveParentDevice(boardState, parentDevices);
+	if (!activeParentDevice) {
+		log.warn({ Message: 'Active parent record is unavailable', ActiveParentSerial: activeParentSerial });
+		const connectionToken = ++parentConnectionToken;
+		await finishParentUnavailableFallback({ name: boardState.activeParent.name || activeParentSerial, host: '' }, connectionToken);
+		return;
+	}
+
+	const activeParentStatus = findParentStatus(activeParentDevice);
+	const identityMatches = !!(activeParentStatus && activeParentStatus.online && activeParentStatus.serial === activeParentSerial);
+	if (identityMatches) {
+		if (isCallPreservationActive) {
+			await completeActiveParentRecovery(activeParentDevice);
+		}
+		return;
+	}
+
+	startActiveParentRecovery(activeParentDevice);
+}
+
+function startActiveParentRecovery(parentDevice) {
+	if (activeParentRecoveryPromise || isUnhealthy || boardState.mode !== 'Paired') {
+		return;
+	}
+
+	const connectionToken = ++parentConnectionToken;
+	const recoveryPromise = recoverActiveParent(parentDevice, connectionToken)
+		.catch(error => {
+			utils.softError({ Context: 'Active parent recovery failed', Host: parentDevice.host, Error: error });
+		})
+		.then(() => {
+			if (activeParentRecoveryPromise === recoveryPromise) {
+				activeParentRecoveryPromise = null;
+			}
+		});
+	activeParentRecoveryPromise = recoveryPromise;
+}
+
+async function recoverActiveParent(parentDevice, connectionToken) {
+	const refreshResult = await runParentConnectionAttempts(parentDevice, connectionToken, OFFLINE_PARENT_SELECTION_RETRY_COUNT, true);
+	if (refreshResult.canceled) {
+		return;
+	}
+	await renderSelectDeviceUi();
+
+	if (refreshResult.parentStatus && refreshResult.parentStatus.online) {
+		await completeActiveParentRecovery(parentDevice);
+		return;
+	}
+
+	if (await isBoardInActiveCall()) {
+		await enterCallPreservation(parentDevice, connectionToken);
+		return;
+	}
+
+	await finishParentUnavailableFallback(parentDevice, connectionToken);
+}
+
+async function enterCallPreservation(parentDevice, connectionToken) {
+	if (connectionToken !== parentConnectionToken || boardState.mode !== 'Paired' || isUnhealthy) {
+		return;
+	}
+
+	isCallPreservationActive = true;
+	await setParentConnectivityInfo(`${getParentDisplayName(parentDevice)} is temporarily unavailable. Your call will continue.`);
+	await applyUiFeatureMode(boardState.mode);
+	log.warn({ Message: 'Call Preservation State entered', Host: parentDevice.host, Serial: activeParentSerial });
+	await runCallPreservationRetryLoop(parentDevice, connectionToken);
+}
+
+async function runCallPreservationRetryLoop(parentDevice, connectionToken) {
+	while (isCallPreservationActive && connectionToken === parentConnectionToken && boardState.mode === 'Paired' && !isUnhealthy) {
+		await delay(PARENT_CONNECTION_RETRY_DELAY_MS);
+		if (!isCallPreservationActive || connectionToken !== parentConnectionToken || boardState.mode !== 'Paired' || isUnhealthy) {
+			return;
+		}
+
+		if (!await isBoardInActiveCall()) {
+			await finishParentUnavailableFallback(parentDevice, connectionToken);
+			return;
+		}
+
+		const refreshResult = await runParentConnectionAttempts(parentDevice, connectionToken, 1, false);
+		if (refreshResult.canceled) {
+			return;
+		}
+		if (refreshResult.parentStatus && refreshResult.parentStatus.online && refreshResult.parentStatus.serial === activeParentSerial) {
+			await completeActiveParentRecovery(parentDevice);
+			return;
+		}
+	}
+}
+
+async function completeActiveParentRecovery(parentDevice) {
+	if (boardState.mode !== 'Paired' || activeParentSerial !== parentDevice.serial) {
+		return;
+	}
+
+	isCallPreservationActive = false;
+	await setParentConnectivityInfo('');
+	await applyUiFeatureMode(boardState.mode);
+	await renderSelectDeviceUi();
+	await sendActiveParentHeartbeat();
+	log.info({ Message: 'Active parent communication restored', Host: parentDevice.host, Serial: activeParentSerial });
+}
+
+async function finishParentUnavailableFallback(parentDevice, connectionToken) {
+	if (connectionToken !== parentConnectionToken || isUnhealthy) {
+		return;
+	}
+
+	isCallPreservationActive = false;
+	const roomName = getParentDisplayName(parentDevice);
+	await setParentConnectivityInfo(`Unable to connect to ${roomName}. Running Stand Alone.`, PARENT_CONNECTION_FAILURE_INFO_MS);
+	await transitionToStandalone({ Reason: 'ParentUnavailable', PreserveParentConnectivityInfo: true });
+	await showSelectedParentOfflinePrompt(parentDevice);
+}
+
+function cancelParentConnectionWork(clearConnectivityInfo) {
+	parentConnectionToken++;
+	isCallPreservationActive = false;
+	activeParentRecoveryPromise = null;
+	if (clearConnectivityInfo) {
+		clearParentConnectivityInfoTimer();
+		parentConnectivityInfoText = '';
+	}
+}
+
+function getParentDisplayName(parentDevice) {
+	return parentDevice.name || parentDevice.host || 'Selected room';
+}
+
+async function transitionToStandalone(options = {}) {
+	const wasPaired = boardState.mode === 'Paired';
+	const hadActiveCall = wasPaired && !options.SkipMediaRestore ? await isBoardInActiveCall() : false;
+
+	cancelParentConnectionWork(!options.PreserveParentConnectivityInfo);
+	cancelCallSynchronization();
+	clearStandbySyncState();
+	activeParentSerial = companionState.STAND_ALONE_PARENT_SERIAL;
 	boardState = createBoardState(activeParentSerial);
 	await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
 	await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
 	await applyUiFeatureMode(boardState.mode);
 	await applyStandbyMode(boardState.mode);
-	await scheduleSelectedParentStandbySync(parentDevice);
-	await sendActiveParentHeartbeat();
-	log.info({ Message: 'Companion board paired to parent', Host: parentDevice.host, Serial: activeParentSerial, Name: parentStatus.name });
+
+	if (wasPaired && !options.SkipMediaRestore) {
+		if (hadActiveCall) {
+			await showRestoreVolumePrompt();
+		} else {
+			await restoreDefaultVolumeAndNotify();
+		}
+	}
+
+	log.info({ Message: 'Companion board released to StandAlone mode', Reason: options.Reason || 'Unspecified', ActiveCallPreserved: hadActiveCall });
+}
+
+function cancelCallSynchronization() {
+	callSyncToken++;
+	lastWebexCallSyncPayload = null;
+	isCallRejoinInProgress = false;
+	callSyncInfoText = '';
+}
+
+async function isBoardInActiveCall() {
+	try {
+		const activeCallCount = Number(getXapiValue(await xapi.Status.SystemUnit.State.NumberOfActiveCalls.get()));
+		if (!Number.isFinite(activeCallCount)) {
+			throw new Error('Active call count was not numeric');
+		}
+		return activeCallCount > 0;
+	} catch (error) {
+		log.error({
+			Code: 'CC26-CALL-COUNT-READ',
+			Component: 'BoardMain',
+			Context: 'Failed to read the local active call count at a release boundary',
+			Remediation: 'Diagnose Status.SystemUnit.State.NumberOfActiveCalls. Volume will remain unchanged because call safety cannot be confirmed.',
+			Error: error
+		});
+		return true;
+	}
+}
+
+async function showRestoreVolumePrompt() {
+	try {
+		await xapi.Command.UserInterface.Message.Prompt.Display({
+			Title: 'Restore Volume?',
+			Text: 'This board is now running Stand Alone while a call is active. Restore the device default volume?',
+			FeedbackId: RESTORE_VOLUME_PROMPT_ID,
+			'Option.1': 'Restore Volume',
+			'Option.2': 'Keep Current',
+			'Option.3': 'Dismiss',
+			Duration: 30
+		});
+		isVolumeRestorePromptActive = true;
+	} catch (error) {
+		isVolumeRestorePromptActive = false;
+		log.error({
+			Code: 'CC26-VOLUME-RESTORE-PROMPT',
+			Component: 'BoardMain',
+			Context: 'Failed to display the StandAlone volume restoration prompt',
+			Remediation: 'Volume was left unchanged. Diagnose UserInterface.Message.Prompt if the user needs this choice.',
+			Error: error
+		});
+	}
+}
+
+async function handleRestoreVolumePromptResponse(event) {
+	if (!isVolumeRestorePromptActive || boardState.mode !== 'StandAlone') {
+		return;
+	}
+	isVolumeRestorePromptActive = false;
+	const option = String(event.OptionId || event.Option || '');
+	if (option !== '1') {
+		log.info({ Message: 'StandAlone volume restoration declined or dismissed; volume left unchanged', Option: option || 'Dismissed' });
+		return;
+	}
+
+	await restoreDefaultVolumeAndNotify();
+}
+
+async function restoreDefaultVolumeAndNotify() {
+	let defaultVolume;
+	try {
+		defaultVolume = Number(getXapiValue(await xapi.Config.Audio.DefaultVolume.get()));
+		if (!Number.isFinite(defaultVolume)) {
+			throw new Error('Audio DefaultVolume was not numeric');
+		}
+		await xapi.Command.Audio.Volume.Set({ Level: defaultVolume });
+		log.info({ Message: 'StandAlone default volume restored', Level: defaultVolume, MicrophonesRemainMuted: true });
+	} catch (error) {
+		log.error({
+			Code: 'CC26-VOLUME-RESTORE',
+			Component: 'BoardMain',
+			Context: 'Failed to restore Audio.DefaultVolume after entering StandAlone',
+			Remediation: 'Volume was left unchanged. Diagnose Config.Audio.DefaultVolume and Command.Audio.Volume.Set.',
+			Error: error
+		});
+		return;
+	}
+
+	try {
+		await xapi.Command.UserInterface.Message.Alert.Display({
+			Title: 'Companion Released',
+			Text: 'Volume was restored to the device default. Microphones remain muted; unmute when ready.',
+			Duration: 10
+		});
+	} catch (error) {
+		log.warn({
+			Code: 'CC26-MICROPHONE-MUTE-NOTICE',
+			Component: 'BoardMain',
+			Context: 'Default volume was restored, but the microphone mute reminder could not be displayed',
+			Error: error
+		});
+	}
+}
+
+function registerPairedMediaHandlers() {
+	if (!xapi.Status.Audio || !xapi.Status.Audio.Microphones || !xapi.Status.Audio.Microphones.Mute || typeof xapi.Status.Audio.Microphones.Mute.on !== 'function') {
+		utils.hardError({
+			Code: 'CC26-MEDIA-MICROPHONE-SUBSCRIPTION',
+			Component: 'BoardMain',
+			Context: 'Status.Audio.Microphones.Mute subscription is unavailable',
+			Remediation: 'Verify the RoomOS xAPI path and supported device software, then restart the Macro Runtime.'
+		});
+	}
+	if (!xapi.Status.Audio.Volume || typeof xapi.Status.Audio.Volume.on !== 'function') {
+		utils.hardError({
+			Code: 'CC26-MEDIA-VOLUME-SUBSCRIPTION',
+			Component: 'BoardMain',
+			Context: 'Status.Audio.Volume subscription is unavailable',
+			Remediation: 'Verify the RoomOS xAPI path and supported device software, then restart the Macro Runtime.'
+		});
+	}
+
+	xapi.Status.Audio.Microphones.Mute.on(value => {
+		handleMicrophoneMuteState(value).catch(error => {
+			utils.softError({ Context: 'Failed to handle microphone mute state', Error: error });
+		});
+	});
+	xapi.Status.Audio.Volume.on(value => {
+		handleAudioVolumeState(value).catch(error => {
+			utils.softError({ Context: 'Failed to handle audio volume state', Error: error });
+		});
+	});
+}
+
+async function enforceInitialPairedMediaState() {
+	if (boardState.mode !== 'Paired' || isUnhealthy) {
+		return;
+	}
+
+	try {
+		await handleMicrophoneMuteState(await xapi.Status.Audio.Microphones.Mute.get());
+	} catch (error) {
+		await handleRequiredMediaFailure('CC26-MEDIA-MICROPHONE-READ', 'Failed to read Status.Audio.Microphones.Mute while entering Paired', error);
+		return;
+	}
+	if (isUnhealthy) {
+		return;
+	}
+
+	try {
+		await handleAudioVolumeState(await xapi.Status.Audio.Volume.get());
+	} catch (error) {
+		await handleRequiredMediaFailure('CC26-MEDIA-VOLUME-READ', 'Failed to read Status.Audio.Volume while entering Paired', error);
+	}
+}
+
+async function handleMicrophoneMuteState(value) {
+	if (boardState.mode !== 'Paired' || isUnhealthy || isEnforcingMicrophoneMute) {
+		return;
+	}
+	if (String(getXapiValue(value) || '').toLowerCase() === 'on') {
+		return;
+	}
+
+	isEnforcingMicrophoneMute = true;
+	try {
+		await xapi.Command.Audio.Microphones.Mute();
+		log.info({ Message: 'Paired microphone mute enforced' });
+	} catch (error) {
+		await handleRequiredMediaFailure('CC26-MEDIA-MICROPHONE-ENFORCE', 'Failed to enforce Command.Audio.Microphones.Mute while Paired', error);
+	} finally {
+		isEnforcingMicrophoneMute = false;
+	}
+}
+
+async function handleAudioVolumeState(value) {
+	if (boardState.mode !== 'Paired' || isUnhealthy || isEnforcingVolume) {
+		return;
+	}
+	const currentVolume = Number(getXapiValue(value));
+	if (!Number.isFinite(currentVolume)) {
+		await handleRequiredMediaFailure('CC26-MEDIA-VOLUME-READ', 'Status.Audio.Volume did not return a numeric level while Paired', new Error('Audio volume was not numeric'));
+		return;
+	}
+	if (currentVolume === REQUIRED_PAIRED_VOLUME_LEVEL) {
+		return;
+	}
+
+	isEnforcingVolume = true;
+	try {
+		await xapi.Command.Audio.Volume.Set({ Level: REQUIRED_PAIRED_VOLUME_LEVEL });
+		log.info({ Message: 'Paired audio volume enforced', Level: REQUIRED_PAIRED_VOLUME_LEVEL });
+	} catch (error) {
+		await handleRequiredMediaFailure('CC26-MEDIA-VOLUME-ENFORCE', 'Failed to enforce Command.Audio.Volume.Set while Paired', error);
+	} finally {
+		isEnforcingVolume = false;
+	}
+}
+
+async function handleRequiredMediaFailure(code, context, error) {
+	if (isUnhealthy) {
+		return;
+	}
+
+	isUnhealthy = true;
+	stopParentStatusInterval();
+	cancelParentConnectionWork(false);
+	log.error({
+		Code: code,
+		Component: 'BoardMain',
+		Context: context,
+		Remediation: 'Diagnose the logged local xAPI path or command, correct the macro or RoomOS compatibility issue, then restart the Macro Runtime.',
+		Error: error
+	});
+
+	try {
+		await companionUi.saveErrorPanel(xapi);
+	} catch (panelError) {
+		log.error({
+			Code: 'CC26-RUNTIME-ERROR-PANEL',
+			Component: 'CompanionUI',
+			Context: 'Failed to install the Companion Unavailable action panel after a media enforcement failure',
+			Remediation: 'Diagnose UserInterface.Extensions.Panel and restart the Macro Runtime.',
+			Error: panelError
+		});
+	}
+
+	if (await isBoardInActiveCall()) {
+		unhealthyReleasePending = boardState.mode === 'Paired';
+		await applyUiFeatureMode(boardState.mode);
+		return;
+	}
+
+	if (boardState.mode === 'Paired') {
+		await transitionToStandalone({ Reason: 'RequiredMediaFailure' });
+	}
 }
 
 async function scheduleSelectedParentStandbySync(parentDevice) {
@@ -435,7 +978,7 @@ async function scheduleSelectedParentStandbySync(parentDevice) {
 		await scheduleStandbySync(state);
 		log.info({ Message: 'Selected parent standby state fetched', Host: parentDevice.host, State: state });
 	} catch (error) {
-		log.warn({ Message: 'Failed to fetch selected parent standby state', Host: parentDevice.host, Error: error.code || error.message || 'Unknown parent standby state error' });
+		log.warn({ Message: 'Failed to fetch selected parent standby state', Host: parentDevice.host, Error: error.code || error.message || 'Unknown parent standby state error', ErrorContext: error.Context || {} });
 	}
 }
 
@@ -449,8 +992,8 @@ function getParentAvailabilitySignature() {
 
 async function showSelectedParentOfflinePrompt(parentDevice) {
 	await xapi.Command.UserInterface.Message.Prompt.Display({
-		Title: 'Room Offline',
-		Text: `${parentDevice.name || parentDevice.host} is offline and cannot be paired. Check the room device and try again.`,
+		Title: 'Room Unavailable',
+		Text: `${getParentDisplayName(parentDevice)} is unavailable. This board is now running Stand Alone.`,
 		Duration: 10
 	});
 }
@@ -467,7 +1010,7 @@ async function handleStandaloneUiFeatureChange(feature, value) {
 
 async function handleUserInterfaceThemeChange(value) {
 	userInterfaceThemeName = value || 'EveningFjord';
-	await applyUiFeatureMode(boardState.mode);
+	await applyRuntimeWebWidget();
 	log.info({ Message: 'Applied Companion Web Widget theme update', Theme: userInterfaceThemeName });
 }
 
@@ -493,12 +1036,27 @@ async function applyUiFeatureMode(mode) {
 			activeParentName: boardState.activeParent.name,
 			themeName: userInterfaceThemeName,
 			runtimeInfo3: getRuntimeInfo3Text(),
+			callEndOverride: mode === 'Paired' && (isCallPreservationActive || unhealthyReleasePending) ? 'Auto' : null,
 			companionUi: companionUi,
 			log: log
 		});
 	} finally {
 		isApplyingUiFeatureConfig = false;
 	}
+}
+
+async function applyRuntimeWebWidget() {
+	await boardServices.applyWebWidgetMode({
+		xapi: xapi,
+		mode: boardState.mode,
+		standaloneUiFeatureConfig: standaloneUiFeatureConfig,
+		userInterfaceConfig: config.UserInterface,
+		activeParentName: boardState.activeParent.name,
+		themeName: userInterfaceThemeName,
+		runtimeInfo3: getRuntimeInfo3Text(),
+		companionUi: companionUi,
+		log: log
+	});
 }
 
 async function applyStandbyMode(mode) {
@@ -622,7 +1180,37 @@ function registerBoardCallCountHandler() {
 	});
 }
 
+async function initializeBoardActiveCallCount() {
+	try {
+		const activeCallCount = Number(getXapiValue(await xapi.Status.SystemUnit.State.NumberOfActiveCalls.get()));
+		if (!Number.isFinite(activeCallCount)) {
+			throw new Error('Initial active call count was not numeric');
+		}
+		log.debug({ Message: 'Initial companion board active call count read', ActiveCallCount: activeCallCount });
+	} catch (error) {
+		log.error({
+			Code: 'CC26-CALL-COUNT-READ',
+			Component: 'BoardMain',
+			Context: 'Failed to read the initial local active call count',
+			Remediation: 'Diagnose Status.SystemUnit.State.NumberOfActiveCalls before relying on automatic release behavior.',
+			Error: error
+		});
+	}
+}
+
 async function handleBoardCallCountZero() {
+	if (isUnhealthy && unhealthyReleasePending) {
+		unhealthyReleasePending = false;
+		await transitionToStandalone({ Reason: 'UnhealthyCallEnded' });
+		return;
+	}
+	if (isCallPreservationActive) {
+		const activeParentDevice = companionState.findActiveParentDevice(boardState, parentDevices);
+		if (activeParentDevice) {
+			await finishParentUnavailableFallback(activeParentDevice, parentConnectionToken);
+		}
+		return;
+	}
 	if (boardState.mode !== 'Paired' || !lastWebexCallSyncPayload || isCallRejoinInProgress) {
 		return;
 	}
@@ -831,7 +1419,30 @@ function getCallJoinInfoText(payload) {
 
 async function setCallSyncInfo(value) {
 	callSyncInfoText = value || '';
-	await applyUiFeatureMode(boardState.mode);
+	await applyRuntimeWebWidget();
+}
+
+async function setParentConnectivityInfo(value, clearAfterMs) {
+	clearParentConnectivityInfoTimer();
+	parentConnectivityInfoText = value || '';
+	await applyRuntimeWebWidget();
+
+	if (parentConnectivityInfoText && clearAfterMs) {
+		parentConnectivityClearTimer = setTimeout(() => {
+			parentConnectivityClearTimer = null;
+			parentConnectivityInfoText = '';
+			applyRuntimeWebWidget().catch(error => {
+				utils.softError({ Context: 'Failed to clear parent connection information', Error: error });
+			});
+		}, clearAfterMs);
+	}
+}
+
+function clearParentConnectivityInfoTimer() {
+	if (parentConnectivityClearTimer) {
+		clearTimeout(parentConnectivityClearTimer);
+	}
+	parentConnectivityClearTimer = null;
 }
 
 function delay(milliseconds) {
@@ -903,11 +1514,11 @@ async function activateStandbyBypass(durationMs) {
 	clearStandbyBypassTimer();
 	standbyBypassTimer = setTimeout(() => {
 		standbyBypassUntil = 0;
-		applyUiFeatureMode(boardState.mode).catch(error => {
+		applyRuntimeWebWidget().catch(error => {
 			utils.softError({ Context: 'Failed to clear expired standby bypass widget info', Error: error });
 		});
 	}, durationMs);
-	await applyUiFeatureMode(boardState.mode);
+	await applyRuntimeWebWidget();
 	log.info({ Message: 'Standby sync bypass activated', BypassUntil: new Date(standbyBypassUntil).toISOString() });
 }
 
@@ -968,7 +1579,7 @@ function getStandbyBypassInfoText() {
 }
 
 function getRuntimeInfo3Text() {
-	return callSyncInfoText || getStandbyBypassInfoText();
+	return parentConnectivityInfoText || callSyncInfoText || getStandbyBypassInfoText();
 }
 
 function formatTime(date) {
@@ -996,7 +1607,7 @@ async function sendActiveParentHeartbeat() {
 		await deviceComms.sendPeripheralHeartbeat(xapi, activeParentDevice, getCompanionPeripheralId(), ACTIVE_PARENT_HEARTBEAT_TIMEOUT_SECONDS, HTTP_CLIENT_CONFIG);
 		log.debug({ Message: 'Companion board peripheral heartbeat sent', Host: activeParentDevice.host, PeripheralID: getCompanionPeripheralId(), Timeout: ACTIVE_PARENT_HEARTBEAT_TIMEOUT_SECONDS });
 	} catch (error) {
-		log.warn({ Message: 'Companion board peripheral heartbeat failed', Host: activeParentDevice.host, Error: error.code || error.message || 'Unknown peripheral heartbeat error' });
+		log.warn({ Message: 'Companion board peripheral heartbeat failed', Host: activeParentDevice.host, Error: error.code || error.message || 'Unknown peripheral heartbeat error', ErrorContext: error.Context || {} });
 	}
 }
 

@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 09, 2026
- * Version:                 0.1.2.24
+ * Version:                 0.1.2.25
  *
  * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
  *                          This is the Room Reference Macro, used as reference to install against parent Room Systems.
@@ -84,19 +84,52 @@ let hdmiByodActive = false;
 let isByodSessionActive = false;
 
 async function init() {
-	try { await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG) } catch (error) { utils.hardError({ Context: 'Failed to initialize HTTPClient', Error: error }) };
-	try { await mem.init() } catch (error) { utils.hardError({ Context: 'Failed to initialize memory', Error: error }) };
+	try {
+		try {
+			await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG);
+		} catch (error) {
+			utils.hardError({
+				Code: 'CC26-INIT-HTTPCLIENT',
+				Component: 'RoomReference',
+				Context: 'Failed to initialize RoomOS HTTPClient',
+				Remediation: 'Correct the HTTPClient configuration or macro permissions, then restart the Macro Runtime.',
+				Error: error
+			});
+		}
 
-	registeredBoards = await readMemoryOrDefault(REGISTERED_BOARDS_STORAGE_KEY, []);
-	boardConfigs = await readMemoryOrDefault(BOARD_CONFIGS_STORAGE_KEY, {});
-	registerMessageHandler();
-	registerStandbyStateHandler();
-	registerCallLifecycleHandlers();
-	registerActiveCallCountHandler();
-	registerParticipantListHandlers();
-	registerByodHandlers();
-	prepareCallDetection();
-	log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredBoardCount: registeredBoards.length });
+		try {
+			await mem.init();
+		} catch (error) {
+			utils.hardError({
+				Code: 'CC26-INIT-MEMORY',
+				Component: 'RoomReference',
+				Context: 'Failed to initialize Memory-Storage-Functions-V2',
+				Remediation: 'Verify the Memory-Storage-Functions-V2 dependency and storage macro, then restart the Macro Runtime.',
+				Error: error
+			});
+		}
+
+		registeredBoards = await readMemoryOrDefault(REGISTERED_BOARDS_STORAGE_KEY, []);
+		boardConfigs = await readMemoryOrDefault(BOARD_CONFIGS_STORAGE_KEY, {});
+		registerMessageHandler();
+		registerStandbyStateHandler();
+		registerCallLifecycleHandlers();
+		registerActiveCallCountHandler();
+		registerParticipantListHandlers();
+		registerByodHandlers();
+		prepareCallDetection();
+		log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredBoardCount: registeredBoards.length });
+	} catch (error) {
+		const diagnostic = error.Diagnostic || {};
+		log.error({
+			Message: 'Custom Campanion Room Reference initialization stopped',
+			Code: diagnostic.Code || error.code || 'CC26-INIT-UNKNOWN',
+			Component: diagnostic.Component || 'RoomReference',
+			Context: diagnostic.Context || 'Unhandled initialization failure',
+			Remediation: diagnostic.Remediation || 'Diagnose the logged xAPI failure, then restart the Macro Runtime.',
+			Error: error
+		});
+	}
 }
 
 async function readMemoryOrDefault(key, defaultValue) {
@@ -107,7 +140,13 @@ async function readMemoryOrDefault(key, defaultValue) {
 			return defaultValue;
 		}
 
-		utils.hardError({ Context: `Failed to fetch memory key [${key}]`, Error: error });
+		utils.hardError({
+			Code: 'CC26-INIT-MEMORY',
+			Component: 'MemoryStorage',
+			Context: `Failed to fetch memory key [${key}]`,
+			Remediation: 'Verify Memory-Storage-Functions-V2 and the generated storage macro, then restart the Macro Runtime.',
+			Error: error
+		});
 		return defaultValue;
 	}
 }
@@ -504,7 +543,7 @@ async function validateBoardCallbackNumber(board) {
 	try {
 		boardCalls = await getBoardCallStatus(board);
 	} catch (error) {
-		log.warn({ Message: 'Failed to read companion board call status before admission', BoardName: board.Name, Host: board.Host, Error: error.message || error.code || 'Unknown board call status error' });
+		log.warn({ Message: 'Failed to read companion board call status before admission', BoardName: board.Name, Host: board.Host, Error: error.code || error.message || 'Unknown board call status error', ErrorContext: error.Context || {} });
 		return { isValid: false, callbackNumbers: [] };
 	}
 
@@ -523,32 +562,11 @@ async function validateBoardCallbackNumber(board) {
 }
 
 async function getBoardCallStatus(board) {
-	const response = await xapi.Command.HttpClient.Get({
-		Url: `https://${board.Host}/getxml?location=/Status/Call`,
-		Header: buildBoardHeaders(board),
-		AllowInsecureHTTPS: HTTP_CLIENT_CONFIG.allowInsecureHTTPS ? 'True' : 'False'
-	});
-
-	return parseCallStatusXml(response.Body || '');
-}
-
-function buildBoardHeaders(board) {
-	return [
-		'Content-Type: text/xml',
-		`Authorization: Basic ${btoa(`${board.Username}:${board.Password}`)}`
-	];
-}
-
-function parseCallStatusXml(xml) {
-	return getXmlNodes(xml, 'Call').map(callXml => ({
-		CallId: getXmlPathValue(callXml, ['CallId']),
-		RemoteNumber: getXmlPathValue(callXml, ['RemoteNumber']),
-		CallbackNumber: getXmlPathValue(callXml, ['CallbackNumber']),
-		RemoteURI: getXmlPathValue(callXml, ['RemoteURI']),
-		Protocol: getXmlPathValue(callXml, ['Protocol']),
-		Status: getXmlPathValue(callXml, ['Status']),
-		id: getXmlAttributeValue(callXml, 'id')
-	}));
+	return deviceComms.getCallStatus(xapi, {
+		host: board.Host,
+		username: board.Username,
+		password: board.Password
+	}, HTTP_CLIENT_CONFIG);
 }
 
 function doesCallbackMatchParentCall(callbackNumber) {
@@ -758,47 +776,6 @@ function findMatchingCallStatus(calls, remoteNumber, call) {
 	return calls.length === 1 ? calls[0] : null;
 }
 
-function getXmlNodes(xml, tagName) {
-	const nodes = [];
-	const regex = new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)</${tagName}>`, 'gi');
-	let match = regex.exec(xml);
-
-	while (match) {
-		nodes.push(match[0]);
-		match = regex.exec(xml);
-	}
-
-	return nodes;
-}
-
-function getXmlPathValue(xml, path) {
-	let currentXml = xml;
-
-	for (let index = 0; index < path.length; index++) {
-		const match = currentXml.match(new RegExp(`<${path[index]}(?:\\s[^>]*)?>([\\s\\S]*?)</${path[index]}>`, 'i'));
-		if (!match) {
-			return '';
-		}
-		currentXml = match[1];
-	}
-
-	return unescapeXml(currentXml.trim());
-}
-
-function getXmlAttributeValue(xml, attributeName) {
-	const match = xml.match(new RegExp(`${attributeName}="([^"]*)"`, 'i'));
-	return match ? unescapeXml(match[1]) : '';
-}
-
-function unescapeXml(value) {
-	return String(value)
-		.replace(/&apos;/g, "'")
-		.replace(/&quot;/g, '"')
-		.replace(/&gt;/g, '>')
-		.replace(/&lt;/g, '<')
-		.replace(/&amp;/g, '&');
-}
-
 function normalizeCallIdentity(value) {
 	return String(value || '').trim().toLowerCase();
 }
@@ -975,7 +952,7 @@ async function sendRegistrationResponse(action, inboundMessage, boardRecord, pay
 			Text: `${isAccepted ? 'Accepted' : 'Denied'} ${boardRecord.Name}, but response failed. Check board credentials.`,
 			Duration: 10
 		});
-		log.warn({ Message: 'Failed to send registration response to board', Action: action, Serial: boardRecord.Serial, Error: error.message || error.code || 'Unknown response error' });
+		log.warn({ Message: 'Failed to send registration response to board', Action: action, Serial: boardRecord.Serial, Error: error.code || error.message || 'Unknown response error', ErrorContext: error.Context || {} });
 	}
 }
 

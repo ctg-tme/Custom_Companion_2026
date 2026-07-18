@@ -43,7 +43,13 @@ or implied.
 let activeRequestCount = 0;
 let maxConcurrentRequests = 3;
 const queuedRequests = [];
+const coalescedRequestPromises = {};
 const COMPANION_APP = 'Companion Board 2026';
+const HTTP_TRANSPORT_POLICY = {
+	timeoutSeconds: 3,
+	maxPendingRequests: 50,
+	responseExcerptLength: 256
+};
 
 /**
  * Sets RoomOS HTTPClient configuration used by this solution.
@@ -79,12 +85,15 @@ async function parentInitializationRequest(XAPIObject, parentDevice, httpClientC
 	const response = await queuedHttpRequest(() => XAPIObject.Command.HttpClient.Get({
 		Url: url,
 		Header: buildHeaders(parentDevice),
-		AllowInsecureHTTPS: getAllowInsecureHTTPS(httpClientConfig)
-	}));
+		AllowInsecureHTTPS: getAllowInsecureHTTPS(httpClientConfig),
+		ResultBody: 'PlainText',
+		Timeout: HTTP_TRANSPORT_POLICY.timeoutSeconds
+	}), buildHttpRequestContext('GET', parentDevice.host, '/getxml?location=/Status/SystemUnit', `parent-identity:${parentDevice.host}`));
 
 	const body = response.Body || '';
-	const serial = getXmlPathValue(body, ['SystemUnit', 'Hardware', 'Module', 'SerialNumber']) || getXmlPathValue(body, ['SerialNumber']);
-	const broadcastName = getXmlPathValue(body, ['SystemUnit', 'BroadcastName']) || getXmlPathValue(body, ['BroadcastName']);
+	const document = parseXml(body);
+	const serial = getXmlPathValue(document, ['SystemUnit', 'Hardware', 'Module', 'SerialNumber']) || getXmlPathValue(document, ['SerialNumber']);
+	const broadcastName = getXmlPathValue(document, ['SystemUnit', 'BroadcastName']) || getXmlPathValue(document, ['BroadcastName']);
 
 	if (!serial || !broadcastName) {
 		throw buildError('Parent initialization response did not include both SerialNumber and BroadcastName', {
@@ -110,11 +119,14 @@ async function parentStandbyStateRequest(XAPIObject, parentDevice, httpClientCon
 	const response = await queuedHttpRequest(() => XAPIObject.Command.HttpClient.Get({
 		Url: url,
 		Header: buildHeaders(parentDevice),
-		AllowInsecureHTTPS: getAllowInsecureHTTPS(httpClientConfig)
-	}));
+		AllowInsecureHTTPS: getAllowInsecureHTTPS(httpClientConfig),
+		ResultBody: 'PlainText',
+		Timeout: HTTP_TRANSPORT_POLICY.timeoutSeconds
+	}), buildHttpRequestContext('GET', parentDevice.host, '/getxml?location=/Status/Standby/State', `parent-standby:${parentDevice.host}`));
 
 	const body = response.Body || '';
-	const standbyState = getXmlPathValue(body, ['Standby', 'State']) || getXmlPathValue(body, ['State']);
+	const document = parseXml(body);
+	const standbyState = getXmlPathValue(document, ['Standby', 'State']) || getXmlPathValue(document, ['State']);
 
 	if (!standbyState) {
 		throw buildError('Parent standby state response did not include State', {
@@ -246,31 +258,175 @@ async function sendPeripheralHeartbeat(XAPIObject, parentDevice, peripheralId, t
 		throw buildError('Peripheral heartbeat requires a peripheral ID', { Code: 'cc.peripheral-heartbeat.1', Host: parentDevice.host });
 	}
 
-	return sendPutXml(XAPIObject, parentDevice, buildPeripheralHeartbeatXml(peripheralId, timeoutSeconds), httpClientConfig);
-}
-
-function queuedHttpRequest(task) {
-	return new Promise((resolve, reject) => {
-		queuedRequests.push({ Task: task, Resolve: resolve, Reject: reject });
-		runNextQueuedRequest();
+	return sendPutXml(XAPIObject, parentDevice, buildPeripheralHeartbeatXml(peripheralId, timeoutSeconds), httpClientConfig, {
+		coalesceKey: `peripheral-heartbeat:${parentDevice.host}:${peripheralId}`
 	});
 }
 
-function runNextQueuedRequest() {
-	if (activeRequestCount >= maxConcurrentRequests || queuedRequests.length === 0) {
-		return;
+async function getCallStatus(XAPIObject, device, httpClientConfig) {
+	validateParentDevice(device);
+
+	const response = await queuedHttpRequest(() => XAPIObject.Command.HttpClient.Get({
+		Url: `https://${device.host}/getxml?location=/Status/Call`,
+		Header: buildHeaders(device),
+		AllowInsecureHTTPS: getAllowInsecureHTTPS(httpClientConfig),
+		ResultBody: 'PlainText',
+		Timeout: HTTP_TRANSPORT_POLICY.timeoutSeconds
+	}), buildHttpRequestContext('GET', device.host, '/getxml?location=/Status/Call', `call-status:${device.host}`));
+
+	return parseCallStatusXml(response.Body || '');
+}
+
+function queuedHttpRequest(task, requestContext = {}) {
+	const coalesceKey = requestContext.CoalesceKey || '';
+	if (coalesceKey && coalescedRequestPromises[coalesceKey]) {
+		return coalescedRequestPromises[coalesceKey];
 	}
 
-	const request = queuedRequests.shift();
-	activeRequestCount++;
+	if (queuedRequests.length >= HTTP_TRANSPORT_POLICY.maxPendingRequests) {
+		return Promise.reject(buildError('RoomOS HTTP request queue is full', {
+			Code: 'CC26-HTTP-QUEUE-FULL',
+			Method: requestContext.Method || '',
+			Host: requestContext.Host || '',
+			Path: requestContext.Path || '',
+			PendingRequestCount: queuedRequests.length,
+			MaxPendingRequests: HTTP_TRANSPORT_POLICY.maxPendingRequests
+		}));
+	}
 
-	request.Task()
-		.then(request.Resolve)
-		.catch(request.Reject)
-		.then(() => {
-			activeRequestCount--;
-			runNextQueuedRequest();
+	const promise = new Promise((resolve, reject) => {
+		queuedRequests.push({
+			Task: task,
+			Resolve: resolve,
+			Reject: reject,
+			Context: requestContext,
+			CoalesceKey: coalesceKey
 		});
+		runNextQueuedRequest();
+	});
+
+	if (coalesceKey) {
+		coalescedRequestPromises[coalesceKey] = promise;
+	}
+
+	return promise;
+}
+
+function runNextQueuedRequest() {
+	while (activeRequestCount < maxConcurrentRequests && queuedRequests.length > 0) {
+		const request = queuedRequests.shift();
+		activeRequestCount++;
+
+		Promise.resolve()
+			.then(request.Task)
+			.then(response => validateHttpResponse(response, request.Context))
+			.then(response => settleQueuedRequest(request, null, response))
+			.catch(error => settleQueuedRequest(request, normalizeHttpRequestError(error, request.Context)));
+	}
+}
+
+function normalizeHttpRequestError(error, requestContext) {
+	if (error && String(error.code || '').indexOf('CC26-') === 0) {
+		return error;
+	}
+
+	const context = requestContext || {};
+	return buildError('RoomOS HTTP request failed before a valid response was received', {
+		Code: 'CC26-HTTP-REQUEST',
+		Method: context.Method || '',
+		Host: context.Host || '',
+		Path: context.Path || '',
+		CauseCode: error && error.code,
+		Cause: error && error.message ? error.message : 'Unknown HTTPClient request error'
+	});
+}
+
+function settleQueuedRequest(request, error, response) {
+	activeRequestCount--;
+	if (request.CoalesceKey) {
+		delete coalescedRequestPromises[request.CoalesceKey];
+	}
+
+	if (error) {
+		request.Reject(error);
+	} else {
+		request.Resolve(response);
+	}
+
+	runNextQueuedRequest();
+}
+
+function validateHttpResponse(response, requestContext) {
+	const context = requestContext || {};
+	const statusCode = Number(response && response.StatusCode);
+	const body = response && response.Body ? String(response.Body) : '';
+
+	if (!Number.isFinite(statusCode) || statusCode < 200 || statusCode > 299) {
+		throw buildError('RoomOS HTTP request returned a non-success status', {
+			Code: 'CC26-HTTP-STATUS',
+			Method: context.Method || '',
+			Host: context.Host || '',
+			Path: context.Path || '',
+			StatusCode: response && response.StatusCode,
+			ReasonPhrase: response && response.ReasonPhrase,
+			ResponseExcerpt: getResponseExcerpt(body)
+		});
+	}
+
+	if (context.ValidatePutXml && body) {
+		validatePutXmlResponse(body, context);
+	}
+
+	return response;
+}
+
+function validatePutXmlResponse(body, requestContext) {
+	let document;
+
+	try {
+		document = parseXml(body);
+	} catch (error) {
+		throw buildError('RoomOS putxml response contained malformed or unsupported XML', {
+			Code: 'CC26-PUTXML-MALFORMED',
+			Method: requestContext.Method,
+			Host: requestContext.Host,
+			Path: requestContext.Path,
+			ResponseExcerpt: getResponseExcerpt(body),
+			ParserError: error.message || error.code || 'Unknown XML parser error'
+		});
+	}
+
+	const nodes = findXmlNodes(document, () => true);
+	for (let index = 0; index < nodes.length; index++) {
+		const node = nodes[index];
+		const status = getXmlAttributeValue(node, 'status');
+		if (String(node.name || '').toLowerCase() === 'error' || String(status || '').toLowerCase() === 'error') {
+			throw buildError('RoomOS putxml response reported an xAPI error', {
+				Code: 'CC26-PUTXML-ERROR',
+				Method: requestContext.Method,
+				Host: requestContext.Host,
+				Path: requestContext.Path,
+				ResponseExcerpt: getResponseExcerpt(body)
+			});
+		}
+	}
+}
+
+function buildHttpRequestContext(method, host, path, coalesceKey, validatePutXml) {
+	return {
+		Method: method,
+		Host: host,
+		Path: path,
+		CoalesceKey: coalesceKey || '',
+		ValidatePutXml: !!validatePutXml
+	};
+}
+
+function getResponseExcerpt(body) {
+	return String(body || '')
+		.replace(/\s+/g, ' ')
+		.trim()
+		.slice(0, HTTP_TRANSPORT_POLICY.responseExcerptLength);
 }
 
 function validateParentDevice(parentDevice) {
@@ -296,12 +452,14 @@ function getAllowInsecureHTTPS(httpClientConfig) {
 	return httpClientConfig && httpClientConfig.allowInsecureHTTPS ? 'True' : 'False';
 }
 
-function sendPutXml(XAPIObject, parentDevice, xmlBody, httpClientConfig) {
+function sendPutXml(XAPIObject, parentDevice, xmlBody, httpClientConfig, requestOptions = {}) {
 	return queuedHttpRequest(() => XAPIObject.Command.HttpClient.Post({
 		Url: `https://${parentDevice.host}/putxml`,
 		Header: buildHeaders(parentDevice),
-		AllowInsecureHTTPS: getAllowInsecureHTTPS(httpClientConfig)
-	}, xmlBody));
+		AllowInsecureHTTPS: getAllowInsecureHTTPS(httpClientConfig),
+		ResultBody: 'PlainText',
+		Timeout: HTTP_TRANSPORT_POLICY.timeoutSeconds
+	}, xmlBody), buildHttpRequestContext('POST', parentDevice.host, '/putxml', requestOptions.coalesceKey, true));
 }
 
 function buildParentMacroInstallXml(macros, activeMacroName) {
@@ -345,18 +503,304 @@ function buildPeripheralHeartbeatXml(peripheralId, timeoutSeconds) {
 	return `<Command><Peripherals><HeartBeat><ID>${escapeXml(peripheralId)}</ID><Timeout>${escapeXml(timeoutSeconds)}</Timeout></HeartBeat></Peripherals></Command>`;
 }
 
-function getXmlPathValue(xml, path) {
-	let currentXml = xml;
+function parseCallStatusXml(xml) {
+	const document = parseXml(xml);
+	const callNodes = findXmlNodes(document, node => String(node.name || '').toLowerCase() === 'call');
+	const calls = [];
 
-	for (let index = 0; index < path.length; index++) {
-		const match = currentXml.match(new RegExp(`<${path[index]}(?:\\s[^>]*)?>([\\s\\S]*?)</${path[index]}>`, 'i'));
-		if (!match) {
-			return '';
+	for (let index = 0; index < callNodes.length; index++) {
+		const callNode = callNodes[index];
+		const hasCallFields = !!(findDirectChild(callNode, 'CallId') || findDirectChild(callNode, 'CallbackNumber') || findDirectChild(callNode, 'RemoteNumber'));
+		if (!hasCallFields && !getXmlAttributeValue(callNode, 'id')) {
+			continue;
 		}
-		currentXml = match[1];
+
+		calls.push({
+			CallId: getXmlPathValue(callNode, ['CallId']),
+			RemoteNumber: getXmlPathValue(callNode, ['RemoteNumber']),
+			CallbackNumber: getXmlPathValue(callNode, ['CallbackNumber']),
+			RemoteURI: getXmlPathValue(callNode, ['RemoteURI']),
+			Protocol: getXmlPathValue(callNode, ['Protocol']),
+			Status: getXmlPathValue(callNode, ['Status']),
+			id: getXmlAttributeValue(callNode, 'id')
+		});
 	}
 
-	return unescapeXml(currentXml.trim());
+	return calls;
+}
+
+function parseXml(xml) {
+	const source = String(xml || '');
+	const stack = [];
+	let root = null;
+	let index = 0;
+
+	while (index < source.length) {
+		if (source[index] !== '<') {
+			const nextTag = source.indexOf('<', index);
+			const textEnd = nextTag < 0 ? source.length : nextTag;
+			const text = source.slice(index, textEnd);
+			if (stack.length > 0) {
+				stack[stack.length - 1].text += decodeXmlEntities(text);
+			} else if (text.trim()) {
+				throw buildError('XML text exists outside the document element', { Code: 'CC26-XML-MALFORMED' });
+			}
+			index = textEnd;
+			continue;
+		}
+
+		if (source.slice(index, index + 4) === '<!--') {
+			const commentEnd = source.indexOf('-->', index + 4);
+			if (commentEnd < 0) {
+				throw buildError('XML comment was not closed', { Code: 'CC26-XML-MALFORMED' });
+			}
+			index = commentEnd + 3;
+			continue;
+		}
+
+		if (source.slice(index, index + 9) === '<![CDATA[') {
+			if (stack.length === 0) {
+				throw buildError('XML CDATA exists outside the document element', { Code: 'CC26-XML-MALFORMED' });
+			}
+			const cdataEnd = source.indexOf(']]>', index + 9);
+			if (cdataEnd < 0) {
+				throw buildError('XML CDATA was not closed', { Code: 'CC26-XML-MALFORMED' });
+			}
+			stack[stack.length - 1].text += source.slice(index + 9, cdataEnd);
+			index = cdataEnd + 3;
+			continue;
+		}
+
+		if (source.slice(index, index + 2) === '<?') {
+			const instructionEnd = source.indexOf('?>', index + 2);
+			if (instructionEnd < 0) {
+				throw buildError('XML processing instruction was not closed', { Code: 'CC26-XML-MALFORMED' });
+			}
+			index = instructionEnd + 2;
+			continue;
+		}
+
+		if (source.slice(index, index + 2) === '<!') {
+			throw buildError('XML document type and entity declarations are unsupported', { Code: 'CC26-XML-UNSUPPORTED' });
+		}
+
+		if (source.slice(index, index + 2) === '</') {
+			const closeEnd = source.indexOf('>', index + 2);
+			if (closeEnd < 0) {
+				throw buildError('XML closing tag was not closed', { Code: 'CC26-XML-MALFORMED' });
+			}
+			const closingName = source.slice(index + 2, closeEnd).trim();
+			const openNode = stack.pop();
+			if (!openNode || openNode.name !== closingName) {
+				throw buildError('XML closing tag did not match its opening tag', { Code: 'CC26-XML-MALFORMED', ClosingTag: closingName, OpeningTag: openNode && openNode.name });
+			}
+			index = closeEnd + 1;
+			continue;
+		}
+
+		const tagEnd = findXmlTagEnd(source, index + 1);
+		const parsedTag = parseXmlOpeningTag(source.slice(index + 1, tagEnd));
+		const node = {
+			name: parsedTag.name,
+			attributes: parsedTag.attributes,
+			children: [],
+			text: ''
+		};
+
+		if (stack.length > 0) {
+			stack[stack.length - 1].children.push(node);
+		} else if (root) {
+			throw buildError('XML contained more than one document element', { Code: 'CC26-XML-MALFORMED' });
+		} else {
+			root = node;
+		}
+
+		if (!parsedTag.selfClosing) {
+			stack.push(node);
+		}
+		index = tagEnd + 1;
+	}
+
+	if (stack.length > 0) {
+		throw buildError('XML document ended before all elements were closed', { Code: 'CC26-XML-MALFORMED', OpeningTag: stack[stack.length - 1].name });
+	}
+	if (!root) {
+		throw buildError('XML response did not contain a document element', { Code: 'CC26-XML-MALFORMED' });
+	}
+
+	return root;
+}
+
+function findXmlTagEnd(source, startIndex) {
+	let quote = '';
+
+	for (let index = startIndex; index < source.length; index++) {
+		const character = source[index];
+		if (quote) {
+			if (character === quote) {
+				quote = '';
+			}
+			continue;
+		}
+		if (character === '"' || character === "'") {
+			quote = character;
+			continue;
+		}
+		if (character === '>') {
+			return index;
+		}
+	}
+
+	throw buildError('XML opening tag was not closed', { Code: 'CC26-XML-MALFORMED' });
+}
+
+function parseXmlOpeningTag(tagSource) {
+	let content = String(tagSource || '').trim();
+	let selfClosing = false;
+	if (content[content.length - 1] === '/') {
+		selfClosing = true;
+		content = content.slice(0, -1).trim();
+	}
+
+	let index = 0;
+	const name = readXmlName(content, index);
+	if (!name) {
+		throw buildError('XML opening tag did not include a valid name', { Code: 'CC26-XML-MALFORMED' });
+	}
+	index += name.length;
+	const attributes = {};
+
+	while (index < content.length) {
+		while (/\s/.test(content[index])) {
+			index++;
+		}
+		if (index >= content.length) {
+			break;
+		}
+
+		const attributeName = readXmlName(content, index);
+		if (!attributeName) {
+			throw buildError('XML attribute did not include a valid name', { Code: 'CC26-XML-MALFORMED', Element: name });
+		}
+		index += attributeName.length;
+		while (/\s/.test(content[index])) {
+			index++;
+		}
+		if (content[index] !== '=') {
+			throw buildError('XML attribute did not include an equals sign', { Code: 'CC26-XML-MALFORMED', Element: name, Attribute: attributeName });
+		}
+		index++;
+		while (/\s/.test(content[index])) {
+			index++;
+		}
+		const quote = content[index];
+		if (quote !== '"' && quote !== "'") {
+			throw buildError('XML attribute value was not quoted', { Code: 'CC26-XML-MALFORMED', Element: name, Attribute: attributeName });
+		}
+		const valueEnd = content.indexOf(quote, index + 1);
+		if (valueEnd < 0) {
+			throw buildError('XML attribute value was not closed', { Code: 'CC26-XML-MALFORMED', Element: name, Attribute: attributeName });
+		}
+		attributes[attributeName] = decodeXmlEntities(content.slice(index + 1, valueEnd));
+		index = valueEnd + 1;
+	}
+
+	return { name: name, attributes: attributes, selfClosing: selfClosing };
+}
+
+function readXmlName(source, startIndex) {
+	const match = String(source || '').slice(startIndex).match(/^[A-Za-z_][A-Za-z0-9_.:-]*/);
+	return match ? match[0] : '';
+}
+
+function decodeXmlEntities(value) {
+	return String(value || '').replace(/&([^;]+);/g, (match, entity) => {
+		switch (entity) {
+			case 'amp': return '&';
+			case 'lt': return '<';
+			case 'gt': return '>';
+			case 'quot': return '"';
+			case 'apos': return "'";
+		}
+
+		let codePoint = null;
+		if (/^#x[0-9a-f]+$/i.test(entity)) {
+			codePoint = parseInt(entity.slice(2), 16);
+		} else if (/^#[0-9]+$/.test(entity)) {
+			codePoint = parseInt(entity.slice(1), 10);
+		}
+		if (codePoint === null || !Number.isFinite(codePoint) || codePoint < 0 || codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
+			throw buildError('XML contained an unsupported entity', { Code: 'CC26-XML-UNSUPPORTED', Entity: entity });
+		}
+		return String.fromCodePoint(codePoint);
+	});
+}
+
+function getXmlPathValue(node, path) {
+	const pathNode = getXmlPathNode(node, path);
+	return pathNode ? getXmlNodeText(pathNode).trim() : '';
+}
+
+function getXmlPathNode(node, path) {
+	if (!node || !path || path.length === 0) {
+		return null;
+	}
+
+	let currentNode = String(node.name || '').toLowerCase() === String(path[0]).toLowerCase()
+		? node
+		: findXmlNodes(node, candidate => String(candidate.name || '').toLowerCase() === String(path[0]).toLowerCase())[0];
+
+	for (let index = 1; currentNode && index < path.length; index++) {
+		currentNode = findDirectChild(currentNode, path[index]);
+	}
+
+	return currentNode || null;
+}
+
+function findDirectChild(node, name) {
+	const expectedName = String(name || '').toLowerCase();
+	for (let index = 0; node && index < node.children.length; index++) {
+		if (String(node.children[index].name || '').toLowerCase() === expectedName) {
+			return node.children[index];
+		}
+	}
+	return null;
+}
+
+function findXmlNodes(node, predicate) {
+	const matches = [];
+	if (!node) {
+		return matches;
+	}
+	if (predicate(node)) {
+		matches.push(node);
+	}
+	for (let index = 0; index < node.children.length; index++) {
+		const childMatches = findXmlNodes(node.children[index], predicate);
+		for (let childIndex = 0; childIndex < childMatches.length; childIndex++) {
+			matches.push(childMatches[childIndex]);
+		}
+	}
+	return matches;
+}
+
+function getXmlNodeText(node) {
+	let value = node && node.text ? node.text : '';
+	for (let index = 0; node && index < node.children.length; index++) {
+		value += getXmlNodeText(node.children[index]);
+	}
+	return value;
+}
+
+function getXmlAttributeValue(node, attributeName) {
+	const expectedName = String(attributeName || '').toLowerCase();
+	const attributeNames = Object.keys(node && node.attributes ? node.attributes : {});
+	for (let index = 0; index < attributeNames.length; index++) {
+		if (attributeNames[index].toLowerCase() === expectedName) {
+			return node.attributes[attributeNames[index]];
+		}
+	}
+	return '';
 }
 
 function escapeXml(value) {
@@ -366,15 +810,6 @@ function escapeXml(value) {
 		.replace(/>/g, '&gt;')
 		.replace(/"/g, '&quot;')
 		.replace(/'/g, '&apos;');
-}
-
-function unescapeXml(value) {
-	return String(value)
-		.replace(/&apos;/g, "'")
-		.replace(/&quot;/g, '"')
-		.replace(/&gt;/g, '>')
-		.replace(/&lt;/g, '<')
-		.replace(/&amp;/g, '&');
 }
 
 function buildError(message, context) {
@@ -393,7 +828,9 @@ const deviceComms = {
 	buildCompanionMessage,
 	parseCompanionMessage,
 	connectPeripheral,
-	sendPeripheralHeartbeat
+	sendPeripheralHeartbeat,
+	getCallStatus,
+	parseXml
 };
 
 export { deviceComms };
