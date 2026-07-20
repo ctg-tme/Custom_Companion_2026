@@ -20,11 +20,11 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 09, 2026
- * Version:                 1.0.12
+ * Revised:                 July 20, 2026
+ * Version:                 1.0.13
  *
- * Description:             A macro module that facilitates device-to-device communication for a custom Companion Solution for Board Series endpoints with Wheel Kits.
- *                          This module will provide HTTPClient, Message API, and putxml routing helpers. The xapi object must be passed in from the calling macro.
+ * Description:             Device-to-device transport, queue policy, Message envelopes, putxml
+ *                          builders, response validation, and dependency-free XML parsing.
  *
  * Documentation:           N/A
  *
@@ -155,6 +155,7 @@ async function installParentMacros(XAPIObject, parentDevice, macroPayloads, inst
 	const config = installConfig || {};
 	const macros = [
 		{ Name: config.roomReferenceTargetMacroName || 'Custom-Campanion_Room_2026', Content: macroPayloads.roomReference },
+		{ Name: config.parentCallCoordinationTargetMacroName || 'Custom-Campanion_12_ParentCallCoordination_2026', Content: macroPayloads.parentCallCoordination },
 		{ Name: config.utilsMacroName || 'Custom-Campanion_3_Utils_2026', Content: macroPayloads.utils },
 		{ Name: config.deviceCommsMacroName || 'Custom-Campanion_6_DeviceComms_2026', Content: macroPayloads.deviceComms },
 		{ Name: config.memoryStorageMacroName || 'Memory-Storage-Functions-V2', Content: macroPayloads.memoryStorage }

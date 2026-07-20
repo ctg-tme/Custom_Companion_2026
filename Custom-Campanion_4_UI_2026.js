@@ -20,11 +20,11 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 09, 2026
- * Version:                 1.0.17
+ * Revised:                 July 20, 2026
+ * Version:                 1.0.18
  *
- * Description:             A macro module that facilitates the custom Companion Solution user interface for Board Series endpoints with Wheel Kits.
- *                          This module will provide PIN-protected parent-device management UI helpers. The xapi object must be passed in from the calling macro.
+ * Description:             Companion panel, prompt, and WebWidget adapter. The Config/PIN page is a
+ *                          Deferred Surface and remains present without executable management behavior.
  *
  * Documentation:           N/A
  *
@@ -54,6 +54,14 @@ const WEB_WIDGET_NAME = 'Custom Companion 2026';
 const WEB_WIDGET_REFRESH_INTERVAL = 0;
 const WEB_WIDGET_DEFAULT_URL = 'https://ctg-tme.github.io/Simple-WebWidget/';
 
+/*
+ * UI xAPI surface:
+ * - Commands: UserInterface.Extensions.Panel.Save/Remove, Widget.SetValue,
+ *   UserInterface.Message.Prompt.Display/Clear, and Extensions.WebWidget.Save/Remove.
+ * - Read: Status.UserInterface.WebView.
+ * Event subscriptions remain explicit in the board entry macro because it owns event routing.
+ */
+
 function buildErrorPanelXml() {
 	return `<Extensions>
 	<Version>1.11</Version>
@@ -73,6 +81,7 @@ function buildErrorPanelXml() {
 function buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial) {
 	const parentRowsXml = buildParentRowsXml(parentDevices, parentDeviceStatus);
 
+	// Deferred Surface: keep the Config/PIN page organized in the deployable panel XML for future implementation.
 	return `<Extensions>
 	<Version>1.11</Version>
 	<Panel>

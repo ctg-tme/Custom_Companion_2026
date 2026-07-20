@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 09, 2026
- * Version:                 0.1.2.25
+ * Revised:                 July 20, 2026
+ * Version:                 0.1.2.26
  *
  * Description:             User-facing configuration for the custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -41,12 +41,13 @@ or implied.
  */
 
 const config = {
-  version: '0.1.2.25',
+  version: '0.1.2.26',
   CompanionBoardInformation: {
     host: '10.0.0.120',
     username: '',
     password: ''
   },
+  // Deferred Surface: visible Config/PIN UX exists, but runtime PIN behavior is not implemented yet.
   pinProtection: {
     enabled: true,
     defaultPin: '0000',

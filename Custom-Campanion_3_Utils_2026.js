@@ -20,11 +20,10 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 09, 2026
- * Version:                 1.0.0
+ * Revised:                 July 20, 2026
+ * Version:                 1.0.1
  *
- * Description:             A macro that facilitates a custom Companion Solution for Board Series endpoints with Wheel Kits
- *                          This utility module provides shared logging and error handling helpers for the solution.
+ * Description:             Shared structured logging plus soft and hard diagnostic boundaries.
  *
  * Documentation:           N/A
  *
@@ -41,47 +40,46 @@ or implied.
  */
 
 class Logger {
-  constructor(suffix = "") {
+	constructor(suffix = '') {
     this.suffix = suffix;
-  }
+	}
 
-  get prefix() { return `[${this.suffix}]`; }
-  log(...args) { console.log(this.prefix, ...args); }
-  info(...args) { console.info(this.prefix, ...args); }
-  warn(...args) { console.warn(this.prefix, ...args); }
-  error(...args) { console.error(this.prefix, ...args); }
-  debug(...args) { console.debug(this.prefix, ...args); }
+	get prefix() { return `[${this.suffix}]`; }
+	log(...args) { console.log(this.prefix, ...args); }
+	info(...args) { console.info(this.prefix, ...args); }
+	warn(...args) { console.warn(this.prefix, ...args); }
+	error(...args) { console.error(this.prefix, ...args); }
+	debug(...args) { console.debug(this.prefix, ...args); }
 }
 
 const log = new Logger('Custom-Campanion_Utils');
 
 async function softError(options) {
-  const msg = options;
+	const msg = options;
 
-  log.error(msg);
-  return;
+	log.error(msg);
 }
 
 
 function hardError(options) {
-  const diagnostic = options || {};
-  const error = diagnostic.Error instanceof Error
-    ? diagnostic.Error
-    : new Error(diagnostic.Context || 'Custom Companion hard error');
+	const diagnostic = options || {};
+	const error = diagnostic.Error instanceof Error
+		? diagnostic.Error
+		: new Error(diagnostic.Context || 'Custom Companion hard error');
 
-  error.Diagnostic = diagnostic;
-  if (diagnostic.Code && !error.code) {
-    error.code = diagnostic.Code;
-  }
+	error.Diagnostic = diagnostic;
+	if (diagnostic.Code && !error.code) {
+		error.code = diagnostic.Code;
+	}
 
-  log.error(diagnostic);
-  throw error;
+	log.error(diagnostic);
+	throw error;
 }
 
 const utils = {
-  softError,
-  hardError,
-  Logger
-}
+	softError,
+	hardError,
+	Logger
+};
 
-export { utils }
+export { utils };

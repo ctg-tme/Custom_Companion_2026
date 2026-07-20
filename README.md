@@ -19,6 +19,28 @@ Custom Companion 2026 is a Cisco RoomOS macro solution for Board Pro Series endp
 - Memory storage: generated state owned by `Memory-Storage-Functions-V2`; this stores board parent-device records and parent registered-board records.
 - Transport: RoomOS HTTPClient posts putxml payloads to remote codecs, usually to invoke `Message.Send`, `Peripherals.Connect`, `Peripherals.HeartBeat`, or macro save/activate commands.
 
+## Source Macro Architecture
+
+The deployable source remains unbundled and uses 13 numbered macros. On the companion board, only `Custom-Campanion_1_Main_2026` is the active entry macro; its imported modules and the two parent deployment sources remain present under their numbered names. This keeps each stateful workflow independently readable while preserving RoomOS Macro Editor deployment.
+
+| Macro | Responsibility |
+| --- | --- |
+| `Custom-Campanion_1_Main_2026` | Companion board entry, initialization order, selection transitions, Unhealthy handling, and cross-controller coordination. |
+| `Custom-Campanion_2_Config_2026` | Deployment configuration. `pinProtection` remains a Deferred Surface and is not executable behavior. |
+| `Custom-Campanion_3_Utils_2026` | Structured logging and soft/hard diagnostic boundaries. |
+| `Custom-Campanion_4_UI_2026` | Panel XML, prompts, widget state, and Companion WebWidget adapter. The visible Config/PIN page remains a Deferred Surface. |
+| `Custom-Campanion_5_State_2026` | Storage keys, safe MemoryStorage reads, and basic board mode state. |
+| `Custom-Campanion_6_DeviceComms_2026` | HTTP transport, queue policy, Message envelope, putxml builders, and XML parsing. |
+| `Custom-Campanion_7_RoomReference_2026` | Inactive parent entry source; installed and activated on a parent as `Custom-Campanion_Room_2026`. |
+| `Custom-Campanion_8_Services_2026` | Parent package provisioning and runtime companion-board identity discovery. |
+| `Custom-Campanion_9_ParentConnectivity_2026` | Parent identity refresh, retries, heartbeat, recovery, and Call Preservation. |
+| `Custom-Campanion_10_PairedEnvironment_2026` | Paired UI policy, WebWidget mode, microphone/volume enforcement, and safe release restoration. |
+| `Custom-Campanion_11_BoardCallSync_2026` | Board-side Webex call synchronization, disconnect, rejoin, retries, and call messaging. |
+| `Custom-Campanion_12_ParentCallCoordination_2026` | Parent-side call/BYOD detection, participant admission, and call-detail responses. |
+| `Custom-Campanion_13_StandbyCoordination_2026` | StandAlone standby preferences, parent standby sync, delayed application, prompts, and bypass. |
+
+No build or bundling step is required. A future deployment tool may install these source macros after core behavior is complete, but it must not change their runtime boundaries. See [ADR 0001](docs/adr/0001-unbundled-domain-macros.md).
+
 ## Initialization
 
 The companion board initializes first. It registers the error-panel interaction, initializes HTTPClient and MemoryStorage, loads local state, registers call/media subscriptions, validates known parent devices, applies local mode policy, installs the parent-side runtime package, connects itself as a peripheral, and asks each online parent to confirm that the runtime is ready before sending board-owned configuration. HTTPClient or MemoryStorage failure stops initialization, logs a stable administrator diagnostic, removes `cc26`, and installs the gray widgetless `cc26_error` action panel.
@@ -44,7 +66,7 @@ flowchart TD
 
 ## Parent Macro Installation
 
-The board installs the parent-room runtime onto each online parent codec. The installed runtime name is `Custom-Campanion_Room_2026`; helper modules are copied with their numbered source names. Board configuration stays on the board and is sent later with `ConfigSync`.
+The board installs the parent-room runtime onto each online parent codec. The installed runtime name is `Custom-Campanion_Room_2026`; `Custom-Campanion_12_ParentCallCoordination_2026`, Utils, DeviceComms, and MemoryStorage are copied as dependencies. Only `Custom-Campanion_Room_2026` is activated. Board configuration stays on the board and is sent later with `ConfigSync`.
 
 The macro save, activate, and runtime restart operations are sent in one putxml command payload. Commands share one `<Command>` root and are grouped under the correct common path nodes; configuration XML is not mixed into this command payload.
 
@@ -52,17 +74,19 @@ The macro save, activate, and runtime restart operations are sent in one putxml 
 flowchart TD
 	A[Board has online parent status] --> B[Read local macro contents]
 	B --> C[RoomReference source macro]
-	B --> D[Utils module]
-	B --> E[DeviceComms module]
-	B --> F[MemoryStorage library]
-	C --> G[Build one Command XML payload]
-	D --> G
-	E --> G
-	F --> G
-	G --> H[Save macros]
-	H --> I[Activate Custom-Campanion_Room_2026]
-	I --> J[Restart parent macro runtime]
-	J --> K[Parent RoomReference initializes]
+	B --> D[Parent Call Coordination module]
+	B --> E[Utils module]
+	B --> F[DeviceComms module]
+	B --> G[MemoryStorage library]
+	C --> H[Build one Command XML payload]
+	D --> H
+	E --> H
+	F --> H
+	G --> H
+	H --> I[Save macros]
+	I --> J[Activate Custom-Campanion_Room_2026]
+	J --> K[Restart parent macro runtime]
+	K --> L[Parent RoomReference initializes]
 ```
 
 ## Codec to Codec Communication
@@ -213,7 +237,7 @@ The board switches between standalone and paired behavior based on the active pa
 
 Standalone standby preferences are saved in board memory for `Standby Control`, `Standby Halfwake Mode`, and `Time OfficeHours Enabled`. In paired mode, the board forces those values to `Off`, `Manual`, and `False` so it does not enter standby independently. When a parent is selected, the board clears any pending standby sync or bypass state, reads that parent's current `Status.Standby.State` directly, and shows one 30-second prompt before applying `Off`, `Standby`, or `Halfwake`. Parent rooms also subscribe to `Status.Standby.State` and send debounced `StandbySync` messages to registered boards; after pairing, the board follows those active-parent standby commands immediately without showing a prompt. The board ignores `EnteringStandby`. A user can start 5-minute or 30-minute bypass windows; while bypass is active, parent standby commands are ignored and the Web Widget `info3` shows `Standby sync bypass until HH:MM AM/PM`. Runtime `info3` precedence is parent connectivity/Call Preservation, call synchronization, then standby.
 
-The editable Paired UI policy is in `Custom-Campanion_8_Services_2026`. It captures supported StandAlone values and restores them on release. Video Mute, Participant List, and Whiteboard Start are set to `Auto`; the other known call controls plus Share Start are set to `Hidden`. Call End is `Hidden` during normal Paired operation and temporarily `Auto` during Call Preservation or an active-call Unhealthy State. Unsupported optional feature paths are logged and skipped. Because RoomOS does not expose a dedicated Raise Hand visibility configuration, device acceptance must confirm Raise Hand remains available with MidCallControls hidden.
+The editable Paired UI policy is in `Custom-Campanion_10_PairedEnvironment_2026`. It captures supported StandAlone values and restores them on release. Video Mute, Participant List, and Whiteboard Start are set to `Auto`; the other known call controls plus Share Start are set to `Hidden`. Call End is `Hidden` during normal Paired operation and temporarily `Auto` during Call Preservation or an active-call Unhealthy State. Unsupported optional feature paths are logged and skipped. Because RoomOS does not expose a dedicated Raise Hand visibility configuration, device acceptance must confirm Raise Hand remains available with MidCallControls hidden.
 
 While Paired, the board performs initial reads and subscribes to `Status.Audio.Microphones.Mute` and `Status.Audio.Volume`. An observed unmute invokes `Command.Audio.Microphones.Mute` once; a volume other than 1 invokes `Command.Audio.Volume.Set` once with `Level: 1` and no `Device` parameter. Local command failures are not retried. Leaving Paired keeps the microphone state muted. If no call is active, the board immediately reads `Config.Audio.DefaultVolume`, restores that value, and reminds the user to unmute. If a call is active, the board enters StandAlone immediately and asks whether to restore volume; decline, dismissal, or prompt failure leaves the level unchanged.
 

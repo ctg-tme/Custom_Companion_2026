@@ -28,6 +28,14 @@ _Avoid_: Parent offline, room unavailable
 A temporary Paired condition in which the companion board preserves an active call while communication with its parent room device is unavailable. Communication is considered restored only after the selected parent returns a valid identity response whose serial number matches the selected parent serial; normal heartbeat and call-state synchronization then resume through their existing paths.
 _Avoid_: StandAlone, disconnected call
 
+**Parent Connectivity**:
+The live relationship through which a companion board verifies the identity and availability of its selected parent room device and maintains communication with it.
+_Avoid_: Pairing state, parent status check
+
+**Deferred Surface**:
+An intentionally visible or configured part of the product whose behavior has not been implemented yet. It remains organized with its intended product area but must not be presented as an available capability.
+_Avoid_: Dead code, completed feature
+
 ## User Communication
 
 The companion WebWidget `info3` field displays active messages in this order: parent connectivity and Call Preservation, call synchronization, then standby. This is display precedence only; lower-priority behaviors continue while their messages are hidden and become visible again when the higher-priority condition clears.
@@ -90,4 +98,4 @@ These known controls are hidden while Paired:
 
 ## Verification
 
-Until the planned RoomOS macro test utility is available, this project does not add a standalone automated test harness. Changes are checked with JavaScript syntax validation, diff validation, focused source searches, and documented device acceptance testing. The future utility should cover XML parsing, HTTP response validation and queue policy, parent retry and state transitions, Paired UI policy decisions, media enforcement and restoration, Unhealthy transitions, user-message precedence, native control visibility, and call integrity without changing the deployable eight-macro architecture.
+Until the planned RoomOS macro test utility is available, this project does not add a standalone automated test harness. Changes are checked with JavaScript syntax validation, diff validation, focused source searches, and documented device acceptance testing. The future utility should cover XML parsing, HTTP response validation and queue policy, parent retry and state transitions, Paired UI policy decisions, media enforcement and restoration, Unhealthy transitions, user-message precedence, native control visibility, and call integrity through the deployable source-macro interfaces.
