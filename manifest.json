@@ -1,0 +1,37 @@
+{
+  "SchemaVersion": 1,
+  "Files": [
+    "Custom-Campanion_1_Main_2026.js",
+    "Custom-Campanion_2_Config_2026.js",
+    "Custom-Campanion_3_Utils_2026.js",
+    "Custom-Campanion_4_UI_2026.js",
+    "Custom-Campanion_5_State_2026.js",
+    "Custom-Campanion_6_DeviceComms_2026.js",
+    "Custom-Campanion_7_RoomReference_2026.js",
+    "Custom-Campanion_8_Services_2026.js",
+    "Custom-Campanion_9_ParentConnectivity_2026.js",
+    "Custom-Campanion_10_PairedEnvironment_2026.js",
+    "Custom-Campanion_11_BoardCallSync_2026.js",
+    "Custom-Campanion_12_ParentCallCoordination_2026.js",
+    "Custom-Campanion_13_StandbyCoordination_2026.js"
+  ],
+  "MinimumRoomOSVersion": "11.32.1.1",
+  "SoftwarePlatform": [
+    "roomos"
+  ],
+  "ProductPlatform": [
+    "Board Pro",
+    "Board Pro G2",
+    "Board Pro G3",
+    "Desk Pro",
+    "Desk",
+    "Desk Mini",
+    "Desk Pro G2"
+  ],
+  "ExternalDependencies": [
+    {
+      "Name": "Memory-Storage-Functions-V2",
+      "RawUrl": "https://raw.githubusercontent.com/ctg-tme/Memory-Storage-Functions-V2/main/Memory-Storage-Functions-V2.js"
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+name: Deploy Custom Companion installer
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/deploy-companion-installer.yml'
+      - 'installer/**'
+      - 'manifest.json'
+      - 'README.md'
+      - 'Custom-Campanion_*_2026.js'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: installer/package-lock.json
+
+      - name: Install dependencies
+        working-directory: installer
+        run: npm ci
+
+      - name: Verify release contract
+        working-directory: installer
+        run: npm run verify:release
+
+      - name: Test installer
+        working-directory: installer
+        run: npm test
+
+      - name: Build installer
+        working-directory: installer
+        run: npm run build
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: installer/dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-07-20
 
+The deployment-tool deferral recorded below was superseded by ADR 0002. The Companion Installer now deploys the unbundled source while preserving this ADR's module responsibilities and activation rules.
+
 ## Context
 
 The initial solution concentrated board and parent workflows into eight numbered source macros. As Parent Connectivity, Paired Environment policy, board call synchronization, parent call coordination, and standby coordination became stateful domains, the entry macros accumulated unrelated timers, cancellation tokens, subscriptions, policies, and xAPI operations.

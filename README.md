@@ -39,7 +39,15 @@ The deployable source remains unbundled and uses 13 numbered macros. On the comp
 | `Custom-Campanion_12_ParentCallCoordination_2026` | Parent-side call/BYOD detection, participant admission, and call-detail responses. |
 | `Custom-Campanion_13_StandbyCoordination_2026` | StandAlone standby preferences, parent standby sync, delayed application, prompts, and bypass. |
 
-No build or bundling step is required. A future deployment tool may install these source macros after core behavior is complete, but it must not change their runtime boundaries. See [ADR 0001](docs/adr/0001-unbundled-domain-macros.md).
+No build or bundling step is required for the runtime macros. The Companion Installer installs these source files without changing their runtime boundaries. See [ADR 0001](docs/adr/0001-unbundled-domain-macros.md).
+
+## Companion Installer
+
+The static browser installer in `installer/` deploys a selected release or the current Main Fork (Beta) snapshot to a companion board through JSXAPI. The root `manifest.json` is the Release Manifest and remains authoritative for installable project macros, minimum RoomOS, supported product platforms, and external dependencies. The installer never targets a parent room device; the installed board runtime retains parent provisioning ownership.
+
+Before packaging, `npm run verify:release` checks that the Release Manifest exactly covers the eligible root macros, the runtime project version is synchronized across Main, Config, `config.version`, and RoomReference, every macro passes JavaScript syntax validation, relative macro imports resolve to Release Manifest resources, and Main still emits the initialization messages used by installer verification. Installer tests and builds run the same Release Contract verification before generating the pinned source snapshot.
+
+See `installer/README.md` for local commands and ADR 0002 through ADR 0005 for source selection, credentials, Board Identity Confirmation, and forward-only installation decisions.
 
 ## Initialization
 

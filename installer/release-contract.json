@@ -1,0 +1,7 @@
+{
+  "MainMacroFile": "Custom-Campanion_1_Main_2026.js",
+  "ConfigMacroFile": "Custom-Campanion_2_Config_2026.js",
+  "RoomReferenceMacroFile": "Custom-Campanion_7_RoomReference_2026.js",
+  "InitializationSuccessMessage": "Custom Campanion initialized",
+  "InitializationStoppedMessage": "Custom Campanion board initialization stopped"
+}

@@ -16,6 +16,38 @@ _Avoid_: Connected mode, linked mode
 A person with administrative access to the RoomOS device WebUI and Macro Editor who can diagnose and rectify solution health failures.
 _Avoid_: In-Room User, room operator
 
+**Companion Installer**:
+A browser-based deployment tool used by a Device Administrator to configure and install the solution onto a companion board. A parent room device is never its installation target, and parent configuration belongs to the board UI.
+_Avoid_: Parent installer, room installer
+
+**Installer Credentials**:
+The administrator account used only by the Companion Installer to connect to and deploy onto a companion board.
+_Avoid_: Board callback credentials, runtime credentials
+
+**Board Callback Credentials**:
+An existing local companion-board account distributed to registered parents so they can send runtime messages back to the board. It may be the same account as Installer Credentials, but keeping it distinct makes device audit activity attributable to its purpose.
+_Avoid_: Installer credentials, administrator credentials
+
+**Board Identity Confirmation**:
+The pre-installation proof that the connected companion board's serial number matches the serial number supplied by the Device Administrator. The observed serial is never disclosed by the Companion Installer.
+_Avoid_: Device discovery, serial lookup
+
+**Board Installation Ready**:
+The Companion Installer outcome reached when the installed board entry macro emits its initialization-complete message. It confirms that the Board runtime initialized, not that any parent room is configured or ready.
+_Avoid_: ParentReady, files uploaded
+
+**Release Manifest**:
+The installation contract published with a Custom Companion release. It identifies the release's required macro resources, minimum supported RoomOS version, and external dependencies that must be satisfied before installation.
+_Avoid_: package manifest, file listing
+
+**Release Contract**:
+The build-time agreement that keeps the Release Manifest, eligible macro set, stable installer anchors, synchronized runtime project version, relative macro imports, JavaScript syntax, and Board initialization messages consistent before an installation snapshot can be packaged.
+_Avoid_: Manifest only, installer assumptions
+
+**Legacy Project Macro**:
+An installed `Custom-Campanion_*_2026` macro that is absent from the selected Release Manifest. The Companion Installer lists these files explicitly, deactivates retained files, and checks its purge option by default; generated storage and unrelated macros are never Legacy Project Macros.
+_Avoid_: Unknown macro, storage macro
+
 **In-Room User**:
 A person using the room touch interface who may operate the companion board but is not expected to perform device administration or technical remediation.
 _Avoid_: Device Administrator, system administrator

@@ -1,0 +1,29 @@
+{
+  "name": "custom-companion-installer",
+  "private": true,
+  "version": "0.1.2",
+  "type": "module",
+  "scripts": {
+    "verify:release": "node scripts/verify-release-contract.mjs",
+    "prepare:assets": "node scripts/generate-main-assets.mjs",
+    "dev": "npm run prepare:assets && vite --host 127.0.0.1 --port 5176",
+    "build": "npm run prepare:assets && tsc --noEmit && vite build",
+    "test": "npm run prepare:assets && node --test scripts/verify-release-contract.checks.mjs && vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@momentum-design/icons": "^0.59.0",
+    "@momentum-design/tokens": "^0.11.0",
+    "acorn": "^8.17.0",
+    "dompurify": "^3.4.12",
+    "jsxapi": "^6.0.0",
+    "marked": "^18.0.7",
+    "mermaid": "^11.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}
