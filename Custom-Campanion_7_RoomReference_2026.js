@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 21, 2026
- * Version:                 0.1.2.27
+ * Version:                 0.1.2.28
  *
  * Description:             Parent room entry and registration macro used as the install source.
  *                          The numbered source remains inactive on the board; parent installation renames

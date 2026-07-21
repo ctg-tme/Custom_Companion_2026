@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 20, 2026
- * Revised:                 July 20, 2026
- * Version:                 1.0.0
+ * Revised:                 July 21, 2026
+ * Version:                 1.0.1
  *
  * Description:             Parent Call Coordination controller for the Custom Companion Solution.
  *                          Owns parent call detection, BYOD detection, participant admission,
@@ -677,7 +677,13 @@ function createParentCallCoordination(options) {
 	}
 
 	function normalizeCallIdentity(value) {
-		return String(value || '').trim().toLowerCase();
+		const normalizedValue = String(value || '').trim().toLowerCase();
+		const schemeSeparatorIndex = normalizedValue.indexOf(':');
+		if (schemeSeparatorIndex < 0) {
+			return normalizedValue;
+		}
+
+		return normalizedValue.slice(schemeSeparatorIndex + 1).trim();
 	}
 
 	async function sendCallDisconnectSync() {

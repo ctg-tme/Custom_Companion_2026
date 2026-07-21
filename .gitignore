@@ -8,3 +8,4 @@ Simple-WebWidget-Dynamic-POC_2026.js
 /outputs/*/Custom_Companion_2026_Test_Plan_v*.xlsx
 /outputs/*/Custom_Companion_2026_Test_Plan_v*.xlsx.inspect.ndjson
 /tmp/test-plan-*/
+/.roomos-local/
