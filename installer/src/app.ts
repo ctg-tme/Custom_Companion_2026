@@ -433,7 +433,7 @@ export class InstallerApp {
           </span>
         </label>
       </section>
-      <div class="notice warning"><span>${warningIcon}</span><div><strong>Clean installation permanently removes stored state</strong><p>The generated storage macro is not part of the Release Manifest and cannot be restored by this forward-only installer.</p></div></div>`;
+      ${this.installationType === 'clean' ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Clean installation permanently removes stored state</strong><p>The generated storage macro is not part of the Release Manifest and cannot be restored by this forward-only installer.</p></div></div>` : ''}`;
   }
 
   private currentLegacy(): InstalledMacro[] {
