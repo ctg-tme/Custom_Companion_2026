@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 10, 2026
- * Revised:                 July 20, 2026
- * Version:                 1.0.2
+ * Revised:                 July 21, 2026
+ * Version:                 1.0.3
  *
  * Description:             Durable storage keys, safe MemoryStorage reads, and basic board mode state.
  *
@@ -42,6 +42,7 @@ or implied.
 const STAND_ALONE_PARENT_SERIAL = 'StandAlone';
 const PARENT_DEVICES_STORAGE_KEY = 'parentDevices';
 const ACTIVE_PARENT_SERIAL_STORAGE_KEY = 'activeParentSerial';
+const PIN_MODE_STORAGE_KEY = 'pinMode';
 const STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY = 'standaloneUiFeatureConfig';
 const STANDALONE_STANDBY_CONFIG_STORAGE_KEY = 'standaloneStandbyConfig';
 
@@ -136,6 +137,7 @@ const companionState = {
 	STAND_ALONE_PARENT_SERIAL,
 	PARENT_DEVICES_STORAGE_KEY,
 	ACTIVE_PARENT_SERIAL_STORAGE_KEY,
+	PIN_MODE_STORAGE_KEY,
 	STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY,
 	STANDALONE_STANDBY_CONFIG_STORAGE_KEY,
 	readMemoryOrDefault,

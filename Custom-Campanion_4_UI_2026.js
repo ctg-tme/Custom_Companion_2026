@@ -20,11 +20,10 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 20, 2026
- * Version:                 1.0.18
+ * Revised:                 July 21, 2026
+ * Version:                 1.0.19
  *
- * Description:             Companion panel, prompt, and WebWidget adapter. The Config/PIN page is a
- *                          Deferred Surface and remains present without executable management behavior.
+ * Description:             Companion access/hidden panels, PIN prompts, status prompts, and WebWidget adapter.
  *
  * Documentation:           N/A
  *
@@ -40,7 +39,9 @@ or implied.
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
 
-const PANEL_ID = 'cc26';
+const LEGACY_PANEL_ID = 'cc26';
+const ACCESS_PANEL_ID = 'cc26_access';
+const PANEL_ID = 'cc26_hidden';
 const ERROR_PANEL_ID = 'cc26_error';
 const ERROR_PROMPT_ID = 'cc26_error_prompt';
 const SELECT_DEVICE_PAGE_ID = `${PANEL_ID}~SelectDevice`;
@@ -48,16 +49,21 @@ const CONFIG_PAGE_ID = `${PANEL_ID}~Config`;
 const RELEASE_DEVICE_WIDGET_ID = `${SELECT_DEVICE_PAGE_ID}~ReleaseDevice`;
 const RELEASE_INFO_WIDGET_ID = `${SELECT_DEVICE_PAGE_ID}~ReleaseInfo`;
 const NO_PARENTS_FOUND_WIDGET_ID = `${SELECT_DEVICE_PAGE_ID}~NoParentsFound`;
+const PIN_OFF_WIDGET_ID = `${CONFIG_PAGE_ID}~PinOff`;
+const PIN_ON_WIDGET_ID = `${CONFIG_PAGE_ID}~PinOn`;
+const PIN_EDIT_WIDGET_ID = `${CONFIG_PAGE_ID}~PinEdit`;
+const PIN_INFO_WIDGET_ID = `${CONFIG_PAGE_ID}~PinInfo`;
 const RELEASE_INFO_TEXT = 'Select a room to pair this companion board to that room system. Use Stand Alone to unpair and restore normal local use.';
-const WEB_WIDGET_PANEL_ID = `${PANEL_ID}WebWidget`;
+const WEB_WIDGET_PANEL_ID = 'cc26WebWidget';
 const WEB_WIDGET_NAME = 'Custom Companion 2026';
 const WEB_WIDGET_REFRESH_INTERVAL = 0;
 const WEB_WIDGET_DEFAULT_URL = 'https://ctg-tme.github.io/Simple-WebWidget/';
 
 /*
  * UI xAPI surface:
- * - Commands: UserInterface.Extensions.Panel.Save/Remove, Widget.SetValue,
- *   UserInterface.Message.Prompt.Display/Clear, and Extensions.WebWidget.Save/Remove.
+ * - Commands: UserInterface.Extensions.Panel.Save/Remove/Open/Close, Widget.SetValue,
+ *   UserInterface.Message.TextInput.Display/Clear, UserInterface.Message.Prompt.Display/Clear,
+ *   and Extensions.WebWidget.Save/Remove.
  * - Read: Status.UserInterface.WebView.
  * Event subscriptions remain explicit in the board entry macro because it owns event routing.
  */
@@ -78,17 +84,32 @@ function buildErrorPanelXml() {
 </Extensions>`;
 }
 
+function buildAccessPanelXml() {
+	return `<Extensions>
+	<Version>1.11</Version>
+	<Panel>
+		<Order>4</Order>
+		<PanelId>${ACCESS_PANEL_ID}</PanelId>
+		<Origin>local</Origin>
+		<Location>HomeScreenAndCallControls</Location>
+		<Icon>Input</Icon>
+		<Color>#875AE0</Color>
+		<Name>Companion Device Select</Name>
+		<ActivityType>Custom</ActivityType>
+	</Panel>
+</Extensions>`;
+}
+
 function buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial) {
 	const parentRowsXml = buildParentRowsXml(parentDevices, parentDeviceStatus);
 
-	// Deferred Surface: keep the Config/PIN page organized in the deployable panel XML for future implementation.
 	return `<Extensions>
 	<Version>1.11</Version>
 	<Panel>
 		<Order>4</Order>
 		<PanelId>${PANEL_ID}</PanelId>
 		<Origin>local</Origin>
-		<Location>HomeScreen</Location>
+		<Location>Hidden</Location>
 		<Icon>Input</Icon>
 		<Color>#875AE0</Color>
 		<Name>Companion Device Select</Name>
@@ -118,25 +139,25 @@ function buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial) {
 			<Row>
 				<Name>Pin Mode</Name>
 				<Widget>
-					<WidgetId>${PANEL_ID}~Config~PinOff</WidgetId>
+					<WidgetId>${PIN_OFF_WIDGET_ID}</WidgetId>
 					<Name>Off</Name>
 					<Type>Button</Type>
 					<Options>size=1</Options>
 				</Widget>
 				<Widget>
-					<WidgetId>${PANEL_ID}~Config~PinOn</WidgetId>
+					<WidgetId>${PIN_ON_WIDGET_ID}</WidgetId>
 					<Name>On</Name>
 					<Type>Button</Type>
 					<Options>size=1</Options>
 				</Widget>
 				<Widget>
-					<WidgetId>${PANEL_ID}~Config~PinEdit</WidgetId>
+					<WidgetId>${PIN_EDIT_WIDGET_ID}</WidgetId>
 					<Name>Edit</Name>
 					<Type>Button</Type>
 					<Options>size=1</Options>
 				</Widget>
 				<Widget>
-					<WidgetId>${PANEL_ID}~Config~PinInfo</WidgetId>
+					<WidgetId>${PIN_INFO_WIDGET_ID}</WidgetId>
 					<Type>Button</Type>
 					<Options>size=1;icon=help</Options>
 				</Widget>
@@ -203,13 +224,18 @@ function buildParentWidgetXml(parentDevice, parentStatus, index) {
 				</Widget>`;
 }
 
-async function savePanel(XAPIObject, parentDevices, parentDeviceStatus, activeParentSerial) {
+async function savePanel(XAPIObject, parentDevices, parentDeviceStatus, activeParentSerial, pinModeEnabled) {
 	await removePanel(XAPIObject, ERROR_PANEL_ID);
+	await removePanel(XAPIObject, LEGACY_PANEL_ID);
+	await XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: ACCESS_PANEL_ID }, buildAccessPanelXml());
 	await XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: PANEL_ID }, buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial));
 	await setSelectedParent(XAPIObject, parentDevices, activeParentSerial);
+	await setPinModeFeedback(XAPIObject, pinModeEnabled);
 }
 
 async function saveErrorPanel(XAPIObject) {
+	await removePanel(XAPIObject, LEGACY_PANEL_ID);
+	await removePanel(XAPIObject, ACCESS_PANEL_ID);
 	await removePanel(XAPIObject, PANEL_ID);
 	await XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: ERROR_PANEL_ID }, buildErrorPanelXml());
 }
@@ -230,6 +256,48 @@ function isErrorPanel(panelId) {
 	return String(panelId || '') === ERROR_PANEL_ID;
 }
 
+function isAccessPanel(panelId) {
+	return String(panelId || '') === ACCESS_PANEL_ID;
+}
+
+async function openProtectedPanel(XAPIObject) {
+	await XAPIObject.Command.UserInterface.Extensions.Panel.Open({ PanelId: PANEL_ID });
+}
+
+async function closeProtectedPanel(XAPIObject) {
+	await XAPIObject.Command.UserInterface.Extensions.Panel.Close();
+}
+
+async function showPinTextInput(XAPIObject, options) {
+	await XAPIObject.Command.UserInterface.Message.TextInput.Display({
+		Title: options.title,
+		Text: options.text,
+		FeedbackId: options.feedbackId,
+		InputType: 'PIN',
+		Placeholder: 'Enter a 4-8 digit PIN',
+		SubmitText: options.submitText,
+		Duration: options.duration
+	});
+}
+
+async function clearPinTextInput(XAPIObject, feedbackId) {
+	try {
+		await XAPIObject.Command.UserInterface.Message.TextInput.Clear({ FeedbackId: feedbackId });
+	} catch (error) {
+		// Clearing an already dismissed or expired TextInput is an expected idempotent operation.
+	}
+}
+
+async function showPinNotice(XAPIObject, options) {
+	await XAPIObject.Command.UserInterface.Message.Prompt.Display({
+		Title: options.title,
+		Text: options.text,
+		FeedbackId: options.feedbackId,
+		'Option.1': 'Dismiss',
+		Duration: options.duration
+	});
+}
+
 async function showErrorPrompt(XAPIObject) {
 	await XAPIObject.Command.UserInterface.Message.Prompt.Display({
 		Title: 'Companion Unavailable',
@@ -248,6 +316,11 @@ async function setSelectedParent(XAPIObject, parentDevices, activeParentSerial) 
 		const isActive = parentDevices[index].serial === activeParentSerial;
 		await setWidgetValue(XAPIObject, widgetId, isActive ? 'active' : 'inactive');
 	}
+}
+
+async function setPinModeFeedback(XAPIObject, enabled) {
+	await setWidgetValue(XAPIObject, PIN_OFF_WIDGET_ID, enabled ? 'inactive' : 'active');
+	await setWidgetValue(XAPIObject, PIN_ON_WIDGET_ID, enabled ? 'active' : 'inactive');
 }
 
 async function setWidgetValue(XAPIObject, widgetId, value) {
@@ -323,7 +396,7 @@ function buildCompanionWebWidgetUrl(options) {
 		heading: 'Custom Companion 2026',
 		info1: options.mode === 'StandAlone' ? 'Operating in Standalone' : `Paired to Room:\n${options.roomName || 'Unknown Room'}`,
 		info2: contextConfig.info2 || '',
-		info3: options.runtimeInfo3 || contextConfig.info3 || '',
+		info3: options.runtimeInfo3 || '',
 		iconUrl: contextConfig.iconUrl || ''
 	};
 
@@ -440,6 +513,19 @@ function isSelectDeviceWidget(widgetId) {
 	return parsed.panelId === PANEL_ID && parsed.pageId === 'SelectDevice';
 }
 
+function isProtectedPanelWidget(widgetId) {
+	return parseWidgetId(widgetId).panelId === PANEL_ID;
+}
+
+function isPinModeWidget(widgetId) {
+	const parsed = parseWidgetId(widgetId);
+	return parsed.panelId === PANEL_ID && parsed.pageId === 'Config' && ['PinOff', 'PinOn', 'PinEdit', 'PinInfo'].includes(parsed.action);
+}
+
+function isProtectedPanelPage(pageId) {
+	return String(pageId || '') === SELECT_DEVICE_PAGE_ID || String(pageId || '') === CONFIG_PAGE_ID;
+}
+
 function getParentStatus(parentDevice, parentDeviceStatus) {
 	return parentDeviceStatus.find(status => status.host === parentDevice.host || status.serial === parentDevice.serial) || null;
 }
@@ -455,6 +541,7 @@ function escapeXml(value) {
 
 const companionUi = {
 	PANEL_ID,
+	ACCESS_PANEL_ID,
 	ERROR_PANEL_ID,
 	RELEASE_DEVICE_WIDGET_ID,
 	RELEASE_INFO_WIDGET_ID,
@@ -462,8 +549,15 @@ const companionUi = {
 	saveErrorPanel,
 	removeErrorPanel,
 	isErrorPanel,
+	isAccessPanel,
+	openProtectedPanel,
+	closeProtectedPanel,
+	showPinTextInput,
+	clearPinTextInput,
+	showPinNotice,
 	showErrorPrompt,
 	setSelectedParent,
+	setPinModeFeedback,
 	showReleaseInfo,
 	getCurrentWebWidget,
 	saveWebWidget,
@@ -475,7 +569,10 @@ const companionUi = {
 	showStandbySyncPrompt,
 	clearPrompt,
 	parseWidgetId,
-	isSelectDeviceWidget
+	isSelectDeviceWidget,
+	isProtectedPanelWidget,
+	isPinModeWidget,
+	isProtectedPanelPage
 };
 
 export { companionUi };

@@ -13,6 +13,7 @@ describe('release manifest', () => {
     const manifest = validateManifest(value);
     expect(manifest.Files).toContain('Custom-Campanion_1_Main_2026.js');
     expect(manifest.Files).toContain('Custom-Campanion_2_Config_2026.js');
+    expect(manifest.Files).toContain('Custom-Campanion_14_PinMode_2026.js');
     expect(manifest.MinimumRoomOSVersion).toBe('11.32.1.1');
   });
 

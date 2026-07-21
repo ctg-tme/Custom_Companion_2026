@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 20, 2026
- * Version:                 0.1.2.26
+ * Revised:                 July 21, 2026
+ * Version:                 0.1.2.27
  *
  * Description:             Parent room entry and registration macro used as the install source.
  *                          The numbered source remains inactive on the board; parent installation renames

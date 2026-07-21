@@ -5,7 +5,7 @@ Custom Companion 2026 is a Cisco RoomOS macro solution for Board Pro Series endp
 ## High-Level Scope
 
 - Maintain a board-local list of parent room devices using `Memory-Storage-Functions-V2`.
-- Provide the Companion Device Select UI for listing configured parents, selecting an online parent, and returning the board to StandAlone. The visible Config/PIN widgets are placeholders; parent-management and PIN behavior are not implemented in the current runtime.
+- Provide PIN-gated Companion Device Select access for listing configured parents, selecting an online parent, returning the board to StandAlone, and managing PIN Mode from the Config page. Parent-management controls remain a Deferred Surface.
 - Initialize and use RoomOS HTTPClient for device-to-device communication.
 - Use Message API and putxml-based routing to sanitize and handle custom communication between the movable board and parent room devices.
 - Apply an explicit Paired UI policy that keeps Video Mute, Participants, and Whiteboard available while hiding the other known call/share controls; native Raise Hand remains subject to device acceptance testing.
@@ -16,19 +16,19 @@ Custom Companion 2026 is a Cisco RoomOS macro solution for Board Pro Series endp
 
 - Companion board: the movable Board Pro or Board device running `Custom-Campanion_1_Main_2026`.
 - Parent room device: the fixed room codec that receives the installed `Custom-Campanion_Room_2026` macro.
-- Memory storage: generated state owned by `Memory-Storage-Functions-V2`; this stores board parent-device records and parent registered-board records.
+- Memory storage: generated state owned by `Memory-Storage-Functions-V2`; this stores board parent-device records, board PIN Mode state, and parent registered-board records.
 - Transport: RoomOS HTTPClient posts putxml payloads to remote codecs, usually to invoke `Message.Send`, `Peripherals.Connect`, `Peripherals.HeartBeat`, or macro save/activate commands.
 
 ## Source Macro Architecture
 
-The deployable source remains unbundled and uses 13 numbered macros. On the companion board, only `Custom-Campanion_1_Main_2026` is the active entry macro; its imported modules and the two parent deployment sources remain present under their numbered names. This keeps each stateful workflow independently readable while preserving RoomOS Macro Editor deployment.
+The deployable source remains unbundled and uses 14 numbered macros. On the companion board, only `Custom-Campanion_1_Main_2026` is the active entry macro; its imported modules and the two parent deployment sources remain present under their numbered names. This keeps each stateful workflow independently readable while preserving RoomOS Macro Editor deployment.
 
 | Macro | Responsibility |
 | --- | --- |
 | `Custom-Campanion_1_Main_2026` | Companion board entry, initialization order, selection transitions, Unhealthy handling, and cross-controller coordination. |
-| `Custom-Campanion_2_Config_2026` | Deployment configuration. `pinProtection` remains a Deferred Surface and is not executable behavior. |
+| `Custom-Campanion_2_Config_2026` | Deployment configuration, including first-initialization `pinMode.defaults`. |
 | `Custom-Campanion_3_Utils_2026` | Structured logging and soft/hard diagnostic boundaries. |
-| `Custom-Campanion_4_UI_2026` | Panel XML, prompts, widget state, and Companion WebWidget adapter. The visible Config/PIN page remains a Deferred Surface. |
+| `Custom-Campanion_4_UI_2026` | Access/hidden panel XML, PIN and status prompts, widget state, and Companion WebWidget adapter. |
 | `Custom-Campanion_5_State_2026` | Storage keys, safe MemoryStorage reads, and basic board mode state. |
 | `Custom-Campanion_6_DeviceComms_2026` | HTTP transport, queue policy, Message envelope, putxml builders, and XML parsing. |
 | `Custom-Campanion_7_RoomReference_2026` | Inactive parent entry source; installed and activated on a parent as `Custom-Campanion_Room_2026`. |
@@ -38,6 +38,7 @@ The deployable source remains unbundled and uses 13 numbered macros. On the comp
 | `Custom-Campanion_11_BoardCallSync_2026` | Board-side Webex call synchronization, disconnect, rejoin, retries, and call messaging. |
 | `Custom-Campanion_12_ParentCallCoordination_2026` | Parent-side call/BYOD detection, participant admission, and call-detail responses. |
 | `Custom-Campanion_13_StandbyCoordination_2026` | StandAlone standby preferences, parent standby sync, delayed application, prompts, and bypass. |
+| `Custom-Campanion_14_PinMode_2026` | Board-local PIN state, protected-panel access, edit/disable verification, persistence retry, and inactivity session. |
 
 No build or bundling step is required for the runtime macros. The Companion Installer installs these source files without changing their runtime boundaries. See [ADR 0001](docs/adr/0001-unbundled-domain-macros.md).
 
@@ -51,7 +52,7 @@ See `installer/README.md` for local commands and ADR 0002 through ADR 0005 for s
 
 ## Initialization
 
-The companion board initializes first. It registers the error-panel interaction, initializes HTTPClient and MemoryStorage, loads local state, registers call/media subscriptions, validates known parent devices, applies local mode policy, installs the parent-side runtime package, connects itself as a peripheral, and asks each online parent to confirm that the runtime is ready before sending board-owned configuration. HTTPClient or MemoryStorage failure stops initialization, logs a stable administrator diagnostic, removes `cc26`, and installs the gray widgetless `cc26_error` action panel.
+The companion board initializes first. It registers the UI event routes, initializes HTTPClient and MemoryStorage, loads local state including PIN Mode, registers call/media subscriptions, validates known parent devices, applies local mode policy, installs the parent-side runtime package, connects itself as a peripheral, and asks each online parent to confirm that the runtime is ready before sending board-owned configuration. HTTPClient, MemoryStorage, or PIN Mode initialization failure stops initialization, logs a stable administrator diagnostic, removes `cc26_access`, `cc26_hidden`, and legacy `cc26`, and installs the gray widgetless `cc26_error` action panel.
 
 ```mermaid
 flowchart TD
@@ -60,7 +61,8 @@ flowchart TD
 	C --> D[Initialize MemoryStorage]
 	C -- Failure --> X[Log diagnostic and install cc26_error]
 	D -- Failure --> X
-	D --> E[Read stored parent and mode state]
+	D --> E[Read stored parent, board mode, and PIN Mode state]
+	E -- Invalid PIN state --> X
 	E --> F[Register message, call-count, microphone-mute, and volume subscriptions]
 	F --> G[Perform initial call, UI, standby, and media reads]
 	G --> H[Refresh parent identities with HTTP GET]
@@ -151,7 +153,7 @@ The envelope is intentionally small because RoomOS `Message.Send` text is limite
 
 ## Board Configuration Handoff
 
-Configuration handoff happens after the parent runtime package is installed and the board is connected as a RoomOS peripheral. The parent confirms readiness first, then the board sends the current board-owned config by custom message.
+Configuration handoff happens after the parent runtime package is installed and the board is connected as a RoomOS peripheral. The parent confirms readiness first, then the board sends an explicit parent-facing subset of board-owned configuration by custom message. Board-local `pinMode` is never included.
 
 ```mermaid
 flowchart TD
@@ -176,7 +178,7 @@ Board serial, board name, and MAC address are not stored in base config. The boa
 
 The `ConfigSync` payload currently includes:
 
-- `Config`
+- `Config` containing `version`, `CompanionBoardInformation`, `httpClient`, and `UserInterface`; board-local `pinMode` is excluded
 - `Board.Username`
 - `Board.Password`
 - `Board.ProductPlatform`
@@ -237,13 +239,23 @@ flowchart TD
 	K -- No, call active --> J
 ```
 
+## PIN Mode and Protected UI
+
+The visible `cc26_access` action panel is saved at `HomeScreenAndCallControls`. It has no pages or widgets. The full existing interface is saved as `cc26_hidden` at `Hidden`; clicking the action panel opens it immediately when PIN Mode is disabled or displays a PIN TextInput first when PIN Mode is enabled. The legacy `cc26` panel is removed during every normal or Unhealthy render so an upgrade cannot leave an unprotected duplicate.
+
+`config.pinMode.defaults.enabled` and `config.pinMode.defaults.pin` initialize one board-local `pinMode` memory record only when that record does not exist. The durable record is the sole runtime authority afterward. The current PIN is never logged or sent to a parent. PIN Mode is an in-room access gate rather than device authentication; a Device Administrator with Macro Editor or generated-storage access can inspect or change the underlying source/state. PINs are constrained in `Custom-Campanion_14_PinMode_2026` to 4-8 numeric digits so Device Administrators only configure the two bootstrap values.
+
+Turning PIN Mode on writes the state, updates the On/Off widget feedback, closes the hidden panel, and shows a dismissible 15-second confirmation. Turning it off requires the current PIN, leaves the panel open after success, and shows a 15-second confirmation. Editing always verifies the current PIN, collects and confirms the new PIN, and only writes after both entries match. Incorrect verification re-prompts without a lockout; invalid or mismatched edit input explains the failure and restarts at current-PIN verification. Dismissal or expiry cancels the active attempt.
+
+The protected UI session closes after 60 seconds of inactivity. Opening the launcher, opening or changing a protected page, any widget action within `cc26_hidden`, and PIN-related prompt display or response reset the timer. RoomOS exposes only the final TextInput response—not individual keypad presses—so typing a digit cannot reset the timer. Expiry clears only the known PIN TextInput or PIN notice, discards an unsaved new PIN, and closes the protected panel.
+
 ## UI Feature Mode
 
 The board switches between standalone and paired behavior based on the active parent selection.
 
-`config.UserInterface.WebWidget.CompanionWidget.enabled` is `true` by default. The board reads the current Web Widget from `Status.UserInterface.WebView` and saves its URL and restore metadata once into memory. By default, Companion Widget is shown in both standalone and paired modes; set `config.UserInterface.WebWidget.CompanionWidget.restoreStandaloneExisting` to `true` to restore the original Web Widget when unpaired. In paired mode, the board removes its own Companion widget when needed with `UserInterface.Extensions.WebWidget.Remove`, then saves the built-in Simple-WebWidget URL with hash parameters unless `config.UserInterface.WebWidget.urlOverride` is supplied. Configurable CompanionWidget hash fields include weather.mode, weather.latitude, weather.longitude, weather.temperatureUnit, time.mode, time.timeZone, context-specific info2, context-specific info3, and context-specific iconUrl. The board supplies theme, heading, info1, and `hideSettings=true` in code, and re-saves the widget if `UserInterface Theme Name` changes.
+`config.UserInterface.WebWidget.CompanionWidget.enabled` is `true` by default. The board reads the current Web Widget from `Status.UserInterface.WebView` and saves its URL and restore metadata once into memory. By default, Companion Widget is shown in both standalone and paired modes; set `config.UserInterface.WebWidget.CompanionWidget.restoreStandaloneExisting` to `true` to restore the original Web Widget when unpaired. In paired mode, the board removes its own Companion widget when needed with `UserInterface.Extensions.WebWidget.Remove`, then saves the built-in Simple-WebWidget URL with hash parameters unless `config.UserInterface.WebWidget.urlOverride` is supplied. Configurable CompanionWidget hash fields include weather.mode, weather.latitude, weather.longitude, weather.temperatureUnit, time.mode, time.timeZone, context-specific info2, and context-specific iconUrl. The board supplies theme, heading, info1, solution-owned runtime `info3`, and `hideSettings=true` in code, and re-saves the widget if `UserInterface Theme Name` changes.
 
-Standalone standby preferences are saved in board memory for `Standby Control`, `Standby Halfwake Mode`, and `Time OfficeHours Enabled`. In paired mode, the board forces those values to `Off`, `Manual`, and `False` so it does not enter standby independently. When a parent is selected, the board clears any pending standby sync or bypass state, reads that parent's current `Status.Standby.State` directly, and shows one 30-second prompt before applying `Off`, `Standby`, or `Halfwake`. Parent rooms also subscribe to `Status.Standby.State` and send debounced `StandbySync` messages to registered boards; after pairing, the board follows those active-parent standby commands immediately without showing a prompt. The board ignores `EnteringStandby`. A user can start 5-minute or 30-minute bypass windows; while bypass is active, parent standby commands are ignored and the Web Widget `info3` shows `Standby sync bypass until HH:MM AM/PM`. Runtime `info3` precedence is parent connectivity/Call Preservation, call synchronization, then standby.
+Standalone standby preferences are saved in board memory for `Standby Control`, `Standby Halfwake Mode`, and `Time OfficeHours Enabled`. In paired mode, the board forces those values to `Off`, `Manual`, and `False` so it does not enter standby independently. When a parent is selected, the board clears any pending standby sync or bypass state, reads that parent's current `Status.Standby.State` directly, and shows one 30-second prompt before applying `Off`, `Standby`, or `Halfwake`. Parent rooms also subscribe to `Status.Standby.State` and send debounced `StandbySync` messages to registered boards; after pairing, the board follows those active-parent standby commands immediately without showing a prompt. The board ignores `EnteringStandby`. A user can start 5-minute or 30-minute bypass windows; while bypass is active, parent standby commands are ignored and the Web Widget `info3` shows `Standby sync bypass until HH:MM AM/PM`. Runtime `info3` precedence is Unhealthy State, parent connectivity/Call Preservation, call synchronization, then standby.
 
 The editable Paired UI policy is in `Custom-Campanion_10_PairedEnvironment_2026`. It captures supported StandAlone values and restores them on release. Video Mute, Participant List, and Whiteboard Start are set to `Auto`; the other known call controls plus Share Start are set to `Hidden`. Call End is `Hidden` during normal Paired operation and temporarily `Auto` during Call Preservation or an active-call Unhealthy State. Unsupported optional feature paths are logged and skipped. Because RoomOS does not expose a dedicated Raise Hand visibility configuration, device acceptance must confirm Raise Hand remains available with MidCallControls hidden.
 
@@ -264,7 +276,9 @@ flowchart TD
 
 ## Unhealthy State and Administrator Communication
 
-Required local prerequisite failures and required Paired microphone/volume enforcement failures enter an Unhealthy State. The console logs a stable code, component, context, remediation, and original error without credentials. The normal selection panel is replaced by the gray widgetless `cc26_error` action panel, blocking parent selection. Clicking it shows `Contact a Device Administrator.` for up to 30 seconds with a Dismiss option. Recovery requires correcting the local macro/xAPI issue and restarting the Macro Runtime; no background initialization retry or self-restart is attempted.
+Required local prerequisite failures, invalid saved PIN Mode state, and required Paired microphone/volume enforcement failures enter an Unhealthy State. The console logs a stable code, component, context, remediation, and original error without credentials or PIN values. The `cc26_access` and `cc26_hidden` panels are replaced by the gray widgetless `cc26_error` action panel, blocking parent selection. Clicking it shows `Contact a Device Administrator.` for up to 30 seconds with a Dismiss option. When the managed Companion Web Widget is available, solution-owned Infoblock 3 persistently shows `Companion controls are unavailable. Contact a Device Administrator.` Recovery requires correcting the local macro/xAPI issue and restarting the Macro Runtime; no background initialization retry or self-restart is attempted.
+
+If saved PIN Mode state is malformed, initialization first replaces it with the configured defaults. If the configured default PIN is also invalid, the built-in recovery PIN `0000` is used. Initialization then raises a hard error and remains stopped so a Device Administrator can inspect the diagnostic before restarting. A failed PIN Mode memory write is retried once after two seconds; a second failure enters the Unhealthy State.
 
 If required media enforcement fails during an active call, the board remains assigned, exposes End Call, and leaves the call, microphone, and volume unchanged. When the call ends it enters StandAlone, attempts the now-safe default-volume restoration once, and remains Unhealthy until restart.
 
@@ -277,6 +291,7 @@ If required media enforcement fails during an active call, the board remains ass
 | Paired volume enforcement | `xapi.Status.Audio.Volume.get()` and `xapi.Command.Audio.Volume.Set({ Level: 1 })` | `xapi.Status.Audio.Volume.on(...)` |
 | StandAlone volume restoration | `xapi.Config.Audio.DefaultVolume.get()` and `xapi.Command.Audio.Volume.Set({ Level })` | None; current default is read at the release boundary |
 | Error action button | `xapi.Command.UserInterface.Extensions.Panel.Save/Remove` | `xapi.Event.UserInterface.Extensions.Panel.Clicked.on(...)`, gated to `cc26_error` |
+| PIN-gated panel access | `xapi.Command.UserInterface.Extensions.Panel.Save(...)`, `xapi.Command.UserInterface.Extensions.Panel.Open(...)`, `xapi.Command.UserInterface.Extensions.Panel.Close()`, `xapi.Command.UserInterface.Extensions.Panel.Remove(...)`, `xapi.Command.UserInterface.Message.TextInput.Display(...)`, `xapi.Command.UserInterface.Message.TextInput.Clear(...)`, and `xapi.Command.UserInterface.Extensions.Widget.SetValue(...)` | `xapi.Event.UserInterface.Extensions.Panel.Clicked.on(...)`, `xapi.Event.UserInterface.Extensions.Widget.Action.on(...)`, `xapi.Event.UserInterface.Message.TextInput.Response.on(...)`, `xapi.Event.UserInterface.Extensions.Event.PageOpened.on(...)`, and `xapi.Event.UserInterface.Extensions.Event.PageClosed.on(...)` |
 | Parent identity | `xapi.Command.HttpClient.Get` for `/getxml?location=/Status/SystemUnit` | Five-second workflow retries; no HTTP transport retry |
 | Parent standby | `xapi.Command.HttpClient.Get` for `/getxml?location=/Status/Standby/State` | Parent `xapi.Status.Standby.State.on(...)` sends `StandbySync` |
 | Board call validation | `xapi.Command.HttpClient.Get` for `/getxml?location=/Status/Call` | Parent admission workflow invokes the queued read |
@@ -290,7 +305,7 @@ The current source keeps a small route map in `Custom-Campanion_1_Main_2026`. Th
 | --- | --- | --- | --- |
 | `ParentReadyRequest` | Board to parent | Implemented | Board asks the freshly installed parent runtime to confirm it is ready and provides return-path credentials. |
 | `ParentReady` | Parent to board | Implemented | Parent confirms the runtime is active and ready to receive board-owned configuration. |
-| `ConfigSync` | Board to parent | Implemented | Board sends the current config, board return credentials, and capabilities. |
+| `ConfigSync` | Board to parent | Implemented | Board sends the explicit parent-facing config subset, board return credentials, and capabilities. Board-local `pinMode` is excluded. |
 | `ConfigAccepted` | Parent to board | Implemented | Parent confirms config was stored in `boardConfigs` and board identity was stored or updated in `registeredBoards`. |
 | `ConfigDenied` | Parent to board | Implemented | Parent rejects config from a new board when its 3-board registration limit is reached. |
 | `ConfigRequired` | Parent to board | Implemented guard response | Parent receives an unsupported action from an unknown board serial and asks the board to send config first. |

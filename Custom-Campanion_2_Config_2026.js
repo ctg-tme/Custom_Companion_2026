@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 20, 2026
- * Version:                 0.1.2.26
+ * Revised:                 July 21, 2026
+ * Version:                 0.1.2.27
  *
  * Description:             User-facing configuration for the custom Companion Solution for Board Series endpoints with Wheel Kits.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -41,19 +41,20 @@ or implied.
  */
 
 const config = {
-  version: '0.1.2.26',
+  version: '0.1.2.27',
   CompanionBoardInformation: {
     host: '10.0.0.120',
     username: '',
     password: ''
   },
-  // Deferred Surface: visible Config/PIN UX exists, but runtime PIN behavior is not implemented yet.
-  pinProtection: {
-    enabled: true,
-    defaultPin: '0000',
-    minLength: 4,
-    maxLength: 8,
-    pattern: '^\\d{4,8}$'
+  // These values initialize PIN Mode only when saved PIN Mode state does not exist.
+  // After initialization, use the Companion Device Select Config page in the Device UI
+  // to enable or disable PIN Mode and to edit the current PIN.
+  pinMode: {
+    defaults: {
+      enabled: true,
+      pin: '0000'
+    }
   },
   httpClient: {
     allowInsecureHTTPS: true
@@ -76,12 +77,10 @@ const config = {
         },
         standalone: {
           info2: 'Use Companion Device Select to pair this board to a room.',
-          info3: '',
           iconUrl: 'https://github.com/ctg-tme.png'
         },
         paired: {
           info2: 'Use Companion Device Select to release this board or choose another room.',
-          info3: '',
           iconUrl: 'https://github.com/ctg-tme.png'
         }
       }

@@ -14,6 +14,7 @@ describe('dynamic Config editing', () => {
     const source = await readFile(new URL('../../Custom-Campanion_2_Config_2026.js', import.meta.url), 'utf8');
     const document = parseConfigDocument(source);
     expect(document.leaves.some((leaf) => formatConfigPath(leaf.path) === 'UserInterface.WebWidget.CompanionWidget.weather.latitude')).toBe(true);
+    expect(document.leaves.some((leaf) => formatConfigPath(leaf.path) === 'pinMode.defaults.pin')).toBe(true);
     expect(document.leaves.find((leaf) => formatConfigPath(leaf.path) === 'version')?.lockedReason).toBe('version');
   });
 
@@ -31,7 +32,7 @@ describe('dynamic Config editing', () => {
     expect(patched).toContain('host: "board.lab.example"');
     expect(patched).toContain('username: "custom-companion"');
     expect(patched).toContain("temperatureUnit: 'fahrenheit'");
-    expect(patched).toContain('// Deferred Surface:');
+    expect(patched).toContain('// These values initialize PIN Mode only when saved PIN Mode state does not exist.');
     expect(source).not.toContain('temporary-test-value');
   });
 

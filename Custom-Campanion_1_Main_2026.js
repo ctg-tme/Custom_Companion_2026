@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 20, 2026
- * Version:                 0.1.2.26
+ * Revised:                 July 21, 2026
+ * Version:                 0.1.2.27
  *
  * Description:             Companion board entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -32,7 +32,7 @@ or implied.
  *
  * Hardware Platforms:      Board Pro Series
  *
- * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_2_Config_2026, Custom-Campanion_3_Utils_2026, Custom-Campanion_4_UI_2026, Custom-Campanion_5_State_2026, Custom-Campanion_6_DeviceComms_2026, Custom-Campanion_8_Services_2026, Custom-Campanion_9_ParentConnectivity_2026, Custom-Campanion_10_PairedEnvironment_2026, Custom-Campanion_11_BoardCallSync_2026, Custom-Campanion_13_StandbyCoordination_2026, Custom-Companion-Memory-Storage
+ * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_2_Config_2026, Custom-Campanion_3_Utils_2026, Custom-Campanion_4_UI_2026, Custom-Campanion_5_State_2026, Custom-Campanion_6_DeviceComms_2026, Custom-Campanion_8_Services_2026, Custom-Campanion_9_ParentConnectivity_2026, Custom-Campanion_10_PairedEnvironment_2026, Custom-Campanion_11_BoardCallSync_2026, Custom-Campanion_13_StandbyCoordination_2026, Custom-Campanion_14_PinMode_2026, Custom-Companion-Memory-Storage
  *
  * AI Generation:           Percentage: 95%
  *                          Model(s): GPT-5.3-Codex
@@ -52,6 +52,7 @@ import { parentConnectivity } from './Custom-Campanion_9_ParentConnectivity_2026
 import { pairedEnvironment } from './Custom-Campanion_10_PairedEnvironment_2026';
 import { boardCallSync } from './Custom-Campanion_11_BoardCallSync_2026';
 import { standbyCoordination } from './Custom-Campanion_13_StandbyCoordination_2026';
+import { pinMode } from './Custom-Campanion_14_PinMode_2026';
 
 const log = new utils.Logger('Custom-Campanion_Board_Main');
 
@@ -60,6 +61,7 @@ const MAX_PARENT_DEVICES = 6;
 const INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS = 5;
 const ALLOW_STANDALONE_DURING_ACTIVE_CALL = true;
 const PERIPHERAL_TYPE = 'ControlSystem';
+const UNHEALTHY_INFO_TEXT = 'Companion controls are unavailable. Contact a Device Administrator.';
 const HTTP_CLIENT_CONFIG = {
 	mode: 'On',
 	allowInsecureHTTPS: config.httpClient.allowInsecureHTTPS,
@@ -96,6 +98,20 @@ let isHandlingSelection = false;
 let isUnhealthy = false;
 let unhealthyReleasePending = false;
 let areUiEventHandlersRegistered = false;
+
+const pinModeController = pinMode.create({
+	xapi: xapi,
+	mem: mem,
+	storageKey: companionState.PIN_MODE_STORAGE_KEY,
+	config: config.pinMode,
+	companionUi: companionUi,
+	log: log,
+	utils: utils,
+	callbacks: {
+		getRuntimeContext: () => ({ isUnhealthy: isUnhealthy }),
+		onHardError: handleRuntimeHardFailure
+	}
+});
 
 const parentConnectivityController = parentConnectivity.create({
 	xapi: xapi,
@@ -273,6 +289,7 @@ async function init() {
 async function handleInitializationFailure(error) {
 	const diagnostic = error.Diagnostic || {};
 	isUnhealthy = true;
+	await pinModeController.stop();
 	parentConnectivityController.stop();
 	log.error({
 		Message: 'Custom Campanion board initialization stopped',
@@ -280,6 +297,7 @@ async function handleInitializationFailure(error) {
 		Component: diagnostic.Component || 'BoardMain',
 		Context: diagnostic.Context || 'Unhandled initialization failure',
 		Remediation: diagnostic.Remediation || 'Diagnose the logged xAPI failure, then restart the Macro Runtime.',
+		StorageErrorCode: diagnostic.StorageErrorCode,
 		Error: error
 	});
 
@@ -294,6 +312,8 @@ async function handleInitializationFailure(error) {
 			Error: panelError
 		});
 	}
+
+	await applyUnhealthyInfoBlock();
 }
 
 async function loadMemoryState() {
@@ -304,9 +324,10 @@ async function loadMemoryState() {
 		log.warn({ Message: 'Parent device list exceeded maximum and was trimmed', MaxParentDevices: MAX_PARENT_DEVICES });
 	}
 	activeParentSerial = await companionState.readMemoryOrInitialize(mem, companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, companionState.STAND_ALONE_PARENT_SERIAL, utils);
+	boardState = createBoardState(activeParentSerial);
+	await pinModeController.initialize();
 	pairedEnvironmentController.setStandaloneUiFeatureConfig(await companionState.readMemoryOrDefault(mem, companionState.STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY, {}, utils));
 	standbyCoordinationController.setStandaloneConfig(await companionState.readMemoryOrDefault(mem, companionState.STANDALONE_STANDBY_CONFIG_STORAGE_KEY, {}, utils));
-	boardState = createBoardState(activeParentSerial);
 	parentConnectivityController.setParentDevices(parentDevices, parentDeviceStatus);
 }
 
@@ -388,7 +409,7 @@ async function renderSelectDeviceUi() {
 	}
 
 	try {
-		await companionUi.savePanel(xapi, parentDevices, parentDeviceStatus, activeParentSerial);
+		await companionUi.savePanel(xapi, parentDevices, parentDeviceStatus, activeParentSerial, pinModeController.isEnabled());
 	} catch (error) {
 		utils.softError({ Context: 'Failed to render Companion Device Select UI', Error: error });
 	}
@@ -412,15 +433,36 @@ function registerUiEventHandlers() {
 		});
 	});
 
+	xapi.Event.UserInterface.Message.TextInput.Response.on(event => {
+		handleTextInputResponse(event).catch(error => {
+			utils.softError({
+				Context: 'Failed to handle UI TextInput response',
+				FeedbackId: event && event.FeedbackId ? event.FeedbackId : 'Unknown',
+				Error: error
+			});
+		});
+	});
+
 	xapi.Event.UserInterface.Extensions.Panel.Clicked.on(event => {
 		handlePanelClicked(event).catch(error => {
 			utils.softError({ Context: 'Failed to handle UI panel click', Event: event, Error: error });
 		});
 	});
+
+	xapi.Event.UserInterface.Extensions.Event.PageOpened.on(event => {
+		pinModeController.handlePageOpened(event);
+	});
+
+	xapi.Event.UserInterface.Extensions.Event.PageClosed.on(event => {
+		pinModeController.handlePageClosed(event);
+	});
 }
 
 async function handlePromptResponse(event) {
 	if (!event) {
+		return;
+	}
+	if (await pinModeController.handlePromptResponse(event)) {
 		return;
 	}
 	if (await pairedEnvironmentController.handlePromptResponse(event)) {
@@ -429,15 +471,29 @@ async function handlePromptResponse(event) {
 	await standbyCoordinationController.handlePromptResponse(event);
 }
 
+async function handleTextInputResponse(event) {
+	await pinModeController.handleTextInputResponse(event);
+}
+
 async function handlePanelClicked(event) {
-	if (!event || !companionUi.isErrorPanel(event.PanelId)) {
+	if (!event) {
 		return;
 	}
-	await companionUi.showErrorPrompt(xapi);
+	if (companionUi.isErrorPanel(event.PanelId)) {
+		await companionUi.showErrorPrompt(xapi);
+		return;
+	}
+	await pinModeController.handlePanelClicked(event);
 }
 
 async function handleWidgetAction(event) {
-	if (!event || event.Type !== 'released' || !companionUi.isSelectDeviceWidget(event.WidgetId)) {
+	if (!event) {
+		return;
+	}
+	if (await pinModeController.handleWidgetAction(event)) {
+		return;
+	}
+	if (event.Type !== 'released' || !companionUi.isSelectDeviceWidget(event.WidgetId)) {
 		return;
 	}
 	if (isUnhealthy) {
@@ -553,19 +609,31 @@ async function isBoardInActiveCall() {
 }
 
 async function handleRequiredMediaFailure(code, context, error) {
-	if (isUnhealthy) {
-		return;
-	}
-
-	isUnhealthy = true;
-	parentConnectivityController.stop();
-	await parentConnectivityController.cancel(false);
-	log.error({
+	await handleRuntimeHardFailure({
 		Code: code,
 		Component: 'BoardMain',
 		Context: context,
 		Remediation: 'Diagnose the logged local xAPI path or command, correct the macro or RoomOS compatibility issue, then restart the Macro Runtime.',
 		Error: error
+	});
+}
+
+async function handleRuntimeHardFailure(diagnostic) {
+	if (isUnhealthy) {
+		return;
+	}
+
+	isUnhealthy = true;
+	await pinModeController.stop();
+	parentConnectivityController.stop();
+	await parentConnectivityController.cancel(false);
+	log.error({
+		Code: diagnostic.Code || 'CC26-RUNTIME-HARD-ERROR',
+		Component: diagnostic.Component || 'BoardMain',
+		Context: diagnostic.Context || 'A required runtime operation failed',
+		Remediation: diagnostic.Remediation || 'Diagnose the logged failure, then restart the Macro Runtime.',
+		StorageErrorCode: diagnostic.StorageErrorCode,
+		Error: diagnostic.Error
 	});
 
 	try {
@@ -574,11 +642,13 @@ async function handleRequiredMediaFailure(code, context, error) {
 		log.error({
 			Code: 'CC26-RUNTIME-ERROR-PANEL',
 			Component: 'CompanionUI',
-			Context: 'Failed to install the Companion Unavailable action panel after a media enforcement failure',
+			Context: 'Failed to install the Companion Unavailable action panel after a required runtime failure',
 			Remediation: 'Diagnose UserInterface.Extensions.Panel and restart the Macro Runtime.',
 			Error: panelError
 		});
 	}
+
+	await applyUnhealthyInfoBlock();
 
 	if (await isBoardInActiveCall()) {
 		unhealthyReleasePending = boardState.mode === 'Paired';
@@ -587,7 +657,7 @@ async function handleRequiredMediaFailure(code, context, error) {
 	}
 
 	if (boardState.mode === 'Paired') {
-		await transitionToStandalone({ Reason: 'RequiredMediaFailure' });
+		await transitionToStandalone({ Reason: diagnostic.Code || 'RuntimeHardFailure' });
 	}
 }
 
@@ -628,7 +698,7 @@ function getXapiValue(value) {
 }
 
 function getRuntimeInfo3Text() {
-	return parentConnectivityController.getInfoText() || boardCallSyncController.getInfoText() || standbyCoordinationController.getInfoText();
+	return (isUnhealthy ? UNHEALTHY_INFO_TEXT : '') || parentConnectivityController.getInfoText() || boardCallSyncController.getInfoText() || standbyCoordinationController.getInfoText();
 }
 
 async function sendParentReadyRequest(parentDevice, companionBoardInformation) {
@@ -658,7 +728,7 @@ async function sendParentConfigMessage(message) {
 
 	const companionBoardInformation = await boardServices.getRuntimeCompanionBoardInformation(xapi, getConfiguredCompanionBoardInformation(), log);
 	await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.configSync, {
-		Config: config,
+		Config: getParentSyncConfig(),
 		Board: {
 			Username: companionBoardInformation.username,
 			Password: companionBoardInformation.password,
@@ -680,6 +750,29 @@ async function sendParentConfigMessage(message) {
 			MacAddress: companionBoardInformation.macAddress
 		}
 	}, HTTP_CLIENT_CONFIG);
+}
+
+function getParentSyncConfig() {
+	return {
+		version: config.version,
+		CompanionBoardInformation: config.CompanionBoardInformation,
+		httpClient: config.httpClient,
+		UserInterface: config.UserInterface
+	};
+}
+
+async function applyUnhealthyInfoBlock() {
+	try {
+		await pairedEnvironmentController.applyRuntimeWebWidget(boardState.mode);
+	} catch (error) {
+		log.warn({
+			Code: 'CC26-UNHEALTHY-INFO3',
+			Component: 'BoardMain',
+			Context: 'Failed to publish the Unhealthy State message to Companion Web Widget Infoblock 3',
+			Remediation: 'Use the cc26_error panel and console diagnostic for administrator recovery.',
+			Error: error
+		});
+	}
 }
 
 function createBoardState(parentSerial) {

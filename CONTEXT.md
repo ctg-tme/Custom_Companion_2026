@@ -53,7 +53,7 @@ A person using the room touch interface who may operate the companion board but 
 _Avoid_: Device Administrator, system administrator
 
 **Unhealthy State**:
-A solution-wide condition in which a required local prerequisite is unavailable and companion selection cannot operate reliably. Initialization prerequisite failures and failures of required paired microphone or volume enforcement enter this state. An individual parent device being unavailable and an unsupported optional UI feature-policy path are not an Unhealthy State.
+A solution-wide condition in which a required local prerequisite is unavailable and companion selection cannot operate reliably. Initialization prerequisite failures, invalid saved PIN Mode state, and failures of required paired microphone or volume enforcement enter this state. An individual parent device being unavailable and an unsupported optional UI feature-policy path are not an Unhealthy State.
 _Avoid_: Parent offline, room unavailable
 
 **Call Preservation State**:
@@ -68,9 +68,23 @@ _Avoid_: Pairing state, parent status check
 An intentionally visible or configured part of the product whose behavior has not been implemented yet. It remains organized with its intended product area but must not be presented as an available capability.
 _Avoid_: Dead code, completed feature
 
+**PIN Mode**:
+An optional in-room access gate for opening Companion Device Select. When enabled, an In-Room User must enter the current PIN; it is not device authentication and does not restrict a Device Administrator using the device WebUI, Macro Editor, or API.
+_Avoid_: Device authentication, administrator login, screen lock
+
+**Default PIN**:
+The bootstrap PIN used only when PIN Mode has not previously been initialized. It is not a recovery PIN or an ongoing override for the current PIN.
+_Avoid_: Current PIN, recovery PIN, master PIN
+
+**Recovery PIN**:
+The built-in PIN used only to restore an administrator-recoverable PIN Mode when both the saved state and Default PIN are invalid. It never bypasses a healthy current PIN, and the solution remains Unhealthy until a Device Administrator completes recovery.
+_Avoid_: Current PIN, Default PIN, master PIN
+
 ## User Communication
 
-The companion WebWidget `info3` field displays active messages in this order: parent connectivity and Call Preservation, call synchronization, then standby. This is display precedence only; lower-priority behaviors continue while their messages are hidden and become visible again when the higher-priority condition clears.
+The companion WebWidget `info3` field is solution-owned runtime status space and is not editable deployment configuration. It displays active messages in this order: Unhealthy State, parent connectivity and Call Preservation, call synchronization, then standby. This is display precedence only; lower-priority behaviors continue while their messages are hidden and become visible again when the higher-priority condition clears.
+
+During the Unhealthy State, `info3` persistently tells the In-Room User that Companion controls are unavailable and to contact a Device Administrator. Failure to update an unavailable Web Widget is logged but does not create another hard error.
 
 During Call Preservation, `info3` remains visible with `{room} is temporarily unavailable. Your call will continue.` until the selected parent is resynchronized or the call ends. The 60-second expiry applies only to the final StandAlone connection-failure message.
 
@@ -90,7 +104,7 @@ HTTPClient requests explicitly ask RoomOS for `PlainText` response bodies so res
 
 Local xAPI commands are attempted once and are never retried. A local command failure indicates an API path, command, capability, or platform problem that must be diagnosed; repeated attempts must not obscure that fault. Retry policies apply only to network communication where explicitly defined.
 
-A failed required paired microphone-mute or volume-level enforcement command immediately enters the Unhealthy State. The console identifies the failed enforcement path with a stable diagnostic code, the normal `cc26` panel is replaced by `cc26_error`, and parent selection remains blocked until the Macro Runtime restarts. Optional UI feature-policy paths are logged and skipped when unavailable.
+A failed required paired microphone-mute or volume-level enforcement command immediately enters the Unhealthy State. The console identifies the failed enforcement path with a stable diagnostic code, the normal `cc26_access` and `cc26_hidden` panels are replaced by `cc26_error`, and parent selection remains blocked until the Macro Runtime restarts. Optional UI feature-policy paths are logged and skipped when unavailable.
 
 If required media enforcement fails during an active call, the companion board remains assigned to its current parent until that call ends. The native End Call control and `cc26_error` action button are shown; volume, microphone mute, parent assignment, and the active call are otherwise left unchanged. When the call ends, the board releases to StandAlone and attempts the now-safe default-volume restoration once, but remains Unhealthy and blocks parent selection until restart.
 
