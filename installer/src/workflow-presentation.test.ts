@@ -25,6 +25,16 @@ describe('installer workflow presentation', () => {
     expect(source).toContain('this.completeInstallation()');
   });
 
+  it('requires an installation type before review and repeats clean-install consequences', async () => {
+    const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
+
+    expect(source).toContain("'Installation Type'");
+    expect(source).toContain('Install Custom Companion 2026 Macros');
+    expect(source).toContain('Purge ${GENERATED_STORAGE_MACRO} and Install Custom Companion 2026 Macros');
+    expect(source).toContain("this.installationType === 'clean'");
+    expect(source).toContain('Generated storage is governed only by the selected installation type');
+  });
+
   it('turns README headings into nested disclosure sections', async () => {
     const [readmeSource, mermaidSource] = await Promise.all([
       readFile(new URL('./readme.ts', import.meta.url), 'utf8'),

@@ -87,6 +87,7 @@ export async function verifyReleaseContract(repositoryDirectory) {
   const mainMacroFile = requireString(contract.MainMacroFile, 'MainMacroFile');
   const configMacroFile = requireString(contract.ConfigMacroFile, 'ConfigMacroFile');
   const roomReferenceMacroFile = requireString(contract.RoomReferenceMacroFile, 'RoomReferenceMacroFile');
+  requireString(contract.GeneratedStorageMacro, 'GeneratedStorageMacro');
   const requiredAnchorFiles = [mainMacroFile, configMacroFile, roomReferenceMacroFile];
   const missingAnchors = requiredAnchorFiles.filter((file) => !manifestFileSet.has(file));
   if (missingAnchors.length) {

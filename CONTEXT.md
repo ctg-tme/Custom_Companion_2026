@@ -44,6 +44,10 @@ _Avoid_: package manifest, file listing
 The build-time agreement that keeps the Release Manifest, eligible macro set, stable installer anchors, synchronized runtime project version, relative macro imports, JavaScript syntax, and Board initialization messages consistent before an installation snapshot can be packaged.
 _Avoid_: Manifest only, installer assumptions
 
+**Clean Installation**:
+The explicit Companion Installer choice that removes `Custom-Campanion-Storage` before installing the selected Custom Companion release. It discards the companion board's saved parent devices, active parent selection, PIN Mode state, and captured StandAlone UI and standby settings. Generated storage remains outside the Release Manifest and is never removed by a Standard Installation.
+_Avoid_: Legacy purge, factory reset, normal upgrade
+
 **Legacy Project Macro**:
 An installed `Custom-Campanion_*_2026` macro that is absent from the selected Release Manifest. The Companion Installer lists these files explicitly, deactivates retained files, and checks its purge option by default; generated storage and unrelated macros are never Legacy Project Macros.
 _Avoid_: Unknown macro, storage macro

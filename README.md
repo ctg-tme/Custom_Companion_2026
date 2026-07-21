@@ -46,6 +46,8 @@ No build or bundling step is required for the runtime macros. The Companion Inst
 
 The static browser installer in `installer/` deploys a selected release or the current Main Fork (Beta) snapshot to a companion board through JSXAPI. The root `manifest.json` is the Release Manifest and remains authoritative for installable project macros, minimum RoomOS, supported product platforms, and external dependencies. The installer never targets a parent room device; the installed board runtime retains parent provisioning ownership.
 
+After Board configuration and before Review, the installer requires the Device Administrator to choose a Standard Installation or Clean Installation. Standard Installation preserves `Custom-Campanion-Storage`. Clean Installation deactivates the existing project macros, removes only `Custom-Campanion-Storage` when present, and then installs the selected release. This permanently resets the board's saved parent devices, active parent selection, PIN Mode state, and captured StandAlone UI and standby settings. Generated storage remains outside the Release Manifest and is never treated as a Legacy Project Macro.
+
 Before packaging, `npm run verify:release` checks that the Release Manifest exactly covers the eligible root macros, the runtime project version is synchronized across Main, Config, `config.version`, and RoomReference, every macro passes JavaScript syntax validation, relative macro imports resolve to Release Manifest resources, and Main still emits the initialization messages used by installer verification. Installer tests and builds run the same Release Contract verification before generating the pinned source snapshot.
 
 See `installer/README.md` for local commands and ADR 0002 through ADR 0005 for source selection, credentials, Board Identity Confirmation, and forward-only installation decisions.
@@ -324,4 +326,4 @@ The current source keeps a small route map in `Custom-Campanion_1_Main_2026`. Th
 
 ## Notes
 
-`Custom-Campanion-Storage.js` is generated database state managed by the memory storage library and should not be edited or committed as source.
+`Custom-Campanion-Storage.js` is generated database state managed by the memory storage library and should not be edited or committed as source. The Companion Installer preserves it during a Standard Installation and removes it only when a Device Administrator explicitly selects Clean Installation.

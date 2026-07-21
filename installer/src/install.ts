@@ -119,12 +119,18 @@ function orderedResources(resources: InstallResource[]): InstallResource[] {
 export async function installResources(
   xapi: BoardXapi,
   resources: InstallResource[],
-  legacy: InstalledMacro[],
-  purgeLegacy: boolean,
+  installed: InstalledMacro[],
+  options: {
+    purgeLegacy: boolean;
+    purgeGeneratedStorage: boolean;
+  },
   onProgress: (message: string) => void,
 ): Promise<void> {
   const mainMacro = fileNameToMacro(MAIN_MACRO_FILE);
+  const legacy = legacyMacros(installed, resources);
+  const generatedStorage = installed.find((macro) => macro.name === GENERATED_STORAGE_MACRO);
   const macrosToDeactivate = new Set([...resources.map((resource) => resource.macroName), ...legacy.map((macro) => macro.name)]);
+  if (options.purgeGeneratedStorage && generatedStorage?.active) macrosToDeactivate.add(GENERATED_STORAGE_MACRO);
 
   for (const name of macrosToDeactivate) {
     try {
@@ -134,7 +140,12 @@ export async function installResources(
     }
   }
 
-  if (purgeLegacy) {
+  if (options.purgeGeneratedStorage && generatedStorage) {
+    onProgress(`Removing generated storage macro ${GENERATED_STORAGE_MACRO}`);
+    await xapi.command('Macros Macro Remove', { Name: GENERATED_STORAGE_MACRO });
+  }
+
+  if (options.purgeLegacy) {
     for (const macro of legacy) {
       onProgress(`Removing legacy macro ${macro.name}`);
       await xapi.command('Macros Macro Remove', { Name: macro.name });

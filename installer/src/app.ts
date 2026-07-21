@@ -36,19 +36,21 @@ import { discoverReleaseSources, loadSourceSnapshot } from './release-source';
 import { fetchRenderedReadme } from './readme';
 import {
   CONFIG_MACRO_FILE,
+  GENERATED_STORAGE_MACRO,
   type ConfigDocument,
   type ConfigLeaf,
   type ConfigValue,
   type DeviceCompatibility,
   type InitializationOutcome,
   type InstallResource,
+  type InstallationType,
   type InstalledMacro,
   type ReleaseDiscovery,
   type ReleaseSource,
   type SourceSnapshot,
 } from './types';
 
-const STEPS = ['Introduction', 'Release', 'Connect', 'Configure', 'Review', 'Install', 'Complete Setup'];
+const STEPS = ['Introduction', 'Release', 'Connect', 'Configure', 'Installation Type', 'Review', 'Install', 'Complete Setup'];
 const TEAM_ICON_URL = 'https://avatars.githubusercontent.com/u/159071680?s=200&v=4';
 const TEAM_GITHUB_URL = 'https://github.com/ctg-tme';
 const CISCO_SAMPLE_CODE_LICENSE_URL = 'https://developer.cisco.com/docs/licenses';
@@ -109,6 +111,7 @@ export class InstallerApp {
   private configValues = new Map<string, ConfigValue>();
   private preparedResources: InstallResource[] = [];
   private activeCallConfirmed = false;
+  private installationType?: InstallationType;
   private purgeLegacy = true;
   private monitor?: InitializationMonitor;
   private installProgress = '';
@@ -154,7 +157,16 @@ export class InstallerApp {
   }
 
   private render(): void {
-    const pages = [this.renderIntroduction(), this.renderRelease(), this.renderConnect(), this.renderConfigure(), this.renderReview(), this.renderInstall(), this.renderCompleteSetup()];
+    const pages = [
+      this.renderIntroduction(),
+      this.renderRelease(),
+      this.renderConnect(),
+      this.renderConfigure(),
+      this.renderInstallationType(),
+      this.renderReview(),
+      this.renderInstall(),
+      this.renderCompleteSetup(),
+    ];
     const actions = this.renderStepActions();
     const year = new Date().getFullYear();
     this.root.innerHTML = `
@@ -236,14 +248,17 @@ export class InstallerApp {
     }
     if (this.step === 3) {
       const primary = this.localReviewMode
-        ? '<button class="button primary" id="dev-preview-review">Preview review page</button>'
-        : `<button class="button primary" id="config-continue" ${this.busy ? 'disabled' : ''}>${this.busy ? '<span class="spinner inverse"></span>Validating callback account…' : 'Review installation'}</button>`;
+        ? '<button class="button primary" id="dev-preview-installation-type">Preview installation type</button>'
+        : `<button class="button primary" id="config-continue" ${this.busy ? 'disabled' : ''}>${this.busy ? '<span class="spinner inverse"></span>Validating callback account…' : 'Choose installation type'}</button>`;
       return `<div class="actions split"><button class="button ghost" id="disconnect-config">${this.localReviewMode ? 'Exit local review' : 'Disconnect'}</button>${primary}</div>`;
     }
     if (this.step === 4) {
-      return `<div class="actions split"><button class="button ghost" id="back-config">Back to configuration</button><button class="button primary danger-button" id="begin-install" ${this.localReviewMode ? 'disabled' : ''}>${this.localReviewMode ? 'Install disabled in local review' : 'Install on Board'}</button></div>`;
+      return `<div class="actions split"><button class="button ghost" id="back-config">Back to configuration</button><button class="button primary" id="review-installation" ${this.installationType ? '' : 'disabled'}>Review installation</button></div>`;
     }
-    if (this.step === 6) {
+    if (this.step === 5) {
+      return `<div class="actions split"><button class="button ghost" id="back-installation-type">Back to installation type</button><button class="button primary danger-button" id="begin-install" ${this.localReviewMode ? 'disabled' : ''}>${this.localReviewMode ? 'Install disabled in local review' : 'Install on Board'}</button></div>`;
+    }
+    if (this.step === 7) {
       return '<div class="actions centered"><button class="button primary" id="finish-setup">Finish — install another Companion Device</button></div>';
     }
     if (this.localReviewMode) {
@@ -288,7 +303,7 @@ export class InstallerApp {
     const source = this.currentSource();
     const loading = !this.discovery;
     return `
-      ${this.pageHeader('Step 2 of 7', 'Choose an installation source', 'Published releases are the safest choice. Main Fork is available as a versioned Beta snapshot of this Pages build.')}
+      ${this.pageHeader('Step 2 of 8', 'Choose an installation source', 'Published releases are the safest choice. Main Fork is available as a versioned Beta snapshot of this Pages build.')}
       ${this.errorNotice()}
       <section class="panel source-panel">
         <div class="panel-heading"><span class="heading-icon">${cloudIcon}</span><div><h2>Release channel</h2><p>Stable releases appear first, followed by Preview builds and the versioned Main Fork (Beta).</p></div></div>
@@ -311,7 +326,7 @@ export class InstallerApp {
 
   private renderConnect(): string {
     return `
-      ${this.pageHeader('Step 3 of 7', 'Connect to the companion Board', 'Sign in with the Companion Device administrator account used only for installation. If certificate trust blocks sign-in, a recovery link appears after the failed attempt.')}
+      ${this.pageHeader('Step 3 of 8', 'Connect to the companion Board', 'Sign in with the Companion Device administrator account used only for installation. If certificate trust blocks sign-in, a recovery link appears after the failed attempt.')}
       ${this.errorNotice()}
       <section class="panel connect-panel">
         <div class="panel-heading"><span class="heading-icon">${deviceIcon}</span><div><h2>Companion Device connection</h2><p>Enter the device identity and administrator credentials. The serial comparison confirms the intended device before installation.</p></div></div>
@@ -384,7 +399,7 @@ export class InstallerApp {
 
   private renderConfigure(): string {
     return `
-      ${this.pageHeader('Step 4 of 7', 'Configure the Board runtime', 'Every value is generated from the selected Config macro. Per-install edits remain in memory and never change repository files.')}
+      ${this.pageHeader('Step 4 of 8', 'Configure the Board runtime', 'Every value is generated from the selected Config macro. Per-install edits remain in memory and never change repository files.')}
       ${this.errorNotice()}
       ${this.renderCompatibility()}
       ${this.compatibility?.deskSeriesWarning ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Desk Series is not recommended</strong><p>This platform is available for testing and special use cases.</p></div></div>` : ''}
@@ -396,6 +411,31 @@ export class InstallerApp {
       <section class="config-editor" aria-label="Dynamic configuration editor">${this.renderConfigGroups()}</section>`;
   }
 
+  private renderInstallationType(): string {
+    return `
+      ${this.pageHeader('Step 5 of 8', 'Choose an installation type', 'Choose whether the installer should preserve existing Custom Companion state or begin with a clean generated storage file.')}
+      ${this.errorNotice()}
+      <section class="installation-type-grid" aria-label="Installation type">
+        <label class="installation-type-card ${this.installationType === 'standard' ? 'selected' : ''}">
+          <input type="radio" name="installation-type" value="standard" ${this.installationType === 'standard' ? 'checked' : ''}>
+          <span class="installation-type-copy">
+            <small>Standard installation</small>
+            <strong>Install Custom Companion 2026 Macros</strong>
+            <em>Preserves <code>${GENERATED_STORAGE_MACRO}</code> and its existing board-local Custom Companion state.</em>
+          </span>
+        </label>
+        <label class="installation-type-card clean ${this.installationType === 'clean' ? 'selected' : ''}">
+          <input type="radio" name="installation-type" value="clean" ${this.installationType === 'clean' ? 'checked' : ''}>
+          <span class="installation-type-copy">
+            <small>Clean installation</small>
+            <strong>Purge ${GENERATED_STORAGE_MACRO} and Install Custom Companion 2026 Macros</strong>
+            <em>Deletes saved parent devices, the active parent selection, PIN Mode state, and captured StandAlone UI and standby settings before installation.</em>
+          </span>
+        </label>
+      </section>
+      <div class="notice warning"><span>${warningIcon}</span><div><strong>Clean installation permanently removes stored state</strong><p>The generated storage macro is not part of the Release Manifest and cannot be restored by this forward-only installer.</p></div></div>`;
+  }
+
   private currentLegacy(): InstalledMacro[] {
     return legacyMacros(this.installed, this.preparedResources.length ? this.preparedResources : this.snapshot?.resources ?? []);
   }
@@ -403,32 +443,35 @@ export class InstallerApp {
   private renderReview(): string {
     const source = this.snapshot?.source;
     const legacy = this.currentLegacy();
+    const cleanInstallation = this.installationType === 'clean';
+    const storageInstalled = this.installed.some((macro) => macro.name === GENERATED_STORAGE_MACRO);
     const config = this.configDocument ? redactConfig(withLeafValues(this.configDocument, this.configValues)) : {};
     return `
-      ${this.pageHeader('Step 5 of 7', 'Review before installing', 'All source files have passed preflight. The next action begins forward-only changes on the connected Board.')}
+      ${this.pageHeader('Step 6 of 8', 'Review before installing', 'All source files have passed preflight. The next action begins forward-only changes on the connected Board.')}
       ${this.errorNotice()}
-      <section class="summary-grid">
+      <section class="summary-grid install-summary">
         <div class="summary-item"><small>Installation source</small><strong>${escapeHtml(source?.label ?? '')}</strong><span title="${escapeHtml(this.snapshot?.commitSha ?? '')}">${escapeHtml((this.snapshot?.commitSha ?? '').slice(0, 12))}</span></div>
         <div class="summary-item"><small>Target Board</small><strong>${escapeHtml(this.adminCredentials.host)}</strong><span>Serial match confirmed</span></div>
         <div class="summary-item"><small>Files ready</small><strong>${this.preparedResources.length}</strong><span>${this.snapshot?.manifest.Files.length ?? 0} project · ${this.snapshot?.manifest.ExternalDependencies.length ?? 0} external</span></div>
+        <div class="summary-item"><small>Installation type</small><strong>${cleanInstallation ? 'Clean installation' : 'Standard installation'}</strong><span>${cleanInstallation ? (storageInstalled ? `${GENERATED_STORAGE_MACRO} will be removed` : 'No generated storage macro was found') : 'Generated storage will be preserved'}</span></div>
       </section>
       <section class="panel legacy-panel">
         <div class="panel-heading"><span class="heading-icon warning-color">${warningIcon}</span><div><h2>Legacy project macros</h2><p>These are installed Custom-Campanion files that are not part of the selected release.</p></div></div>
         ${legacy.length ? `<ul class="file-list">${legacy.map((macro) => `<li><code>${escapeHtml(macro.name)}</code><span>Legacy</span></li>`).join('')}</ul>
-          <label class="check-row purge"><input id="purge-legacy" type="checkbox" ${this.purgeLegacy ? 'checked' : ''}><span><strong>Purge legacy files</strong><small>Checked by default. Uncheck to retain these files in an inactive state.</small></span></label>` : '<p class="empty-state">No legacy project macros were found. Generated storage and unrelated macros are outside this installer’s scope.</p>'}
+          <label class="check-row purge"><input id="purge-legacy" type="checkbox" ${this.purgeLegacy ? 'checked' : ''}><span><strong>Purge legacy files</strong><small>Checked by default. Uncheck to retain these files in an inactive state.</small></span></label>` : '<p class="empty-state">No legacy project macros were found. Generated storage is governed only by the selected installation type; unrelated macros remain outside this installer’s scope.</p>'}
       </section>
       <section class="config-preview" aria-labelledby="config-preview-title">
         <header><div><h2 id="config-preview-title">Full Config object</h2><p>Every generated setting is shown below. Credential values remain masked in this review.</p></div></header>
         <pre><code>const config = ${escapeHtml(JSON.stringify(config, null, 2))};</code></pre>
       </section>
-      <div class="notice danger"><span>${warningIcon}</span><div><strong>No automatic rollback</strong><p>Matching macros will be overwritten. Installation continues forward and reports the macro runtime result.</p></div></div>`;
+      <div class="notice danger"><span>${warningIcon}</span><div><strong>No automatic rollback</strong><p>${cleanInstallation ? `${GENERATED_STORAGE_MACRO} and its stored board state will be permanently removed before matching macros are overwritten.` : 'Matching macros will be overwritten while generated board storage is preserved.'} Installation continues forward and reports the macro runtime result.</p></div></div>`;
   }
 
   private renderInstall(): string {
     const outcome = this.installOutcome;
     const ready = outcome?.kind === 'ready' || outcome?.kind === 'ready-with-warnings';
     return `
-      ${this.pageHeader('Step 6 of 7', ready ? 'Board installation ready' : 'Installing and verifying', ready ? 'The Board macros initialized successfully. Parent configuration still belongs in the Board UI.' : 'The installer is listening to Event Macros Log for runtime errors and the initialization-complete message.')}
+      ${this.pageHeader('Step 7 of 8', ready ? 'Board installation ready' : 'Installing and verifying', ready ? 'The Board macros initialized successfully. Parent configuration still belongs in the Board UI.' : 'The installer is listening to Event Macros Log for runtime errors and the initialization-complete message.')}
       ${this.installError ? `<div class="notice error"><span>${warningIcon}</span><div><strong>Installation stopped</strong><p>${escapeHtml(this.installError)}</p></div></div>` : ''}
       <section class="panel install-status">
         <div class="status-orb ${ready ? 'ready' : outcome?.kind === 'failed' ? 'failed' : ''}">${ready ? checkIcon : outcome?.kind === 'failed' ? warningIcon : '<span class="spinner large"></span>'}</div>
@@ -443,7 +486,7 @@ export class InstallerApp {
   private renderCompleteSetup(): string {
     const host = this.completionHost || this.adminCredentials.host;
     return `
-      ${this.pageHeader('Step 7 of 7', 'Complete setup on the Companion Device', 'The Custom Companion Macro is installed. Configuration of parent devices remains on the Companion Device.')}
+      ${this.pageHeader('Step 8 of 8', 'Complete setup on the Companion Device', 'The Custom Companion Macro is installed. Configuration of parent devices remains on the Companion Device.')}
       <section class="panel complete-setup-panel">
         <span class="completion-icon">${checkIcon}</span>
         <div>
@@ -463,8 +506,8 @@ export class InstallerApp {
       void this.navigateLocalReview(Number((event.target as HTMLSelectElement).value));
     });
     this.byId('dev-reset')?.addEventListener('click', () => this.reset());
-    this.byId('dev-preview-review')?.addEventListener('click', () => void this.navigateLocalReview(4));
-    this.byId('dev-preview-complete')?.addEventListener('click', () => void this.navigateLocalReview(6));
+    this.byId('dev-preview-installation-type')?.addEventListener('click', () => void this.navigateLocalReview(4));
+    this.byId('dev-preview-complete')?.addEventListener('click', () => void this.navigateLocalReview(7));
     this.byId('start-installer')?.addEventListener('click', () => { this.step = 1; this.error = ''; this.render(); });
     this.byId('back-introduction')?.addEventListener('click', () => { this.step = 0; this.error = ''; this.render(); });
     this.byId('source-select')?.addEventListener('change', (event) => {
@@ -488,6 +531,28 @@ export class InstallerApp {
     this.byId('config-continue')?.addEventListener('click', () => void this.validateConfiguration());
     this.byId('disconnect-config')?.addEventListener('click', () => this.reset());
     this.byId('back-config')?.addEventListener('click', () => { this.step = 3; this.error = ''; this.render(); });
+    for (const control of this.root.querySelectorAll<HTMLInputElement>('input[name="installation-type"]')) {
+      control.addEventListener('change', () => {
+        if (control.checked && (control.value === 'standard' || control.value === 'clean')) {
+          this.installationType = control.value;
+          this.error = '';
+          this.render();
+        }
+      });
+    }
+    this.byId('review-installation')?.addEventListener('click', () => {
+      if (!this.installationType) return;
+      this.step = 5;
+      this.error = '';
+      this.render();
+    });
+    this.byId('back-installation-type')?.addEventListener('click', () => {
+      const purgeControl = this.byId('purge-legacy') as HTMLInputElement | null;
+      this.purgeLegacy = purgeControl?.checked ?? this.purgeLegacy;
+      this.step = 4;
+      this.error = '';
+      this.render();
+    });
     this.byId('begin-install')?.addEventListener('click', () => void this.beginInstall());
     this.byId('finish-install')?.addEventListener('click', () => this.completeInstallation());
     this.byId('acknowledge-ready')?.addEventListener('click', () => this.completeInstallation());
@@ -576,7 +641,13 @@ export class InstallerApp {
       if (path === 'CompanionBoardInformation.password') this.configValues.set(configPathId(leaf.path), 'review-only');
     }
     this.preparedResources = this.snapshot.resources.map((resource) => ({ ...resource }));
-    if (!this.installed.length) this.installed = [{ name: 'Custom-Campanion_Legacy_2026', active: false }];
+    if (!this.installed.length) {
+      this.installed = [
+        { name: GENERATED_STORAGE_MACRO, active: false },
+        { name: 'Custom-Campanion_Legacy_2026', active: false },
+      ];
+    }
+    this.installationType ??= 'standard';
     this.installProgress = 'Local review mode · no device changes will be made.';
   }
 
@@ -743,14 +814,27 @@ export class InstallerApp {
   }
 
   private async beginInstall(): Promise<void> {
-    if (!this.board) return;
+    if (!this.board || !this.installationType) return;
+    if (this.installationType === 'clean') {
+      try {
+        const latestInstalled = await listInstalledMacros(this.board);
+        const latestStorage = latestInstalled.find((macro) => macro.name === GENERATED_STORAGE_MACRO);
+        this.installed = this.installed.filter((macro) => macro.name !== GENERATED_STORAGE_MACRO);
+        if (latestStorage) this.installed.push(latestStorage);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        this.error = `Unable to confirm ${GENERATED_STORAGE_MACRO} before the clean installation. No files were changed. ${detail}`;
+        this.render();
+        return;
+      }
+    }
     const purgeControl = this.byId('purge-legacy') as HTMLInputElement | null;
     this.purgeLegacy = purgeControl?.checked ?? true;
     this.error = '';
     this.installError = '';
     this.installOutcome = undefined;
     this.macroLogs = [];
-    this.step = 5;
+    this.step = 6;
     this.installProgress = 'Subscribing to the macro event log';
     this.monitor = new InitializationMonitor(
       this.board,
@@ -766,8 +850,11 @@ export class InstallerApp {
       await installMacroResources(
         this.board,
         this.preparedResources,
-        this.currentLegacy(),
-        this.purgeLegacy,
+        this.installed,
+        {
+          purgeLegacy: this.purgeLegacy,
+          purgeGeneratedStorage: this.installationType === 'clean',
+        },
         (message) => { this.installProgress = message; this.render(); },
       );
       this.installProgress = 'Waiting for Custom Companion initialization';
@@ -830,7 +917,7 @@ export class InstallerApp {
     this.macroLogs = [];
     this.error = '';
     this.installError = '';
-    this.step = 6;
+    this.step = 7;
     this.render();
   }
 
@@ -850,6 +937,7 @@ export class InstallerApp {
     this.adminCredentials = { host: '', username: '', password: '' };
     this.expectedSerial = '';
     this.activeCallConfirmed = false;
+    this.installationType = undefined;
     this.purgeLegacy = true;
     this.installProgress = '';
     this.installOutcome = undefined;

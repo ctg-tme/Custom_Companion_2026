@@ -5,8 +5,10 @@ export const CONFIG_MACRO_FILE = releaseContract.ConfigMacroFile;
 export const ROOM_REFERENCE_MACRO_FILE = releaseContract.RoomReferenceMacroFile;
 export const INITIALIZATION_SUCCESS_MESSAGE = releaseContract.InitializationSuccessMessage;
 export const INITIALIZATION_STOPPED_MESSAGE = releaseContract.InitializationStoppedMessage;
-export const GENERATED_STORAGE_MACRO = 'Custom-Campanion-Storage';
+export const GENERATED_STORAGE_MACRO = releaseContract.GeneratedStorageMacro;
 export const PROJECT_MACRO_PATTERN = /^Custom-Campanion_.*_2026$/;
+
+export type InstallationType = 'standard' | 'clean';
 
 export interface ExternalDependency {
   Name: string;

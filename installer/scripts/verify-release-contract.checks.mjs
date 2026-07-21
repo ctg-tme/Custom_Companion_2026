@@ -10,6 +10,7 @@ const contract = {
   MainMacroFile: 'Custom-Campanion_1_Main_2026.js',
   ConfigMacroFile: 'Custom-Campanion_2_Config_2026.js',
   RoomReferenceMacroFile: 'Custom-Campanion_7_RoomReference_2026.js',
+  GeneratedStorageMacro: 'Custom-Campanion-Storage',
   InitializationSuccessMessage: 'Custom Campanion initialized',
   InitializationStoppedMessage: 'Custom Campanion board initialization stopped',
 };
@@ -60,6 +61,18 @@ test('accepts a complete synchronized Release Contract', async (t) => {
   const result = await verifyReleaseContract(repositoryDirectory);
   assert.equal(result.projectVersion, version);
   assert.equal(result.projectFiles.length, 3);
+});
+
+test('rejects a Release Contract without the generated storage macro anchor', async (t) => {
+  const repositoryDirectory = await withFixture(t);
+  const contractWithoutStorage = { ...contract };
+  delete contractWithoutStorage.GeneratedStorageMacro;
+  await writeFile(
+    join(repositoryDirectory, 'installer', 'release-contract.json'),
+    `${JSON.stringify(contractWithoutStorage, null, 2)}\n`,
+    'utf8',
+  );
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /GeneratedStorageMacro/);
 });
 
 test('rejects a deployable root macro missing from the Release Manifest', async (t) => {
