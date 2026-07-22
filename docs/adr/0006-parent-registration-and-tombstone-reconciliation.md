@@ -17,10 +17,11 @@ Parent Room Deregistration retires the selectable board record immediately after
 - A tombstone retains the Parent serial, display/host fields, connection credentials, board peripheral ID, transaction ID, and creation time. It is not selectable and cannot become active.
 - The Parent handles `DeregisterRequest` idempotently. It confirms the board peripheral is absent or purges it once, removes the board config and registration records, persists both, and only then sends `DeregistrationAccepted`.
 - Silence, transport failure, authentication failure, or timeout is not proof of cleanup. The board retains the tombstone.
+- The user-visible removal workflow stays locked while it retries for 60 seconds. It reports `Room Removed` only after the matching acknowledgement; otherwise it reports `Parent Cleanup Pending`, and a later acknowledgement replaces that notice with confirmed success.
 - Cleanup is attempted when deletion begins, when the board initializes, and whenever a valid message arrives from the tombstoned Parent.
 - The Parent sends `RegistrationValidation` for saved boards at initialization. An actively registered board replies `RegistrationValidated`; a tombstoned board retries deregistration. An unknown board may ignore the Parent without affecting its normal experience.
 - A matching transaction ID is required to remove a tombstone. Stale acknowledgements are ignored.
-- Re-registering a tombstoned serial requires explicit confirmation. Acceptance makes registration the newer intent and runs the full handshake; only `ConfigAccepted` plus the local registration write replaces the tombstone.
+- Re-registering a tombstoned serial requires explicit confirmation. Acceptance makes registration the newer intent, suppresses the older tombstone's cleanup retries during the handshake, and only `ConfigAccepted` plus the local registration write replaces the tombstone.
 - If both a durable registration and an old tombstone are found after a partial storage write, the durable registration is the newer committed intent and the stale tombstone is removed.
 
 ## Consequences

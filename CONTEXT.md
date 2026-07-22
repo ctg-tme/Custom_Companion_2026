@@ -13,15 +13,15 @@ The operating mode in which the companion board is assigned to one active parent
 _Avoid_: Connected mode, linked mode
 
 **Parent Room Registration**:
-The durable relationship established when a companion board and parent room device recognize one another, making that room available for later selection. Registration does not select the room or change the board's operating mode. It is blocked while the board is both Paired and participating in an active call; a StandAlone call does not impose that restriction.
+The durable relationship established after a companion board verifies the expected Parent identity and both devices recognize one another, making that room available for later selection. Registration does not select the room or change the board's operating mode, and it is unavailable only while the board is both Paired and participating in an active call.
 _Avoid_: Pairing, active pairing, room setup
 
 **Parent Room Deregistration**:
-The removal of one companion board's durable relationship with a parent room device. It does not affect registrations held by other companion boards.
+The confirmed removal of one companion board's durable relationship from both the board and parent room device. It does not affect registrations held by other companion boards.
 _Avoid_: Delete room macros, uninstall parent, unpair all boards
 
 **Pending Deregistration**:
-The state of a Parent Room Registration that the companion board has retired locally but the parent room device has not confirmed removing. The room cannot be selected or become active while in this state.
+The state of a Parent Room Registration that the companion board has retired locally but the parent room device has not confirmed removing. It is not a successful Parent Room Deregistration, and the room cannot be selected or become active.
 _Avoid_: Registered room, deleted room, Paired room
 
 **Device Administrator**:
