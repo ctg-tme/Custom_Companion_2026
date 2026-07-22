@@ -20,10 +20,10 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 10, 2026
- * Revised:                 July 20, 2026
- * Version:                 1.0.26
+ * Revised:                 July 22, 2026
+ * Version:                 1.0.27
  *
- * Description:             Board provisioning and runtime device-identity services.
+ * Description:             Board provisioning payloads, peripheral identity, and runtime device-identity services.
  *
  * Documentation:           N/A
  *
@@ -235,8 +235,10 @@ function sanitizeHttpResponse(response) {
 
 const boardServices = {
 	installParentMacrosOnOnlineParents,
+	getParentInstallMacroPayloads,
 	connectPeripheralToOnlineParents,
 	getRuntimeCompanionBoardInformation,
+	buildCompanionPeripheralInfo,
 	getCompanionPeripheralId
 };
 

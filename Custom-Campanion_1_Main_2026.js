@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 21, 2026
- * Version:                 0.1.2.28
+ * Revised:                 July 22, 2026
+ * Version:                 0.1.2.29
  *
  * Description:             Companion board entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -32,7 +32,7 @@ or implied.
  *
  * Hardware Platforms:      Board Pro Series
  *
- * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_2_Config_2026, Custom-Campanion_3_Utils_2026, Custom-Campanion_4_UI_2026, Custom-Campanion_5_State_2026, Custom-Campanion_6_DeviceComms_2026, Custom-Campanion_8_Services_2026, Custom-Campanion_9_ParentConnectivity_2026, Custom-Campanion_10_PairedEnvironment_2026, Custom-Campanion_11_BoardCallSync_2026, Custom-Campanion_13_StandbyCoordination_2026, Custom-Campanion_14_PinMode_2026, Custom-Companion-Memory-Storage
+ * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_2_Config_2026, Custom-Campanion_3_Utils_2026, Custom-Campanion_4_UI_2026, Custom-Campanion_5_State_2026, Custom-Campanion_6_DeviceComms_2026, Custom-Campanion_8_Services_2026, Custom-Campanion_9_ParentConnectivity_2026, Custom-Campanion_10_PairedEnvironment_2026, Custom-Campanion_11_BoardCallSync_2026, Custom-Campanion_13_StandbyCoordination_2026, Custom-Campanion_14_PinMode_2026, Custom-Campanion_15_ParentRegistration_2026, Custom-Companion-Memory-Storage
  *
  * AI Generation:           Percentage: 95%
  *                          Model(s): GPT-5.3-Codex
@@ -53,6 +53,7 @@ import { pairedEnvironment } from './Custom-Campanion_10_PairedEnvironment_2026'
 import { boardCallSync } from './Custom-Campanion_11_BoardCallSync_2026';
 import { standbyCoordination } from './Custom-Campanion_13_StandbyCoordination_2026';
 import { pinMode } from './Custom-Campanion_14_PinMode_2026';
+import { parentRegistration } from './Custom-Campanion_15_ParentRegistration_2026';
 
 const log = new utils.Logger('Custom-Campanion_Board_Main');
 
@@ -90,6 +91,7 @@ const PARENT_INSTALL_CONFIG = {
 const mem = new MemoryStorage(xapi, { StorageMacroName: STORAGE_MACRO_NAME });
 
 let parentDevices = [];
+let pendingDeregistrations = [];
 let boardState = createBoardState(companionState.STAND_ALONE_PARENT_SERIAL);
 let parentDeviceStatus = [];
 let activeParentSerial = companionState.STAND_ALONE_PARENT_SERIAL;
@@ -140,6 +142,8 @@ const parentConnectivityController = parentConnectivity.create({
 		onSnapshotChanged: snapshot => {
 			parentDevices = snapshot.parentDevices;
 			parentDeviceStatus = snapshot.parentDeviceStatus;
+			pendingDeregistrations = parentRegistrationController.getState().pendingDeregistrations;
+			parentRegistrationController.setState(parentDevices, pendingDeregistrations);
 		},
 		onAvailabilityChanged: async () => renderSelectDeviceUi(),
 		onInfoChanged: async () => applyRuntimeWebWidget(),
@@ -167,7 +171,9 @@ const pairedEnvironmentController = pairedEnvironment.create({
 	log: log,
 	utils: utils,
 	policy: {
-		requiredVolumeLevel: 1
+		requiredVolumeLevel: 1,
+		dndTimeoutMinutes: 5,
+		dndRefreshMs: 2 * 60 * 1000
 	},
 	callbacks: {
 		getRuntimeContext: () => ({
@@ -229,6 +235,40 @@ const boardCallSyncController = boardCallSync.create({
 	}
 });
 
+const parentRegistrationController = parentRegistration.create({
+	xapi: xapi,
+	mem: mem,
+	deviceComms: deviceComms,
+	boardServices: boardServices,
+	companionUi: companionUi,
+	pinModeController: pinModeController,
+	parentDevicesStorageKey: companionState.PARENT_DEVICES_STORAGE_KEY,
+	pendingStorageKey: companionState.PENDING_DEREGISTRATIONS_STORAGE_KEY,
+	httpClientConfig: HTTP_CLIENT_CONFIG,
+	installConfig: PARENT_INSTALL_CONFIG,
+	configVersion: config.version,
+	peripheralType: PERIPHERAL_TYPE,
+	initialHeartbeatTimeout: INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS,
+	log: log,
+	utils: utils,
+	policy: {
+		maxParentDevices: MAX_PARENT_DEVICES,
+		networkRetryMs: 5000
+	},
+	callbacks: {
+		getRuntimeContext: () => ({
+			isUnhealthy: isUnhealthy,
+			mode: boardState.mode,
+			activeParentSerial: activeParentSerial
+		}),
+		isBoardInActiveCall: isBoardInActiveCall,
+		getRuntimeBoardInformation: async () => boardServices.getRuntimeCompanionBoardInformation(xapi, getConfiguredCompanionBoardInformation(), log),
+		getParentSyncConfig: getParentSyncConfig,
+		releaseActiveParentForDeregistration: releaseActiveParentForDeregistration,
+		onStateChanged: handleParentRegistrationStateChanged
+	}
+});
+
 async function init() {
 	try {
 		registerUiEventHandlers();
@@ -276,6 +316,7 @@ async function init() {
 		await renderSelectDeviceUi();
 		await installParentMacrosOnOnlineParents();
 		await connectPeripheralToOnlineParents();
+		await parentRegistrationController.reconcilePendingDeregistrations();
 		parentConnectivityController.start();
 		await parentConnectivityController.evaluate();
 
@@ -318,6 +359,7 @@ async function handleInitializationFailure(error) {
 
 async function loadMemoryState() {
 	parentDevices = await companionState.readMemoryOrDefault(mem, companionState.PARENT_DEVICES_STORAGE_KEY, [], utils);
+	pendingDeregistrations = await companionState.readMemoryOrDefault(mem, companionState.PENDING_DEREGISTRATIONS_STORAGE_KEY, [], utils);
 	if (parentDevices.length > MAX_PARENT_DEVICES) {
 		parentDevices = parentDevices.slice(0, MAX_PARENT_DEVICES);
 		await mem.write(companionState.PARENT_DEVICES_STORAGE_KEY, parentDevices);
@@ -328,6 +370,11 @@ async function loadMemoryState() {
 	await pinModeController.initialize();
 	pairedEnvironmentController.setStandaloneUiFeatureConfig(await companionState.readMemoryOrDefault(mem, companionState.STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY, {}, utils));
 	standbyCoordinationController.setStandaloneConfig(await companionState.readMemoryOrDefault(mem, companionState.STANDALONE_STANDBY_CONFIG_STORAGE_KEY, {}, utils));
+	parentRegistrationController.setState(parentDevices, pendingDeregistrations);
+	await parentRegistrationController.reconcileStoredConflicts();
+	const registrationState = parentRegistrationController.getState();
+	parentDevices = registrationState.parentDevices;
+	pendingDeregistrations = registrationState.pendingDeregistrations;
 	parentConnectivityController.setParentDevices(parentDevices, parentDeviceStatus);
 }
 
@@ -345,6 +392,9 @@ function registerCompanionMessageHandlers() {
 }
 
 async function handleCompanionMessage(message) {
+	if (await parentRegistrationController.handleMessage(message)) {
+		return;
+	}
 	switch (message.Action) {
 		case 'ParentReady':
 			await sendParentConfigMessage(message);
@@ -433,6 +483,12 @@ function registerUiEventHandlers() {
 		});
 	});
 
+	xapi.Event.UserInterface.Message.Prompt.Cleared.on(event => {
+		parentRegistrationController.handlePromptCleared(event).catch(error => {
+			utils.softError({ Context: 'Failed to handle prompt cleared event', Event: event, Error: error });
+		});
+	});
+
 	xapi.Event.UserInterface.Message.TextInput.Response.on(event => {
 		handleTextInputResponse(event).catch(error => {
 			utils.softError({
@@ -441,6 +497,10 @@ function registerUiEventHandlers() {
 				Error: error
 			});
 		});
+	});
+
+	xapi.Event.UserInterface.Message.TextInput.Clear.on(event => {
+		parentRegistrationController.handleTextInputCleared(event);
 	});
 
 	xapi.Event.UserInterface.Extensions.Panel.Clicked.on(event => {
@@ -465,6 +525,9 @@ async function handlePromptResponse(event) {
 	if (await pinModeController.handlePromptResponse(event)) {
 		return;
 	}
+	if (await parentRegistrationController.handlePromptResponse(event)) {
+		return;
+	}
 	if (await pairedEnvironmentController.handlePromptResponse(event)) {
 		return;
 	}
@@ -472,11 +535,17 @@ async function handlePromptResponse(event) {
 }
 
 async function handleTextInputResponse(event) {
-	await pinModeController.handleTextInputResponse(event);
+	if (await pinModeController.handleTextInputResponse(event)) {
+		return;
+	}
+	await parentRegistrationController.handleTextInputResponse(event);
 }
 
 async function handlePanelClicked(event) {
 	if (!event) {
+		return;
+	}
+	if (parentRegistrationController.isProvisioningLocked()) {
 		return;
 	}
 	if (companionUi.isErrorPanel(event.PanelId)) {
@@ -490,7 +559,13 @@ async function handleWidgetAction(event) {
 	if (!event) {
 		return;
 	}
+	if (parentRegistrationController.isProvisioningLocked()) {
+		return;
+	}
 	if (await pinModeController.handleWidgetAction(event)) {
+		return;
+	}
+	if (await parentRegistrationController.handleWidgetAction(event)) {
 		return;
 	}
 	if (event.Type !== 'released' || !companionUi.isSelectDeviceWidget(event.WidgetId)) {
@@ -587,6 +662,43 @@ async function transitionToStandalone(options = {}) {
 	}
 
 	log.info({ Message: 'Companion board released to StandAlone mode', Reason: options.Reason || 'Unspecified', ActiveCallPreserved: hadActiveCall });
+}
+
+async function releaseActiveParentForDeregistration() {
+	boardCallSyncController.cancel();
+	await boardCallSyncController.disconnectAllCalls();
+	await transitionToStandalone({ Reason: 'ParentRoomDeregistration', SkipMediaRestore: true });
+	await pairedEnvironmentController.handleStandaloneRelease(false);
+}
+
+async function handleParentRegistrationStateChanged(snapshot) {
+	parentDevices = snapshot.parentDevices;
+	pendingDeregistrations = snapshot.pendingDeregistrations;
+	if (snapshot.onlineCandidate) {
+		parentDeviceStatus = replaceParentDeviceStatus(parentDeviceStatus, {
+			host: snapshot.onlineCandidate.host,
+			serial: snapshot.onlineCandidate.serial,
+			name: snapshot.onlineCandidate.name,
+			online: true,
+			lastError: ''
+		});
+	} else {
+		parentDeviceStatus = parentDeviceStatus.filter(status => parentDevices.some(device => device.serial === status.serial || device.host === status.host));
+	}
+	parentConnectivityController.setParentDevices(parentDevices, parentDeviceStatus);
+	boardState = createBoardState(activeParentSerial);
+	await renderSelectDeviceUi();
+}
+
+function replaceParentDeviceStatus(statuses, replacement) {
+	const updated = statuses.slice();
+	const index = updated.findIndex(status => status.serial === replacement.serial || status.host === replacement.host);
+	if (index >= 0) {
+		updated[index] = replacement;
+	} else {
+		updated.push(replacement);
+	}
+	return updated;
 }
 
 async function isBoardInActiveCall() {

@@ -14,7 +14,8 @@
     "Custom-Campanion_11_BoardCallSync_2026.js",
     "Custom-Campanion_12_ParentCallCoordination_2026.js",
     "Custom-Campanion_13_StandbyCoordination_2026.js",
-    "Custom-Campanion_14_PinMode_2026.js"
+    "Custom-Campanion_14_PinMode_2026.js",
+    "Custom-Campanion_15_ParentRegistration_2026.js"
   ],
   "MinimumRoomOSVersion": "11.32.1.1",
   "SoftwarePlatform": [

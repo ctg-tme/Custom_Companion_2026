@@ -20,10 +20,10 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 21, 2026
- * Version:                 1.0.19
+ * Revised:                 July 22, 2026
+ * Version:                 1.0.20
  *
- * Description:             Companion access/hidden panels, PIN prompts, status prompts, and WebWidget adapter.
+ * Description:             Companion access/hidden panels, PIN/registration/status prompts, and WebWidget adapter.
  *
  * Documentation:           N/A
  *
@@ -53,6 +53,8 @@ const PIN_OFF_WIDGET_ID = `${CONFIG_PAGE_ID}~PinOff`;
 const PIN_ON_WIDGET_ID = `${CONFIG_PAGE_ID}~PinOn`;
 const PIN_EDIT_WIDGET_ID = `${CONFIG_PAGE_ID}~PinEdit`;
 const PIN_INFO_WIDGET_ID = `${CONFIG_PAGE_ID}~PinInfo`;
+const PAIR_NEW_ROOM_WIDGET_ID = `${CONFIG_PAGE_ID}~PairNewDevice`;
+const PAIRING_INFO_WIDGET_ID = `${CONFIG_PAGE_ID}~PairingInfo`;
 const RELEASE_INFO_TEXT = 'Select a room to pair this companion board to that room system. Use Stand Alone to unpair and restore normal local use.';
 const WEB_WIDGET_PANEL_ID = 'cc26WebWidget';
 const WEB_WIDGET_NAME = 'Custom Companion 2026';
@@ -165,13 +167,13 @@ function buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial) {
 			<Row>
 				<Name>Pair New Room</Name>
 				<Widget>
-					<WidgetId>${PANEL_ID}~Config~PairNewDevice</WidgetId>
+					<WidgetId>${PAIR_NEW_ROOM_WIDGET_ID}</WidgetId>
 					<Name>Start Room Pairing Process</Name>
 					<Type>Button</Type>
 					<Options>size=3</Options>
 				</Widget>
 				<Widget>
-					<WidgetId>${PANEL_ID}~Config~PairingInfo</WidgetId>
+					<WidgetId>${PAIRING_INFO_WIDGET_ID}</WidgetId>
 					<Type>Button</Type>
 					<Options>size=1;icon=help</Options>
 				</Widget>
@@ -211,8 +213,8 @@ function buildParentWidgetXml(parentDevice, parentStatus, index) {
 		return `<Widget>
 					<WidgetId>${offlineWidgetId}</WidgetId>
 					<Name>${escapeXml(parentName)} Offline</Name>
-					<Type>Text</Type>
-					<Options>size=4;fontSize=small;align=center</Options>
+					<Type>Button</Type>
+					<Options>size=4</Options>
 				</Widget>`;
 	}
 
@@ -296,6 +298,40 @@ async function showPinNotice(XAPIObject, options) {
 		'Option.1': 'Dismiss',
 		Duration: options.duration
 	});
+}
+
+async function showCompanionTextInput(XAPIObject, options) {
+	await XAPIObject.Command.UserInterface.Message.TextInput.Display({
+		Title: options.title,
+		Text: options.text,
+		FeedbackId: options.feedbackId,
+		InputType: options.inputType || 'SingleLine',
+		Placeholder: options.placeholder || '',
+		SubmitText: options.submitText || 'Next',
+		Duration: options.duration
+	});
+}
+
+async function clearCompanionTextInput(XAPIObject, feedbackId) {
+	try {
+		await XAPIObject.Command.UserInterface.Message.TextInput.Clear({ FeedbackId: feedbackId });
+	} catch (error) {
+		// Clearing an absent or expired TextInput is an expected idempotent operation.
+	}
+}
+
+async function showCompanionPrompt(XAPIObject, options) {
+	const command = {
+		Title: options.title,
+		Text: options.text,
+		FeedbackId: options.feedbackId,
+		Duration: options.duration
+	};
+	const promptOptions = options.options || [];
+	for (let index = 0; index < promptOptions.length; index++) {
+		command[`Option.${index + 1}`] = promptOptions[index];
+	}
+	await XAPIObject.Command.UserInterface.Message.Prompt.Display(command);
 }
 
 async function showErrorPrompt(XAPIObject) {
@@ -522,6 +558,16 @@ function isPinModeWidget(widgetId) {
 	return parsed.panelId === PANEL_ID && parsed.pageId === 'Config' && ['PinOff', 'PinOn', 'PinEdit', 'PinInfo'].includes(parsed.action);
 }
 
+function isPairNewRoomWidget(widgetId) {
+	const parsed = parseWidgetId(widgetId);
+	return parsed.panelId === PANEL_ID && parsed.pageId === 'Config' && (parsed.action === 'PairNewDevice' || parsed.action === 'PairingInfo');
+}
+
+function isParentDeviceWidget(widgetId) {
+	const parsed = parseWidgetId(widgetId);
+	return parsed.panelId === PANEL_ID && parsed.pageId === 'SelectDevice' && (parsed.action === 'ParentSelect' || parsed.action === 'ParentOffline');
+}
+
 function isProtectedPanelPage(pageId) {
 	return String(pageId || '') === SELECT_DEVICE_PAGE_ID || String(pageId || '') === CONFIG_PAGE_ID;
 }
@@ -545,6 +591,8 @@ const companionUi = {
 	ERROR_PANEL_ID,
 	RELEASE_DEVICE_WIDGET_ID,
 	RELEASE_INFO_WIDGET_ID,
+	PAIR_NEW_ROOM_WIDGET_ID,
+	PAIRING_INFO_WIDGET_ID,
 	savePanel,
 	saveErrorPanel,
 	removeErrorPanel,
@@ -555,6 +603,9 @@ const companionUi = {
 	showPinTextInput,
 	clearPinTextInput,
 	showPinNotice,
+	showCompanionTextInput,
+	clearCompanionTextInput,
+	showCompanionPrompt,
 	showErrorPrompt,
 	setSelectedParent,
 	setPinModeFeedback,
@@ -572,6 +623,8 @@ const companionUi = {
 	isSelectDeviceWidget,
 	isProtectedPanelWidget,
 	isPinModeWidget,
+	isPairNewRoomWidget,
+	isParentDeviceWidget,
 	isProtectedPanelPage
 };
 

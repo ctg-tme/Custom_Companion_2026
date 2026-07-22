@@ -5,23 +5,23 @@ Custom Companion 2026 is a Cisco RoomOS macro solution for Board Pro Series endp
 ## High-Level Scope
 
 - Maintain a board-local list of parent room devices using `Memory-Storage-Functions-V2`.
-- Provide PIN-gated Companion Device Select access for listing configured parents, selecting an online parent, returning the board to StandAlone, and managing PIN Mode from the Config page. Parent-management controls remain a Deferred Surface.
+- Provide PIN-gated Companion Device Select access for registering and deleting parent rooms, listing configured parents, selecting an online parent, returning the board to StandAlone, and managing PIN Mode from the Config page.
 - Initialize and use RoomOS HTTPClient for device-to-device communication.
 - Use Message API and putxml-based routing to sanitize and handle custom communication between the movable board and parent room devices.
 - Apply an explicit Paired UI policy that keeps Video Mute, Participants, and Whiteboard available while hiding the other known call/share controls; native Raise Hand remains subject to device acceptance testing.
 - When a parent room joins a supported Webex call, instruct the movable board to join the same call context.
-- Keep microphones muted and volume at level 1 while Paired, while leaving Video Mute available as a user control.
+- Keep microphones muted, volume at level 1, and a renewable Do Not Disturb lease active while Paired, while leaving Video Mute available as a user control.
 
 ## Current Runtime Roles
 
 - Companion board: the movable Board Pro or Board device running `Custom-Campanion_1_Main_2026`.
 - Parent room device: the fixed room codec that receives the installed `Custom-Campanion_Room_2026` macro.
-- Memory storage: generated state owned by `Memory-Storage-Functions-V2`; this stores board parent-device records, board PIN Mode state, and parent registered-board records.
-- Transport: RoomOS HTTPClient posts putxml payloads to remote codecs, usually to invoke `Message.Send`, `Peripherals.Connect`, `Peripherals.HeartBeat`, or macro save/activate commands.
+- Memory storage: generated state owned by `Memory-Storage-Functions-V2`; this stores board parent-device records, Pending Deregistration tombstones, board PIN Mode state, and parent registered-board records.
+- Transport: RoomOS HTTPClient posts putxml payloads to remote codecs, usually to invoke `Message.Send`, `Peripherals.Connect`, `Peripherals.HeartBeat`, or macro save/activate commands. Parent cleanup uses local `Peripherals.Purge`.
 
 ## Source Macro Architecture
 
-The deployable source remains unbundled and uses 14 numbered macros. On the companion board, only `Custom-Campanion_1_Main_2026` is the active entry macro; its imported modules and the two parent deployment sources remain present under their numbered names. This keeps each stateful workflow independently readable while preserving RoomOS Macro Editor deployment.
+The deployable source remains unbundled and uses 15 numbered macros. On the companion board, only `Custom-Campanion_1_Main_2026` is the active entry macro; its imported modules and the two parent deployment sources remain present under their numbered names. This keeps each stateful workflow independently readable while preserving RoomOS Macro Editor deployment.
 
 | Macro | Responsibility |
 | --- | --- |
@@ -34,11 +34,12 @@ The deployable source remains unbundled and uses 14 numbered macros. On the comp
 | `Custom-Campanion_7_RoomReference_2026` | Inactive parent entry source; installed and activated on a parent as `Custom-Campanion_Room_2026`. |
 | `Custom-Campanion_8_Services_2026` | Parent package provisioning and runtime companion-board identity discovery. |
 | `Custom-Campanion_9_ParentConnectivity_2026` | Parent identity refresh, retries, heartbeat, recovery, and Call Preservation. |
-| `Custom-Campanion_10_PairedEnvironment_2026` | Paired UI policy, WebWidget mode, microphone/volume enforcement, and safe release restoration. |
+| `Custom-Campanion_10_PairedEnvironment_2026` | Paired UI policy, WebWidget mode, microphone/volume/DND enforcement, and safe release restoration. |
 | `Custom-Campanion_11_BoardCallSync_2026` | Board-side Webex call synchronization, disconnect, rejoin, retries, and call messaging. |
 | `Custom-Campanion_12_ParentCallCoordination_2026` | Parent-side call/BYOD detection, participant admission, and call-detail responses. |
 | `Custom-Campanion_13_StandbyCoordination_2026` | StandAlone standby preferences, parent standby sync, delayed application, prompts, and bypass. |
 | `Custom-Campanion_14_PinMode_2026` | Board-local PIN state, protected-panel access, edit/disable verification, persistence retry, and inactivity session. |
+| `Custom-Campanion_15_ParentRegistration_2026` | Pair New Room wizard, locked provisioning stages, long-hold deregistration, tombstones, and reconciliation. |
 
 No build or bundling step is required for the runtime macros. The Companion Installer installs these source files without changing their runtime boundaries. See [ADR 0001](docs/adr/0001-unbundled-domain-macros.md).
 
@@ -46,7 +47,7 @@ No build or bundling step is required for the runtime macros. The Companion Inst
 
 The static browser installer in `installer/` deploys a selected release or the current Main Fork (Beta) snapshot to a companion board through JSXAPI. The root `manifest.json` is the Release Manifest and remains authoritative for installable project macros, minimum RoomOS, supported product platforms, and external dependencies. The installer never targets a parent room device; the installed board runtime retains parent provisioning ownership.
 
-After Board configuration and before Review, the installer requires the Device Administrator to choose a Standard Installation or Clean Installation. Standard Installation preserves `Custom-Campanion-Storage`. Clean Installation deactivates the existing project macros, removes only `Custom-Campanion-Storage` when present, and then installs the selected release. This permanently resets the board's saved parent devices, active parent selection, PIN Mode state, and captured StandAlone UI and standby settings. Generated storage remains outside the Release Manifest and is never treated as a Legacy Project Macro.
+After Board configuration and before Review, the installer requires the Device Administrator to choose a Standard Installation or Clean Installation. Standard Installation preserves `Custom-Campanion-Storage`. Clean Installation deactivates the existing project macros, removes only `Custom-Campanion-Storage` when present, and then installs the selected release. This permanently resets the board's saved parent devices, Pending Deregistration tombstones, active parent selection, PIN Mode state, and captured StandAlone UI and standby settings. Generated storage remains outside the Release Manifest and is never treated as a Legacy Project Macro.
 
 Before packaging, `npm run verify:release` checks that the Release Manifest exactly covers the eligible root macros, the runtime project version is synchronized across Main, Config, `config.version`, and RoomReference, every macro passes JavaScript syntax validation, relative macro imports resolve to Release Manifest resources, and Main still emits the initialization messages used by installer verification. Installer tests and builds run the same Release Contract verification before generating the pinned source snapshot.
 
@@ -54,7 +55,7 @@ See `installer/README.md` for local commands and ADR 0002 through ADR 0005 for s
 
 ## Initialization
 
-The companion board initializes first. It registers the UI event routes, initializes HTTPClient and MemoryStorage, loads local state including PIN Mode, registers call/media subscriptions, validates known parent devices, applies local mode policy, installs the parent-side runtime package, connects itself as a peripheral, and asks each online parent to confirm that the runtime is ready before sending board-owned configuration. HTTPClient, MemoryStorage, or PIN Mode initialization failure stops initialization, logs a stable administrator diagnostic, removes `cc26_access`, `cc26_hidden`, and legacy `cc26`, and installs the gray widgetless `cc26_error` action panel.
+The companion board initializes first. It registers the UI event routes, initializes HTTPClient and MemoryStorage, loads local state including PIN Mode and Pending Deregistrations, registers call/media subscriptions, validates known parent devices, applies local mode policy, installs the parent-side runtime package, connects itself as a peripheral, asks each online parent to confirm that the runtime is ready before sending board-owned configuration, and makes one cleanup attempt for each tombstone. HTTPClient, MemoryStorage, or PIN Mode initialization failure stops initialization, logs a stable administrator diagnostic, removes `cc26_access`, `cc26_hidden`, and legacy `cc26`, and installs the gray widgetless `cc26_error` action panel.
 
 ```mermaid
 flowchart TD
@@ -65,7 +66,7 @@ flowchart TD
 	D -- Failure --> X
 	D --> E[Read stored parent, board mode, and PIN Mode state]
 	E -- Invalid PIN state --> X
-	E --> F[Register message, call-count, microphone-mute, and volume subscriptions]
+	E --> F[Register message, UI, call-count, microphone-mute, and volume subscriptions]
 	F --> G[Perform initial call, UI, standby, and media reads]
 	G --> H[Refresh parent identities with HTTP GET]
 	H --> I[Apply StandAlone or Paired policy]
@@ -73,7 +74,7 @@ flowchart TD
 	J --> K[Install parent runtime package on online parents]
 	K --> L[Connect board as parent peripheral]
 	L --> M[Send initial heartbeat and ParentReadyRequest]
-	M --> N[Start parent status and heartbeat interval]
+	M --> N[Retry Pending Deregistrations, then start parent status and heartbeat interval]
 ```
 
 ## Parent Macro Installation
@@ -151,7 +152,7 @@ Every custom application message produced by `deviceComms.sendMessageCommand` us
 }
 ```
 
-The envelope is intentionally small because RoomOS `Message.Send` text is limited to 8192 characters. Timestamps are left to the macro logs, serial data is only sent once at the top level, and empty `Source` fields are omitted. `ParentReadyRequest` and `ConfigSync` are intentionally allowed before the parent recognizes the board serial. Other parent-side custom actions require the sending serial to already exist in the parent `registeredBoards` memory list.
+The envelope is intentionally small because RoomOS `Message.Send` text is limited to 8192 characters. Timestamps are left to the macro logs, serial data is only sent once at the top level, and empty `Source` fields are omitted. Registration messages carry a `Payload.TransactionId` so stale acknowledgements cannot reverse newer intent. `ParentReadyRequest`, `ConfigSync`, and idempotent `DeregisterRequest` are intentionally allowed before the parent recognizes the board serial. Other parent-side custom actions require the sending serial to already exist in the parent `registeredBoards` memory list.
 
 ## Board Configuration Handoff
 
@@ -166,15 +167,21 @@ flowchart TD
 	E --> F{Parent response}
 	F -- ParentReady --> G[Send Message.Send ConfigSync]
 	G --> H{Config response}
-	H -- ConfigAccepted --> I[Board logs acceptance]
-	H -- ConfigDenied --> J[Board shows Room Configuration Denied prompt]
+	H -- ConfigAccepted --> I[Pair workflow commits room; initialization refresh logs acceptance]
+	H -- ConfigDenied --> J[Board shows capacity or configuration denial]
 	F -- No response or HTTP failure --> K[Board logs peripheral connect failure]
 ```
 
-The `ParentReadyRequest` payload currently includes return-path credentials:
+The Pair New Room `ParentReadyRequest` payload includes the runtime board identity and return path:
 
+- `Board.Serial`
+- `Board.Name`
+- `Board.Host`
 - `Board.Username`
 - `Board.Password`
+- `Board.MacAddress`
+- `Board.ProductPlatform`
+- `TransactionId`
 
 Board serial, board name, and MAC address are not stored in base config. The board pulls those values from local xAPI at runtime and places them in the message envelope when needed.
 
@@ -184,6 +191,7 @@ The `ConfigSync` payload currently includes:
 - `Board.Username`
 - `Board.Password`
 - `Board.ProductPlatform`
+- `TransactionId`
 - `Capabilities.CanJoinCall`
 - `Capabilities.CanMuteAudio`
 - `Capabilities.CanMuteVideo`
@@ -192,6 +200,8 @@ The `ConfigSync` payload currently includes:
 ## Parent Configuration Handling
 
 Each parent codec can store up to 3 registered companion boards. `ConfigSync` saves the board config into `boardConfigs` by board serial and updates the `registeredBoards` record. A repeated sync overwrites existing records when the serial matches.
+
+`DeregisterRequest` is accepted whether or not the board serial is still present, so a lost acknowledgement can be retried safely. The Parent checks `Status.Peripherals.ConnectedDevice`; when the board peripheral exists it invokes `Peripherals.Purge` once, and an absent entry is already complete. It then removes the serial from `boardConfigs` and `registeredBoards`, persists both, updates Parent Call Coordination, and sends the transaction-correlated `DeregistrationAccepted`. The installed parent macro package remains active for other registered boards.
 
 ```mermaid
 flowchart TD
@@ -249,7 +259,38 @@ The visible `cc26_access` action panel is saved at `HomeScreenAndCallControls`. 
 
 Turning PIN Mode on writes the state, updates the On/Off widget feedback, closes the hidden panel, and shows a dismissible 15-second confirmation. Turning it off requires the current PIN, leaves the panel open after success, and shows a 15-second confirmation. Editing always verifies the current PIN, collects and confirms the new PIN, and only writes after both entries match. Incorrect verification re-prompts without a lockout; invalid or mismatched edit input explains the failure and restarts at current-PIN verification. Dismissal or expiry cancels the active attempt.
 
-The protected UI session closes after 60 seconds of inactivity. Opening the launcher, opening or changing a protected page, any widget action within `cc26_hidden`, and PIN-related prompt display or response reset the timer. RoomOS exposes only the final TextInput response—not individual keypad presses—so typing a digit cannot reset the timer. Expiry clears only the known PIN TextInput or PIN notice, discards an unsaved new PIN, and closes the protected panel.
+The protected UI session closes after 60 seconds of inactivity. Opening the launcher, opening or changing a protected page, any widget action within `cc26_hidden`, and PIN/registration stage display or response reset the timer. RoomOS exposes only the final TextInput response—not individual keypad presses—so typing a digit cannot reset the timer. Expiry clears the active PIN input or naturally expires a 60-second registration input, discards unsaved input, and closes the protected panel.
+
+Parent Room Registration and Deregistration each require a fresh current-PIN authorization when PIN Mode is enabled, even when the protected panel is already open. The authorization is scoped to that one operation; incorrect input re-prompts, while dismissal or expiry cancels it.
+
+## Parent Room Registration and Deregistration
+
+`Pair New Room` collects host, username, password, and password confirmation after an information page. The final Pair choice begins a locked workflow: the hidden panel closes, a zero-duration progress prompt remains on screen, selecting its waiting option reopens the same stage, and `Prompt.Cleared` also reopens it. Each visible stage owns a fresh 60-second watchdog. The final success or failure prompt lasts up to 60 seconds.
+
+The locked stages verify parent identity, ask before replacing an existing serial or canceling that serial's Pending Deregistration, install/start the shared parent macros, connect and heartbeat the board peripheral, wait for `ParentReady`, wait for `ConfigAccepted`, and finally save the parent record. `ParentReadyRequest` and `ConfigSync` retry every five seconds only inside their respective 60-second stages. The candidate credentials stay transient until the Parent accepts and the board storage write succeeds. A new serial is rejected when the board already has six rooms; a Parent rejects a new board when it already has three. Registration is blocked only while the board is Paired and in an active call. A StandAlone call does not block it.
+
+If the verified serial already exists, the board asks whether to overwrite the saved name, host, and credentials. If the serial has a Pending Deregistration tombstone, it asks whether the user wants to make registration the newer intent. Decline keeps the existing state. Acceptance performs the complete handshake; only `ConfigAccepted` replaces the old record or tombstone. A failure does not create a selectable Parent Room Registration. If configuration may already have reached the Parent, the board retains only a hidden cleanup tombstone and tells the user to inspect macro logs.
+
+Pressing and holding any online or offline room button for three seconds displays Delete Room. A fresh PIN is required after confirmation when PIN Mode is enabled. The room disappears from Select Device immediately after durable local retirement. If it was active, the board cancels call rejoin, ends every local board call, enters StandAlone, and informs the user before confirmation that the call remains active in the Parent Room. The shared parent macros are never uninstalled because other boards may rely on them.
+
+The hidden `pendingDeregistrations` record retains the Parent serial and connection data until a matching `DeregistrationAccepted` transaction arrives. The Parent purges the board's `Peripherals ConnectedDevice` entry, removes `registeredBoards` and `boardConfigs`, and only then acknowledges. An already-absent peripheral counts as complete. Cleanup is attempted at deletion, at board initialization, and whenever a valid message arrives from that pending Parent. Parent initialization sends `RegistrationValidation` to its saved boards; an active registration replies `RegistrationValidated`, while a pending removal immediately retries `DeregisterRequest`. Messages from unknown or retired parents are otherwise ignored. See [ADR 0006](docs/adr/0006-parent-registration-and-tombstone-reconciliation.md).
+
+```mermaid
+flowchart TD
+	A[Pair New Room] --> B[Fresh PIN if enabled]
+	B --> C[Information, host, username, password, confirm]
+	C --> D[Confirm Pair]
+	D --> E[Verify Parent identity]
+	E --> F{Existing serial or tombstone?}
+	F -- Yes --> G[Ask before replacing current intent]
+	F -- No --> H[Install shared Parent macros]
+	G -- Continue --> H
+	G -- Cancel --> X[Cancel without changing durable state]
+	H --> I[Connect and heartbeat peripheral]
+	I --> J[ParentReady within 60 seconds]
+	J --> K[ConfigAccepted within 60 seconds]
+	K --> L[Commit Parent Room Registration]
+```
 
 ## UI Feature Mode
 
@@ -261,7 +302,9 @@ Standalone standby preferences are saved in board memory for `Standby Control`, 
 
 The editable Paired UI policy is in `Custom-Campanion_10_PairedEnvironment_2026`. It captures supported StandAlone values and restores them on release. Video Mute, Participant List, and Whiteboard Start are set to `Auto`; the other known call controls plus Share Start are set to `Hidden`. Call End is `Hidden` during normal Paired operation and temporarily `Auto` during Call Preservation or an active-call Unhealthy State. Unsupported optional feature paths are logged and skipped. Because RoomOS does not expose a dedicated Raise Hand visibility configuration, device acceptance must confirm Raise Hand remains available with MidCallControls hidden.
 
-While Paired, the board performs initial reads and subscribes to `Status.Audio.Microphones.Mute` and `Status.Audio.Volume`. An observed unmute invokes `Command.Audio.Microphones.Mute` once; a volume other than 1 invokes `Command.Audio.Volume.Set` once with `Level: 1` and no `Device` parameter. Local command failures are not retried. Leaving Paired keeps the microphone state muted. If no call is active, the board immediately reads `Config.Audio.DefaultVolume`, restores that value, and reminds the user to unmute. If a call is active, the board enters StandAlone immediately and asks whether to restore volume; decline, dismissal, or prompt failure leaves the level unchanged.
+While Paired, the board performs initial reads and subscribes to `Status.Audio.Microphones.Mute` and `Status.Audio.Volume`. An observed unmute invokes `Command.Audio.Microphones.Mute` once; a volume other than 1 invokes `Command.Audio.Volume.Set` once with `Level: 1` and no `Device` parameter. The board also invokes `Command.Conference.DoNotDisturb.Activate({ Timeout: 5 })` and renews that solution-owned lease every two minutes so incoming calls are rejected. Entering StandAlone clears the renewal timer and invokes `Command.Conference.DoNotDisturb.Deactivate()`; a DND state that predated Paired mode is intentionally not restored. These local commands are not retried. Leaving Paired keeps the microphone state muted. If no call is active, the board immediately reads `Config.Audio.DefaultVolume`, restores that value, and reminds the user to unmute. If a call is active, the board enters StandAlone immediately and asks whether to restore volume; decline, dismissal, or prompt failure leaves the level unchanged.
+
+The Paired board participates in at most one call. DND blocks ordinary incoming calls, and a new parent join request is ignored whenever `Status.SystemUnit.State.NumberOfActiveCalls` shows an existing call. StandAlone retains native RoomOS call behavior. Parent disconnect and rejoin behavior for the current synchronized call remains unchanged.
 
 ```mermaid
 flowchart TD
@@ -278,7 +321,7 @@ flowchart TD
 
 ## Unhealthy State and Administrator Communication
 
-Required local prerequisite failures, invalid saved PIN Mode state, and required Paired microphone/volume enforcement failures enter an Unhealthy State. The console logs a stable code, component, context, remediation, and original error without credentials or PIN values. The `cc26_access` and `cc26_hidden` panels are replaced by the gray widgetless `cc26_error` action panel, blocking parent selection. Clicking it shows `Contact a Device Administrator.` for up to 30 seconds with a Dismiss option. When the managed Companion Web Widget is available, solution-owned Infoblock 3 persistently shows `Companion controls are unavailable. Contact a Device Administrator.` Recovery requires correcting the local macro/xAPI issue and restarting the Macro Runtime; no background initialization retry or self-restart is attempted.
+Required local prerequisite failures, invalid saved PIN Mode state, and required Paired microphone/volume/DND enforcement failures enter an Unhealthy State. The console logs a stable code, component, context, remediation, and original error without credentials or PIN values. The `cc26_access` and `cc26_hidden` panels are replaced by the gray widgetless `cc26_error` action panel, blocking parent selection. Clicking it shows `Contact a Device Administrator.` for up to 30 seconds with a Dismiss option. When the managed Companion Web Widget is available, solution-owned Infoblock 3 persistently shows `Companion controls are unavailable. Contact a Device Administrator.` Recovery requires correcting the local macro/xAPI issue and restarting the Macro Runtime; no background initialization retry or self-restart is attempted.
 
 If saved PIN Mode state is malformed, initialization first replaces it with the configured defaults. If the configured default PIN is also invalid, the built-in recovery PIN `0000` is used. Initialization then raises a hard error and remains stopped so a Device Administrator can inspect the diagnostic before restarting. A failed PIN Mode memory write is retried once after two seconds; a second failure enters the Unhealthy State.
 
@@ -291,9 +334,12 @@ If required media enforcement fails during an active call, the board remains ass
 | Local call safety | `xapi.Status.SystemUnit.State.NumberOfActiveCalls.get()` | `xapi.Status.SystemUnit.State.NumberOfActiveCalls.on(...)` |
 | Paired microphone enforcement | `xapi.Status.Audio.Microphones.Mute.get()` and `xapi.Command.Audio.Microphones.Mute()` | `xapi.Status.Audio.Microphones.Mute.on(...)` |
 | Paired volume enforcement | `xapi.Status.Audio.Volume.get()` and `xapi.Command.Audio.Volume.Set({ Level: 1 })` | `xapi.Status.Audio.Volume.on(...)` |
+| Paired incoming-call isolation | `xapi.Command.Conference.DoNotDisturb.Activate({ Timeout: 5 })` and `.Deactivate()` | Two-minute solution timer renews the five-minute lease while Paired |
 | StandAlone volume restoration | `xapi.Config.Audio.DefaultVolume.get()` and `xapi.Command.Audio.Volume.Set({ Level })` | None; current default is read at the release boundary |
 | Error action button | `xapi.Command.UserInterface.Extensions.Panel.Save/Remove` | `xapi.Event.UserInterface.Extensions.Panel.Clicked.on(...)`, gated to `cc26_error` |
 | PIN-gated panel access | `xapi.Command.UserInterface.Extensions.Panel.Save(...)`, `xapi.Command.UserInterface.Extensions.Panel.Open(...)`, `xapi.Command.UserInterface.Extensions.Panel.Close()`, `xapi.Command.UserInterface.Extensions.Panel.Remove(...)`, `xapi.Command.UserInterface.Message.TextInput.Display(...)`, `xapi.Command.UserInterface.Message.TextInput.Clear(...)`, and `xapi.Command.UserInterface.Extensions.Widget.SetValue(...)` | `xapi.Event.UserInterface.Extensions.Panel.Clicked.on(...)`, `xapi.Event.UserInterface.Extensions.Widget.Action.on(...)`, `xapi.Event.UserInterface.Message.TextInput.Response.on(...)`, `xapi.Event.UserInterface.Extensions.Event.PageOpened.on(...)`, and `xapi.Event.UserInterface.Extensions.Event.PageClosed.on(...)` |
+| Registration modal enforcement | `xapi.Command.UserInterface.Message.Prompt.Display/Clear` and `TextInput.Display` | `xapi.Event.UserInterface.Message.Prompt.Response/Cleared`, `TextInput.Response/Clear`, and `Extensions.Widget.Action` |
+| Parent peripheral cleanup | Parent-local `xapi.Status.Peripherals.ConnectedDevice.get()` and one `xapi.Command.Peripherals.Purge({ ID })` when present | Reconciliation is message/initialization driven; local purge is not retried inside one request |
 | Parent identity | `xapi.Command.HttpClient.Get` for `/getxml?location=/Status/SystemUnit` | Five-second workflow retries; no HTTP transport retry |
 | Parent standby | `xapi.Command.HttpClient.Get` for `/getxml?location=/Status/Standby/State` | Parent `xapi.Status.Standby.State.on(...)` sends `StandbySync` |
 | Board call validation | `xapi.Command.HttpClient.Get` for `/getxml?location=/Status/Call` | Parent admission workflow invokes the queued read |
@@ -311,6 +357,10 @@ The current source keeps a small route map in `Custom-Campanion_1_Main_2026`. Th
 | `ConfigAccepted` | Parent to board | Implemented | Parent confirms config was stored in `boardConfigs` and board identity was stored or updated in `registeredBoards`. |
 | `ConfigDenied` | Parent to board | Implemented | Parent rejects config from a new board when its 3-board registration limit is reached. |
 | `ConfigRequired` | Parent to board | Implemented guard response | Parent receives an unsupported action from an unknown board serial and asks the board to send config first. |
+| `RegistrationValidation` | Parent to board | Implemented | Parent initialization asks each saved board to prove whether the Parent Room Registration is still current. |
+| `RegistrationValidated` | Board to parent | Implemented | A board with an active registration confirms the Parent record; a tombstoned board sends deregistration instead. |
+| `DeregisterRequest` | Board to parent | Implemented, idempotent | Board asks the Parent to purge its peripheral and remove this board's config/registration records. |
+| `DeregistrationAccepted` | Parent to board | Implemented | Parent confirms all three cleanup steps; matching transaction removes the board tombstone. |
 | `StandbySync` | Parent to board | Implemented | Parent sends its debounced standby state to registered boards; boards only act when the sending parent serial matches their active parent. |
 | `CallSync` | Parent to board | Webex-only join/disconnect slice | Parent captures the first `Call RemoteNumber` value with a new-style one-shot status listener, pairs it with `CallSuccessful` or active call count, stores active call details in runtime state, enriches with meeting platform/protocol or BYOD state, and sends details to registered boards. Active boards only auto-join Webex calls. If the board drops the call while paired, it requests active call details from the parent and only rejoins when the response matches the same synced call by `CallId`, `RemoteURI`, or `RemoteNumber`. Call identity comparison trims and lowercases each value, then ignores any prefix through the first `:` so scheme-prefixed and unprefixed forms compare consistently. When the parent is the Webex host, it searches the participant list on `Conference.ParticipantList.ParticipantUpdated` and also polls `ParticipantList.Search` every few seconds while admission is pending, matches waiting registered boards by display name, validates the board's `Status.Call CallbackNumber` against the parent call, and admits the board until it is no longer waiting. If the parent is not host, the board Web Widget `info3` tells users the host needs to admit it. Zoom, Microsoft Teams, Google Meet, SIP/H.323 bridge, and BYOD calls are identified but out of scope. Parent also watches `Status.SystemUnit.State.NumberOfActiveCalls` and sends a disconnect payload when its active call count drops below 1. |
 | `ActiveCallDetailsRequest` | Board to parent | Implemented | Board asks the active parent for its stored active call details after a local call drop, then uses the `CallSync` response to decide whether rejoin is still valid. |
@@ -322,6 +372,8 @@ The current source keeps a small route map in `Custom-Campanion_1_Main_2026`. Th
 - One companion board can keep up to 6 parent devices in board memory.
 - One parent room codec can register up to 3 companion boards in parent memory.
 - Re-syncing the same board serial updates that board record and its `boardConfigs` entry instead of consuming another slot.
+- Re-registering an existing serial requires explicit overwrite confirmation and does not consume another board or Parent slot.
+- `pendingDeregistrations` entries are not selectable rooms; they retain connection credentials only until Parent cleanup is explicitly acknowledged.
 - `Custom-Campanion-Storage.js` is generated database state and should not be edited or committed as source.
 
 ## Notes

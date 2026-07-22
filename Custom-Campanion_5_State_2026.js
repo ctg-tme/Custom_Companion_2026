@@ -20,10 +20,10 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 10, 2026
- * Revised:                 July 21, 2026
- * Version:                 1.0.3
+ * Revised:                 July 22, 2026
+ * Version:                 1.0.4
  *
- * Description:             Durable storage keys, safe MemoryStorage reads, and basic board mode state.
+ * Description:             Durable registration/tombstone storage keys, safe MemoryStorage reads, and basic board mode state.
  *
  * Documentation:           N/A
  *
@@ -41,6 +41,7 @@ or implied.
 
 const STAND_ALONE_PARENT_SERIAL = 'StandAlone';
 const PARENT_DEVICES_STORAGE_KEY = 'parentDevices';
+const PENDING_DEREGISTRATIONS_STORAGE_KEY = 'pendingDeregistrations';
 const ACTIVE_PARENT_SERIAL_STORAGE_KEY = 'activeParentSerial';
 const PIN_MODE_STORAGE_KEY = 'pinMode';
 const STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY = 'standaloneUiFeatureConfig';
@@ -136,6 +137,7 @@ function warnIfCredentialsAreStored(parentDevices, log) {
 const companionState = {
 	STAND_ALONE_PARENT_SERIAL,
 	PARENT_DEVICES_STORAGE_KEY,
+	PENDING_DEREGISTRATIONS_STORAGE_KEY,
 	ACTIVE_PARENT_SERIAL_STORAGE_KEY,
 	PIN_MODE_STORAGE_KEY,
 	STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY,

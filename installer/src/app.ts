@@ -429,7 +429,7 @@ export class InstallerApp {
           <span class="installation-type-copy">
             <small>Clean installation</small>
             <strong>Purge ${GENERATED_STORAGE_MACRO} and Install Custom Companion 2026 Macros</strong>
-            <em>Deletes saved parent devices, the active parent selection, PIN Mode state, and captured StandAlone UI and standby settings before installation.</em>
+            <em>Deletes saved parent devices, Pending Deregistration cleanup records, the active parent selection, PIN Mode state, and captured StandAlone UI and standby settings before installation.</em>
           </span>
         </label>
       </section>

@@ -12,6 +12,18 @@ _Avoid_: Unpaired mode, disconnected mode
 The operating mode in which the companion board is assigned to one active parent room device.
 _Avoid_: Connected mode, linked mode
 
+**Parent Room Registration**:
+The durable relationship established when a companion board and parent room device recognize one another, making that room available for later selection. Registration does not select the room or change the board's operating mode. It is blocked while the board is both Paired and participating in an active call; a StandAlone call does not impose that restriction.
+_Avoid_: Pairing, active pairing, room setup
+
+**Parent Room Deregistration**:
+The removal of one companion board's durable relationship with a parent room device. It does not affect registrations held by other companion boards.
+_Avoid_: Delete room macros, uninstall parent, unpair all boards
+
+**Pending Deregistration**:
+The state of a Parent Room Registration that the companion board has retired locally but the parent room device has not confirmed removing. The room cannot be selected or become active while in this state.
+_Avoid_: Registered room, deleted room, Paired room
+
 **Device Administrator**:
 A person with administrative access to the RoomOS device WebUI and Macro Editor who can diagnose and rectify solution health failures.
 _Avoid_: In-Room User, room operator
@@ -57,12 +69,20 @@ A person using the room touch interface who may operate the companion board but 
 _Avoid_: Device Administrator, system administrator
 
 **Unhealthy State**:
-A solution-wide condition in which a required local prerequisite is unavailable and companion selection cannot operate reliably. Initialization prerequisite failures, invalid saved PIN Mode state, and failures of required paired microphone or volume enforcement enter this state. An individual parent device being unavailable and an unsupported optional UI feature-policy path are not an Unhealthy State.
+A solution-wide condition in which a required local prerequisite is unavailable and companion selection cannot operate reliably. Initialization prerequisite failures, invalid saved PIN Mode state, and failures of required Paired microphone, volume, or incoming-call isolation enforcement enter this state. An individual parent device being unavailable and an unsupported optional UI feature-policy path are not an Unhealthy State.
 _Avoid_: Parent offline, room unavailable
 
 **Call Preservation State**:
 A temporary Paired condition in which the companion board preserves an active call while communication with its parent room device is unavailable. Communication is considered restored only after the selected parent returns a valid identity response whose serial number matches the selected parent serial; normal heartbeat and call-state synchronization then resume through their existing paths.
 _Avoid_: StandAlone, disconnected call
+
+**Paired Call Limit**:
+The invariant that a companion board participates in at most one call while Paired. StandAlone retains native RoomOS call behavior.
+_Avoid_: Global call limit, StandAlone call restriction
+
+**Paired Do Not Disturb Lease**:
+The solution-owned condition maintained while Paired that prevents incoming calls to the companion board. It is always released when the board enters StandAlone and does not restrict parent-requested outbound calls.
+_Avoid_: Infinite DND loop, permanent Do Not Disturb, restored DND state
 
 **Parent Connectivity**:
 The live relationship through which a companion board verifies the identity and availability of its selected parent room device and maintains communication with it.
@@ -73,7 +93,7 @@ An intentionally visible or configured part of the product whose behavior has no
 _Avoid_: Dead code, completed feature
 
 **PIN Mode**:
-An optional in-room access gate for opening Companion Device Select. When enabled, an In-Room User must enter the current PIN; it is not device authentication and does not restrict a Device Administrator using the device WebUI, Macro Editor, or API.
+An optional in-room access gate for opening Companion Device Select and authorizing Parent Room Registration or Parent Room Deregistration. When enabled, an In-Room User must enter the current PIN to open the panel and re-enter it for each registration or deregistration; it is not device authentication and does not restrict a Device Administrator using the device WebUI, Macro Editor, or API.
 _Avoid_: Device authentication, administrator login, screen lock
 
 **Default PIN**:

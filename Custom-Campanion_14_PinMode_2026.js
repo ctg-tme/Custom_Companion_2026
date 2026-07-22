@@ -20,11 +20,11 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 21, 2026
- * Revised:                 July 21, 2026
- * Version:                 1.0.0
+ * Revised:                 July 22, 2026
+ * Version:                 1.0.1
  *
  * Description:             Board-local PIN Mode state, validation, protected-panel access,
- *                          PIN editing, and inactivity-session policy.
+ *                          one-operation authorization, PIN editing, and inactivity-session policy.
  *
  * Documentation:           N/A
  *
@@ -55,6 +55,7 @@ const PIN_FEEDBACK_IDS = {
 	editOld: 'cc26_pin_edit_old',
 	editNew: 'cc26_pin_edit_new',
 	editConfirm: 'cc26_pin_edit_confirm',
+	authorize: 'cc26_pin_authorize',
 	notice: 'cc26_pin_notice'
 };
 
@@ -68,6 +69,7 @@ function createPinMode(options) {
 	let isProtectedPanelOpen = false;
 	let sessionTimeout = null;
 	let pageCloseTimeout = null;
+	let pendingAuthorization = null;
 
 	async function initialize() {
 		const configured = getConfiguredDefaultState();
@@ -192,6 +194,9 @@ function createPinMode(options) {
 			case PIN_FEEDBACK_IDS.editConfirm:
 				await handleEditConfirmation(submittedPin);
 				break;
+			case PIN_FEEDBACK_IDS.authorize:
+				await handleAuthorizationPin(submittedPin);
+				break;
 		}
 		return true;
 	}
@@ -265,6 +270,49 @@ function createPinMode(options) {
 	async function startPinEdit() {
 		pendingNewPin = '';
 		await showEditOldPinPrompt('Enter the current PIN to begin editing.');
+	}
+
+	async function requestAuthorization(options) {
+		const authorization = options || {};
+		if (!state || isUnhealthy()) {
+			return false;
+		}
+		if (!state.enabled) {
+			if (typeof authorization.onAuthorized === 'function') {
+				await authorization.onAuthorized();
+			}
+			return true;
+		}
+
+		pendingAuthorization = authorization;
+		await showPinPrompt({
+			feedbackId: PIN_FEEDBACK_IDS.authorize,
+			title: authorization.title || 'Confirm PIN',
+			text: authorization.text || 'Enter the current PIN to continue.',
+			submitText: authorization.submitText || 'Continue'
+		});
+		return true;
+	}
+
+	async function handleAuthorizationPin(submittedPin) {
+		if (!pendingAuthorization) {
+			return;
+		}
+		if (submittedPin !== state.pin) {
+			await showPinPrompt({
+				feedbackId: PIN_FEEDBACK_IDS.authorize,
+				title: 'Incorrect PIN',
+				text: 'The current PIN was incorrect. Try again or dismiss to cancel.',
+				submitText: pendingAuthorization.submitText || 'Continue'
+			});
+			return;
+		}
+
+		const authorization = pendingAuthorization;
+		pendingAuthorization = null;
+		if (typeof authorization.onAuthorized === 'function') {
+			await authorization.onAuthorized();
+		}
 	}
 
 	async function showPinInfo() {
@@ -500,6 +548,7 @@ function createPinMode(options) {
 		activeTextInputFeedbackId = '';
 		isNoticeActive = false;
 		isProtectedPanelOpen = false;
+		pendingAuthorization = null;
 	}
 
 	async function stop() {
@@ -581,6 +630,8 @@ function createPinMode(options) {
 		handlePageOpened,
 		handlePageClosed,
 		handlePromptResponse,
+		requestAuthorization,
+		touchSession,
 		isEnabled,
 		getState,
 		stop
@@ -611,7 +662,8 @@ function isPinFeedbackId(feedbackId) {
 		feedbackId === PIN_FEEDBACK_IDS.disable ||
 		feedbackId === PIN_FEEDBACK_IDS.editOld ||
 		feedbackId === PIN_FEEDBACK_IDS.editNew ||
-		feedbackId === PIN_FEEDBACK_IDS.editConfirm;
+		feedbackId === PIN_FEEDBACK_IDS.editConfirm ||
+		feedbackId === PIN_FEEDBACK_IDS.authorize;
 }
 
 function delay(milliseconds) {

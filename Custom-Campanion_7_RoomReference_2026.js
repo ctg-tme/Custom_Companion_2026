@@ -20,10 +20,10 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 21, 2026
- * Version:                 0.1.2.28
+ * Revised:                 July 22, 2026
+ * Version:                 0.1.2.29
  *
- * Description:             Parent room entry and registration macro used as the install source.
+ * Description:             Parent room registration, validation, deregistration, and peripheral-cleanup entry macro used as the install source.
  *                          The numbered source remains inactive on the board; parent installation renames
  *                          and activates it as Custom-Campanion_Room_2026.
  *
@@ -106,9 +106,10 @@ async function init() {
 		registeredBoards = await readMemoryOrDefault(REGISTERED_BOARDS_STORAGE_KEY, []);
 		boardConfigs = await readMemoryOrDefault(BOARD_CONFIGS_STORAGE_KEY, {});
 		parentCallCoordinationController.setRegisteredBoards(registeredBoards);
-		registerMessageHandler();
-		registerStandbyStateHandler();
-		parentCallCoordinationController.start();
+			registerMessageHandler();
+			registerStandbyStateHandler();
+			parentCallCoordinationController.start();
+			await validateRegisteredBoards();
 		log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredBoardCount: registeredBoards.length });
 	} catch (error) {
 		const diagnostic = error.Diagnostic || {};
@@ -193,6 +194,11 @@ function normalizeEventValue(value) {
 }
 
 async function handleCompanionMessage(message) {
+	if (message.Action === 'DeregisterRequest') {
+		await handleDeregisterRequest(message);
+		return;
+	}
+
 	if (message.Action === 'ParentReadyRequest') {
 		await handleParentReadyRequest(message);
 		return;
@@ -208,6 +214,11 @@ async function handleCompanionMessage(message) {
 		return;
 	}
 
+	if (message.Action === 'RegistrationValidated') {
+		log.info({ Message: 'Companion board confirmed Parent Room Registration', Serial: message.Serial, TransactionId: getTransactionId(message) });
+		return;
+	}
+
 	if (message.Action === 'ActiveCallDetailsRequest') {
 		await parentCallCoordinationController.handleActiveCallDetailsRequest(message);
 		return;
@@ -218,7 +229,7 @@ async function handleCompanionMessage(message) {
 
 async function handleParentReadyRequest(message) {
 	const boardRecord = normalizeBoardRecord(message);
-	await sendRegistrationResponse('ParentReady', message, boardRecord, { Status: 'Ready' }, true);
+	await sendRegistrationResponse('ParentReady', message, boardRecord, withTransaction(message, { Status: 'Ready' }), true);
 }
 
 async function handleConfigSync(message) {
@@ -227,11 +238,11 @@ async function handleConfigSync(message) {
 	const existingIndex = registeredBoards.findIndex(board => board.Serial === boardRecord.Serial);
 
 	if (existingIndex === -1 && registeredBoards.length >= MAX_REGISTERED_BOARDS) {
-		await sendRegistrationResponse('ConfigDenied', message, boardRecord, {
+		await sendRegistrationResponse('ConfigDenied', message, boardRecord, withTransaction(message, {
 			Reason: 'MaxBoardsReached',
 			MaxBoards: MAX_REGISTERED_BOARDS,
 			RegisteredBoardCount: registeredBoards.length
-		}, false);
+		}), false);
 		return;
 	}
 
@@ -246,10 +257,10 @@ async function handleConfigSync(message) {
 	await mem.write(REGISTERED_BOARDS_STORAGE_KEY, registeredBoards);
 	await mem.write(BOARD_CONFIGS_STORAGE_KEY, boardConfigs);
 	await applySyncedConfig(syncedConfig);
-	await sendRegistrationResponse('ConfigAccepted', message, boardRecord, {
+	await sendRegistrationResponse('ConfigAccepted', message, boardRecord, withTransaction(message, {
 		MaxBoards: MAX_REGISTERED_BOARDS,
 		RegisteredBoardCount: registeredBoards.length
-	}, true);
+	}), true);
 	log.info({ Message: 'Companion board configuration synced', Serial: boardRecord.Serial, Name: boardRecord.Name, RegisteredBoardCount: registeredBoards.length });
 }
 
@@ -261,6 +272,71 @@ async function applySyncedConfig(syncedConfig) {
 			maxConcurrentRequests: 3
 		});
 	}
+}
+
+async function validateRegisteredBoards() {
+	for (let index = 0; index < registeredBoards.length; index++) {
+		const boardRecord = registeredBoards[index];
+		await sendRegistrationResponse('RegistrationValidation', { MessageId: '' }, boardRecord, {
+			TransactionId: createTransactionId('validation', boardRecord.Serial),
+			Status: 'ValidationRequested'
+		}, true);
+	}
+}
+
+async function handleDeregisterRequest(message) {
+	const boardRecord = normalizeBoardRecord(message);
+	const peripheralId = String(message.Payload && message.Payload.PeripheralId || boardRecord.MacAddress || boardRecord.Serial || '');
+
+	await purgeBoardPeripheral(peripheralId);
+	registeredBoards = registeredBoards.filter(board => board.Serial !== boardRecord.Serial);
+	delete boardConfigs[boardRecord.Serial];
+	await mem.write(BOARD_CONFIGS_STORAGE_KEY, boardConfigs);
+	await mem.write(REGISTERED_BOARDS_STORAGE_KEY, registeredBoards);
+	parentCallCoordinationController.setRegisteredBoards(registeredBoards);
+
+	await sendRegistrationResponse('DeregistrationAccepted', message, boardRecord, withTransaction(message, {
+		Status: 'Deregistered',
+		PeripheralId: peripheralId
+	}), true);
+	log.info({ Message: 'Companion board deregistered from parent room', Serial: boardRecord.Serial, PeripheralId: peripheralId, RegisteredBoardCount: registeredBoards.length });
+}
+
+async function purgeBoardPeripheral(peripheralId) {
+	if (!peripheralId || !await isPeripheralConnected(peripheralId)) {
+		log.info({ Message: 'Companion board peripheral already absent', PeripheralId: peripheralId });
+		return;
+	}
+
+	await xapi.Command.Peripherals.Purge({ ID: peripheralId });
+	log.info({ Message: 'Companion board peripheral purged', PeripheralId: peripheralId });
+}
+
+async function isPeripheralConnected(peripheralId) {
+	try {
+		const status = await xapi.Status.Peripherals.ConnectedDevice.get();
+		const devices = normalizeStatusList(status);
+		return devices.some(device => String(device.ID || device.Id || device.id || '') === peripheralId);
+	} catch (error) {
+		log.warn({ Message: 'Could not inspect connected peripherals before purge; attempting purge once', PeripheralId: peripheralId, Error: error.message || error.code || 'Unknown peripheral status error' });
+		return true;
+	}
+}
+
+function normalizeStatusList(status) {
+	if (!status) {
+		return [];
+	}
+	if (Array.isArray(status)) {
+		return status;
+	}
+	if (Array.isArray(status.ConnectedDevice)) {
+		return status.ConnectedDevice;
+	}
+	if (status.ID || status.Id || status.id) {
+		return [status];
+	}
+	return Object.keys(status).map(key => status[key]).filter(value => value && typeof value === 'object');
 }
 
 function normalizeBoardRecord(message) {
@@ -296,7 +372,21 @@ function isRegisteredBoard(serial) {
 
 async function sendConfigRequired(message) {
 	const boardRecord = normalizeBoardRecord(message);
-	await sendRegistrationResponse('ConfigRequired', message, boardRecord, { Reason: 'BoardConfigNotSynced' }, false);
+	await sendRegistrationResponse('ConfigRequired', message, boardRecord, withTransaction(message, { Reason: 'BoardConfigNotSynced' }), false);
+}
+
+function withTransaction(message, payload) {
+	const response = payload || {};
+	response.TransactionId = getTransactionId(message);
+	return response;
+}
+
+function getTransactionId(message) {
+	return String(message && message.Payload && message.Payload.TransactionId || '');
+}
+
+function createTransactionId(prefix, serial) {
+	return `${prefix}:${serial}:${Date.now()}`;
 }
 
 async function sendRegistrationResponse(action, inboundMessage, boardRecord, payload, isAccepted) {

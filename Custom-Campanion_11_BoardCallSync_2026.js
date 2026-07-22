@@ -20,12 +20,12 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 20, 2026
- * Revised:                 July 21, 2026
- * Version:                 1.0.1
+ * Revised:                 July 22, 2026
+ * Version:                 1.0.2
  *
  * Description:             Board Call Synchronization controller for the Custom Companion Solution.
  *                          Owns board call sync classification, Webex join and disconnect behavior,
- *                          rejoin checks, retry state, and user-facing call sync information.
+ *                          Paired single-call enforcement, rejoin checks, retry state, and user-facing call sync information.
  *
  * Documentation:           N/A
  *
@@ -147,6 +147,10 @@ function createBoardCallSync(options) {
 			syncToken++;
 			await setInfo(getUnsupportedCallInfoText(payload));
 			dependencies.log.info({ Message: 'Non-Webex call sync received; board join is out of scope', Payload: payload });
+			return;
+		}
+		if (await hasActiveBoardCall()) {
+			dependencies.log.info({ Message: 'Ignored parent call join because the Paired board is already in a call', Payload: payload });
 			return;
 		}
 
@@ -343,6 +347,19 @@ function createBoardCallSync(options) {
 		}
 	}
 
+	async function hasActiveBoardCall() {
+		try {
+			const activeCallCount = Number(getXapiValue(await dependencies.xapi.Status.SystemUnit.State.NumberOfActiveCalls.get()));
+			if (!Number.isFinite(activeCallCount)) {
+				throw new Error('Active call count was not numeric');
+			}
+			return activeCallCount > 0;
+		} catch (error) {
+			dependencies.log.warn({ Message: 'Could not verify the Paired Call Limit; new parent call join ignored', Error: error.message || error.code || 'Unknown call count error' });
+			return true;
+		}
+	}
+
 	function cancel() {
 		syncToken++;
 		lastWebexPayload = null;
@@ -497,6 +514,7 @@ function createBoardCallSync(options) {
 		registerCallCountHandler,
 		initializeActiveCallCount,
 		handleMessage,
+		disconnectAllCalls,
 		cancel,
 		getInfoText
 	};

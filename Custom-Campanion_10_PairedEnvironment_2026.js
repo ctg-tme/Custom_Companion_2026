@@ -20,12 +20,12 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 20, 2026
- * Revised:                 July 20, 2026
- * Version:                 1.0.0
+ * Revised:                 July 22, 2026
+ * Version:                 1.0.1
  *
  * Description:             Paired Environment policy controller for the Custom Companion Solution.
  *                          Owns call-feature policy, Companion Web Widget mode, paired microphone
- *                          and volume enforcement, and safe StandAlone volume restoration.
+ *                          volume/Do Not Disturb enforcement, and safe StandAlone restoration.
  *
  * Documentation:           N/A
  *
@@ -49,6 +49,7 @@ or implied.
  *   Status.Audio.Microphones.Mute, and Status.Audio.Volume.
  * - Conditional read: Config.Audio.DefaultVolume only when safe restoration is requested.
  * - Commands: Command.Audio.Microphones.Mute, Command.Audio.Volume.Set,
+ *   Command.Conference.DoNotDisturb.Activate/Deactivate,
  *   Command.UserInterface.Message.Prompt.Display, and Command.UserInterface.Message.Alert.Display.
  * - Companion Web Widget panel commands remain encapsulated by Custom-Campanion_4_UI_2026.
  */
@@ -91,6 +92,7 @@ function createPairedEnvironment(options) {
 	let isEnforcingMicrophoneMute = false;
 	let isEnforcingVolume = false;
 	let isVolumeRestorePromptActive = false;
+	let dndRefreshTimer = null;
 
 	function setStandaloneUiFeatureConfig(value) {
 		standaloneUiFeatureConfig = value || {};
@@ -205,6 +207,7 @@ function createPairedEnvironment(options) {
 	}
 
 	async function applyUiFeatureMode(mode) {
+		await applyDoNotDisturbMode(mode);
 		isApplyingUiFeatureConfig = true;
 		try {
 			for (let index = 0; index < PAIRED_UI_FEATURE_POLICY.length; index++) {
@@ -222,6 +225,51 @@ function createPairedEnvironment(options) {
 			await applyRuntimeWebWidget(mode);
 		} finally {
 			isApplyingUiFeatureConfig = false;
+		}
+	}
+
+	async function applyDoNotDisturbMode(mode) {
+		clearDndRefreshTimer();
+		if (mode === 'Paired') {
+			await activateDoNotDisturbLease();
+			return;
+		}
+
+		try {
+			await dependencies.xapi.Command.Conference.DoNotDisturb.Deactivate();
+			dependencies.log.info({ Message: 'Paired Do Not Disturb Lease released for StandAlone' });
+		} catch (error) {
+			await reportRequiredMediaFailure('CC26-DND-DEACTIVATE', 'Failed to deactivate Command.Conference.DoNotDisturb while entering StandAlone', error);
+		}
+	}
+
+	async function activateDoNotDisturbLease() {
+		const context = getRuntimeContext();
+		if (context.mode !== 'Paired' || context.isUnhealthy) {
+			return;
+		}
+
+		try {
+			await dependencies.xapi.Command.Conference.DoNotDisturb.Activate({ Timeout: policy.dndTimeoutMinutes });
+			dependencies.log.info({ Message: 'Paired Do Not Disturb Lease activated', TimeoutMinutes: policy.dndTimeoutMinutes });
+		} catch (error) {
+			await reportRequiredMediaFailure('CC26-DND-ACTIVATE', 'Failed to activate Command.Conference.DoNotDisturb while Paired', error);
+			return;
+		}
+
+		clearDndRefreshTimer();
+		dndRefreshTimer = setTimeout(() => {
+			dndRefreshTimer = null;
+			activateDoNotDisturbLease().catch(error => {
+				dependencies.utils.softError({ Context: 'Failed to renew Paired Do Not Disturb Lease', Error: error });
+			});
+		}, policy.dndRefreshMs);
+	}
+
+	function clearDndRefreshTimer() {
+		if (dndRefreshTimer) {
+			clearTimeout(dndRefreshTimer);
+			dndRefreshTimer = null;
 		}
 	}
 
