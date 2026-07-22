@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 20, 2026
- * Revised:                 July 21, 2026
- * Version:                 1.0.1
+ * Revised:                 July 22, 2026
+ * Version:                 1.0.2
  *
  * Description:             Parent Call Coordination controller for the Custom Companion Solution.
  *                          Owns parent call detection, BYOD detection, participant admission,
@@ -47,8 +47,9 @@ or implied.
  *   Event.CallDisconnect, Event.CallFailed, Status.SystemUnit.State.NumberOfActiveCalls,
  *   Conference participant-list events, Status.Video.Output.Webcam.Mode, and
  *   Status.Video.Output.HDMI.Passthrough.Status.
- * - Reads: Command.Conference.ParticipantList.Search, Status.Call[1].CallId,
- *   Status.Call, Status.Conference.Call.MeetingPlatform, and Status.Call[1].Protocol.
+ * - Reads: Command.Conference.ParticipantList.Search, Status.SystemUnit.State.NumberOfActiveCalls,
+ *   Status.Call[1].CallId, Status.Call, Status.Conference.Call.MeetingPlatform,
+ *   Status.Conference.Call.Webex.MeetingInviteLink, and Status.Call[1].Protocol.
  * - Command: Command.Conference.Participant.Admit.
  * - Network read: DeviceComms getCallStatus for a registered companion board.
  */
@@ -71,7 +72,7 @@ function createParentCallCoordination(options) {
 	let admissionPollInterval = null;
 	let admissionPollDeadline = 0;
 	let admissionPollSawWaiting = false;
-	let admittedParticipantIds = {};
+	let admissionInFlightParticipantIds = {};
 	let admissionNoticeSerials = {};
 	let activeParentCallDetails = null;
 	let isCallDetectionReady = false;
@@ -81,17 +82,21 @@ function createParentCallCoordination(options) {
 	let nativeByodActive = false;
 	let hdmiByodActive = false;
 	let isByodSessionActive = false;
+	let callStateReconciliationPromise = null;
 
 	function setRegisteredBoards(value) {
 		registeredBoards = Array.isArray(value) ? value : [];
 	}
 
-	function start() {
+	async function start() {
 		registerCallLifecycleHandlers();
 		registerActiveCallCountHandler();
 		registerParticipantListHandlers();
 		registerByodHandlers();
-		prepareCallDetection();
+		await reconcileCurrentCallState('ParentRuntimeInitialization', true);
+		if (parentActiveCallCount < 1) {
+			prepareCallDetection();
+		}
 	}
 
 	function normalizeEventValue(value) {
@@ -153,7 +158,7 @@ function createParentCallCoordination(options) {
 			pendingCallRemoteNumber = '';
 			activeParentCallDetails = null;
 			isCallDetectionReady = false;
-			admittedParticipantIds = {};
+			admissionInFlightParticipantIds = {};
 			admissionNoticeSerials = {};
 			clearAdmissionCheckTimeout();
 			stopAdmissionPolling('CallDisconnect');
@@ -177,6 +182,11 @@ function createParentCallCoordination(options) {
 
 			if (activeCallCount > 0) {
 				sendPendingCallSync(callDetectionToken, { Trigger: 'ActiveCallCount', ActiveCallCount: activeCallCount });
+				if (!activeParentCallDetails && !pendingCallRemoteNumber) {
+					reconcileCurrentCallState('ActiveCallCount', true).catch(error => {
+						utils.softError({ Context: 'Failed to reconcile active parent call from call count', ActiveCallCount: activeCallCount, Error: error });
+					});
+				}
 				queueCompanionAdmissionCheck('ActiveCallCount');
 				startAdmissionPolling('ActiveCallCount');
 				return;
@@ -184,7 +194,7 @@ function createParentCallCoordination(options) {
 
 			if (activeCallCount < 1) {
 				activeParentCallDetails = null;
-				admittedParticipantIds = {};
+				admissionInFlightParticipantIds = {};
 				admissionNoticeSerials = {};
 				clearAdmissionCheckTimeout();
 				stopAdmissionPolling('ParentCallCountZero');
@@ -260,6 +270,10 @@ function createParentCallCoordination(options) {
 			stopAdmissionPolling('ParentCallEnded');
 			return;
 		}
+		if (Date.now() > admissionPollDeadline) {
+			stopAdmissionPolling('AdmissionPollTimeout');
+			return;
+		}
 
 		const result = await processCompanionAdmission(`Poll:${reason}`);
 		if (result.waitingCount > 0) {
@@ -272,9 +286,6 @@ function createParentCallCoordination(options) {
 			return;
 		}
 
-		if (Date.now() > admissionPollDeadline) {
-			stopAdmissionPolling('AdmissionPollTimeout');
-		}
 	}
 
 	function queueCompanionAdmissionCheck(reason) {
@@ -308,27 +319,27 @@ function createParentCallCoordination(options) {
 		const hostCheck = getSelfHostStatus(roster);
 		const waitingMatches = getWaitingCompanionParticipants(roster.participants);
 		if (waitingMatches.length < 1) {
-			log.debug({ Message: 'Companion admission skipped; no waiting companion boards found', Reason: reason, IsHost: hostCheck.isHost });
-			return { waitingCount: 0, isHost: hostCheck.isHost };
+			log.debug({ Message: 'Companion admission skipped; no waiting companion boards found', Reason: reason, CanAdmit: hostCheck.canAdmit, IsHost: hostCheck.isHost, IsCohost: hostCheck.isCohost });
+			return { waitingCount: 0, canAdmit: hostCheck.canAdmit };
 		}
 
-		if (!hostCheck.isHost) {
+		if (!hostCheck.canAdmit) {
 			await sendAdmissionRequired(waitingMatches, hostCheck);
-			log.info({ Message: 'Companion admission requires meeting host', Reason: reason, WaitingBoardCount: waitingMatches.length, ParentSelfParticipantId: roster.participantSelf });
-			return { waitingCount: waitingMatches.length, isHost: false };
+			log.info({ Message: 'Companion admission requires meeting host or cohost', Reason: reason, WaitingBoardCount: waitingMatches.length, ParentSelfParticipantId: roster.participantSelf });
+			return { waitingCount: waitingMatches.length, canAdmit: false };
 		}
 
 		const callId = await getActiveCallId();
 		if (callId === null) {
 			log.warn({ Message: 'Companion admission skipped; active CallId unavailable', Reason: reason, WaitingBoardCount: waitingMatches.length });
-			return { waitingCount: waitingMatches.length, isHost: true };
+			return { waitingCount: waitingMatches.length, canAdmit: true };
 		}
 
 		for (let index = 0; index < waitingMatches.length; index++) {
 			await admitCompanionParticipant(callId, waitingMatches[index]);
 		}
 
-		return { waitingCount: waitingMatches.length, isHost: true };
+		return { waitingCount: waitingMatches.length, canAdmit: true };
 	}
 
 	async function getParticipantRoster() {
@@ -368,10 +379,19 @@ function createParentCallCoordination(options) {
 
 	function getSelfHostStatus(roster) {
 		const selfParticipant = roster.participants.find(participant => getValue(participant.ParticipantId) === roster.participantSelf);
+		const isHost = !!(selfParticipant && isTrueValue(selfParticipant.IsHost));
+		const isCohost = !!(selfParticipant && (isTrueValue(selfParticipant.CoHost) || isTrueValue(selfParticipant.IsCoHost) || isTrueValue(selfParticipant.IsCohost)));
 		return {
-			isHost: !!(selfParticipant && getValue(selfParticipant.IsHost) === 'True'),
+			isHost: isHost,
+			isCohost: isCohost,
+			canAdmit: isHost || isCohost,
 			participant: selfParticipant || null
 		};
+	}
+
+	function isTrueValue(value) {
+		const normalizedValue = getValue(value);
+		return normalizedValue === true || normalizedValue === 1 || String(normalizedValue || '').toLowerCase() === 'true';
 	}
 
 	function getWaitingCompanionParticipants(participants) {
@@ -404,9 +424,10 @@ function createParentCallCoordination(options) {
 
 			await sendRegistrationResponse('CallSync', { MessageId: '' }, match.board, {
 				CallKind: 'AdmissionRequired',
-				Reason: 'ParentNotHost',
+				Reason: 'ParentNotHostOrCohost',
 				DisplayName: getValue(match.participant.DisplayName) || match.board.Name,
-				ParentIsHost: false
+				ParentIsHost: hostCheck.isHost,
+				ParentIsCohost: hostCheck.isCohost
 			}, true);
 			admissionNoticeSerials[match.board.Serial] = true;
 		}
@@ -414,29 +435,34 @@ function createParentCallCoordination(options) {
 
 	async function admitCompanionParticipant(callId, waitingMatch) {
 		const participantId = getValue(waitingMatch.participant.ParticipantId);
-		if (!participantId) {
+		if (!participantId || admissionInFlightParticipantIds[participantId]) {
 			return;
 		}
 
-		const validation = await validateBoardCallbackNumber(waitingMatch.board);
-		if (!validation.isValid) {
-			log.info({ Message: 'Companion admission skipped; board call callback did not match parent call', BoardName: waitingMatch.board.Name, CallbackNumbers: validation.callbackNumbers, ParentCall: activeParentCallDetails });
-			return;
-		}
+		admissionInFlightParticipantIds[participantId] = true;
+		try {
+			const validation = await validateBoardCallIdentity(waitingMatch.board);
+			if (!validation.isValid) {
+				log.info({ Message: 'Companion admission skipped; board call did not match parent call', BoardName: waitingMatch.board.Name, BoardCallIdentities: validation.callIdentities, ParentCall: activeParentCallDetails });
+				return;
+			}
 
-		await xapi.Command.Conference.Participant.Admit({ CallId: Number(callId), ParticipantId: participantId });
-		admittedParticipantIds[participantId] = true;
-		await sendRegistrationResponse('CallSync', { MessageId: '' }, waitingMatch.board, {
-			CallKind: 'AdmissionAdmitted',
-			DisplayName: getValue(waitingMatch.participant.DisplayName) || waitingMatch.board.Name,
-			ParentIsHost: true
-		}, true);
-		log.info({ Message: 'Companion board admitted from lobby', DisplayName: getValue(waitingMatch.participant.DisplayName), ParticipantId: participantId, CallId: callId });
+			await xapi.Command.Conference.Participant.Admit({ CallId: Number(callId), ParticipantId: participantId });
+			delete admissionNoticeSerials[waitingMatch.board.Serial];
+			await sendRegistrationResponse('CallSync', { MessageId: '' }, waitingMatch.board, {
+				CallKind: 'AdmissionAdmitted',
+				DisplayName: getValue(waitingMatch.participant.DisplayName) || waitingMatch.board.Name,
+				ParentCanAdmit: true
+			}, true);
+			log.info({ Message: 'Companion board admitted from lobby', DisplayName: getValue(waitingMatch.participant.DisplayName), ParticipantId: participantId, CallId: callId, MatchStrategy: validation.matchStrategy });
+		} finally {
+			delete admissionInFlightParticipantIds[participantId];
+		}
 	}
 
-	async function validateBoardCallbackNumber(board) {
+	async function validateBoardCallIdentity(board) {
 		if (!activeParentCallDetails) {
-			return { isValid: false, callbackNumbers: [] };
+			return { isValid: false, callIdentities: [], matchStrategy: 'NoActiveParentCall' };
 		}
 
 		let boardCalls = [];
@@ -444,20 +470,26 @@ function createParentCallCoordination(options) {
 			boardCalls = await getBoardCallStatus(board);
 		} catch (error) {
 			log.warn({ Message: 'Failed to read companion board call status before admission', BoardName: board.Name, Host: board.Host, Error: error.code || error.message || 'Unknown board call status error', ErrorContext: error.Context || {} });
-			return { isValid: false, callbackNumbers: [] };
+			return { isValid: false, callIdentities: [], matchStrategy: 'BoardStatusUnavailable' };
 		}
 
-		const callbackNumbers = [];
+		const callIdentities = [];
 		for (let index = 0; index < boardCalls.length; index++) {
-			const callbackNumber = getValue(boardCalls[index].CallbackNumber);
-			if (callbackNumber) {
-				callbackNumbers.push(callbackNumber);
+			const values = [boardCalls[index].CallbackNumber, boardCalls[index].RemoteNumber, boardCalls[index].RemoteURI];
+			for (let valueIndex = 0; valueIndex < values.length; valueIndex++) {
+				const value = getValue(values[valueIndex]);
+				if (value && callIdentities.indexOf(value) < 0) {
+					callIdentities.push(value);
+				}
 			}
 		}
+		const hasExactIdentityMatch = callIdentities.some(identity => doesBoardIdentityMatchParentCall(identity));
+		const hasWebexCallMatch = !hasExactIdentityMatch && isWebexParentCall() && boardCalls.some(isWebexBoardCall);
 
 		return {
-			isValid: callbackNumbers.some(callbackNumber => doesCallbackMatchParentCall(callbackNumber)),
-			callbackNumbers: callbackNumbers
+			isValid: hasExactIdentityMatch || hasWebexCallMatch,
+			callIdentities: callIdentities,
+			matchStrategy: hasExactIdentityMatch ? 'ExactCallIdentity' : hasWebexCallMatch ? 'RegisteredWaitingBoardWebexCall' : 'NoMatch'
 		};
 	}
 
@@ -469,22 +501,38 @@ function createParentCallCoordination(options) {
 		}, HTTP_CLIENT_CONFIG);
 	}
 
-	function doesCallbackMatchParentCall(callbackNumber) {
-		const normalizedCallbackNumber = normalizeCallIdentity(callbackNumber);
+	function doesBoardIdentityMatchParentCall(boardIdentity) {
+		const normalizedBoardIdentity = normalizeCallIdentity(boardIdentity);
 		const parentCallValues = [
+			activeParentCallDetails.JoinTarget,
+			activeParentCallDetails.MeetingInviteLink,
 			activeParentCallDetails.DialedRemoteNumber,
+			activeParentCallDetails.CallbackNumber,
 			activeParentCallDetails.RemoteNumber,
 			activeParentCallDetails.RemoteURI
 		];
 
 		for (let index = 0; index < parentCallValues.length; index++) {
 			const normalizedParentValue = normalizeCallIdentity(parentCallValues[index]);
-			if (normalizedParentValue && normalizedCallbackNumber === normalizedParentValue) {
+			if (normalizedParentValue && normalizedBoardIdentity === normalizedParentValue) {
 				return true;
 			}
 		}
 
 		return false;
+	}
+
+	function isWebexParentCall() {
+		if (!activeParentCallDetails) {
+			return false;
+		}
+		const values = [activeParentCallDetails.MeetingPlatform, activeParentCallDetails.Protocol, activeParentCallDetails.JoinTarget, activeParentCallDetails.RemoteNumber, activeParentCallDetails.RemoteURI].join(' ').toLowerCase();
+		return values.indexOf('webex') >= 0 || String(activeParentCallDetails.Protocol || '').toLowerCase() === 'spark';
+	}
+
+	function isWebexBoardCall(call) {
+		const values = [getValue(call.Protocol), getValue(call.CallbackNumber), getValue(call.RemoteNumber), getValue(call.RemoteURI)].join(' ').toLowerCase();
+		return values.indexOf('webex') >= 0 || String(getValue(call.Protocol) || '').toLowerCase() === 'spark';
 	}
 
 	async function getActiveCallId() {
@@ -612,38 +660,103 @@ function createParentCallCoordination(options) {
 	}
 
 	async function sendCallSync(remoteNumber, call) {
-		const callDetails = await getParentCallDetails();
-		activeParentCallDetails = await getActiveParentCallDetails(remoteNumber, call || {});
+		const callDetails = await getParentCallDetails(call || {});
+		activeParentCallDetails = await getActiveParentCallDetails(remoteNumber, call || {}, callDetails);
+		await sendNetworkCallSync(remoteNumber, callDetails, 'CallDetection');
+		startAdmissionPolling('CallSync');
+	}
 
+	async function sendNetworkCallSync(remoteNumber, callDetails, reason) {
 		for (let index = 0; index < registeredBoards.length; index++) {
 			await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredBoards[index], {
 				CallKind: 'Network',
 				RemoteNumber: remoteNumber || '',
+				JoinTarget: activeParentCallDetails && activeParentCallDetails.JoinTarget || remoteNumber || '',
 				MeetingPlatform: callDetails.meetingPlatform,
 				Protocol: callDetails.protocol,
-				ParentCall: activeParentCallDetails || call || {}
+				ParentCall: activeParentCallDetails || {}
 			}, true);
 		}
 
-		log.info({ Message: 'Parent call sync sent', RemoteNumber: remoteNumber || '', MeetingPlatform: callDetails.meetingPlatform, Protocol: callDetails.protocol, ParentCall: activeParentCallDetails, RegisteredBoardCount: registeredBoards.length });
-		startAdmissionPolling('CallSync');
+		log.info({ Message: 'Parent call sync sent', Reason: reason, RemoteNumber: remoteNumber || '', JoinTarget: activeParentCallDetails && activeParentCallDetails.JoinTarget || '', MeetingPlatform: callDetails.meetingPlatform, Protocol: callDetails.protocol, ParentCall: activeParentCallDetails, RegisteredBoardCount: registeredBoards.length });
 	}
 
-	async function getActiveParentCallDetails(remoteNumber, call) {
+	async function getActiveParentCallDetails(remoteNumber, call, callDetails) {
 		const calls = await getCurrentCallStatus();
 		const matchedCall = findMatchingCallStatus(calls, remoteNumber, call || {});
 		const sourceCall = matchedCall || call || {};
+		const meetingInviteLink = callDetails && callDetails.meetingInviteLink || '';
+		const callbackNumber = getValue(sourceCall.CallbackNumber) || getValue(call.CallbackNumber) || '';
 
 		return {
 			CallId: getValue(sourceCall.CallId) || getValue(call.CallId) || '',
 			DialedRemoteNumber: remoteNumber || '',
+			JoinTarget: meetingInviteLink || callbackNumber || remoteNumber || getValue(sourceCall.RemoteNumber) || getValue(sourceCall.RemoteURI) || '',
+			MeetingInviteLink: meetingInviteLink,
+			MeetingPlatform: callDetails && callDetails.meetingPlatform || '',
+			CallbackNumber: callbackNumber,
 			RemoteNumber: getValue(sourceCall.RemoteNumber) || remoteNumber || getValue(call.RemoteNumber) || '',
 			RemoteURI: getValue(sourceCall.RemoteURI) || getValue(call.RemoteURI) || '',
-			Protocol: getValue(sourceCall.Protocol) || getValue(call.Protocol) || '',
+			Protocol: getValue(sourceCall.Protocol) || getValue(call.Protocol) || callDetails && callDetails.protocol || '',
 			Direction: getValue(sourceCall.Direction) || getValue(call.Direction) || '',
 			Status: getValue(sourceCall.Status) || getValue(call.Status) || '',
 			id: getValue(sourceCall.id) || getValue(call.id) || ''
 		};
+	}
+
+	async function reconcileCurrentCallState(reason, shouldBroadcast) {
+		if (callStateReconciliationPromise) {
+			return callStateReconciliationPromise;
+		}
+
+		callStateReconciliationPromise = (async () => {
+			const calls = await getCurrentCallStatus();
+			let activeCallCount = calls.length;
+			try {
+				const statusCount = Number(normalizeEventValue(await xapi.Status.SystemUnit.State.NumberOfActiveCalls.get()));
+				if (Number.isFinite(statusCount)) {
+					activeCallCount = statusCount;
+				}
+			} catch (error) {
+				log.warn({ Message: 'Failed to read parent active call count during reconciliation; using Status.Call count', Reason: reason, CallStatusCount: calls.length, Error: error.message || error.code || 'Unknown active call count error' });
+			}
+			parentActiveCallCount = activeCallCount;
+
+			if (activeCallCount < 1) {
+				activeParentCallDetails = null;
+				if (shouldBroadcast) {
+					await sendCallDisconnectSync(reason);
+				}
+				log.info({ Message: 'Parent call-state reconciliation found no active call', Reason: reason });
+				return null;
+			}
+
+			if (calls.length < 1) {
+				log.warn({ Message: 'Parent call-state reconciliation found an active count without Status.Call details', Reason: reason, ActiveCallCount: activeCallCount });
+				prepareCallDetection();
+				return activeParentCallDetails;
+			}
+
+			const currentCall = calls[0];
+			const remoteNumber = getValue(currentCall.CallbackNumber) || getValue(currentCall.RemoteNumber) || getValue(currentCall.RemoteURI) || '';
+			const callDetails = await getParentCallDetails(currentCall);
+			activeParentCallDetails = await getActiveParentCallDetails(remoteNumber, currentCall, callDetails);
+			isCallDetectionReady = false;
+			pendingCallRemoteNumber = '';
+			if (shouldBroadcast) {
+				await sendNetworkCallSync(remoteNumber, callDetails, reason);
+			}
+			queueCompanionAdmissionCheck(reason);
+			startAdmissionPolling(reason);
+			log.info({ Message: 'Parent active call state reconciled', Reason: reason, ParentCall: activeParentCallDetails, Broadcast: !!shouldBroadcast });
+			return activeParentCallDetails;
+		})();
+
+		try {
+			return await callStateReconciliationPromise;
+		} finally {
+			callStateReconciliationPromise = null;
+		}
 	}
 
 	async function getCurrentCallStatus() {
@@ -686,35 +799,50 @@ function createParentCallCoordination(options) {
 		return normalizedValue.slice(schemeSeparatorIndex + 1).trim();
 	}
 
-	async function sendCallDisconnectSync() {
+	async function sendCallDisconnectSync(reason) {
 		for (let index = 0; index < registeredBoards.length; index++) {
 			await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredBoards[index], {
 				CallKind: 'Disconnect',
-				Reason: 'ParentCallCountZero'
+				Reason: reason || 'ParentCallCountZero'
 			}, true);
 		}
 
 		log.info({ Message: 'Parent call disconnect sync sent', RegisteredBoardCount: registeredBoards.length });
 	}
 
-	async function getParentCallDetails() {
+	async function getParentCallDetails(call) {
 		return {
-			meetingPlatform: await getMeetingPlatform(),
-			protocol: await getCallProtocol()
+			meetingPlatform: await getMeetingPlatform(call || {}),
+			protocol: await getCallProtocol(call || {}),
+			meetingInviteLink: await getMeetingInviteLink()
 		};
 	}
 
-	async function getMeetingPlatform() {
+	async function getMeetingPlatform(call) {
+		if (getValue(call.MeetingPlatform)) {
+			return getValue(call.MeetingPlatform);
+		}
 		try {
-			return await xapi.Status.Conference.Call.MeetingPlatform.get();
+			return normalizeEventValue(await xapi.Status.Conference.Call.MeetingPlatform.get());
 		} catch (error) {
 			return '';
 		}
 	}
 
-	async function getCallProtocol() {
+	async function getCallProtocol(call) {
+		if (getValue(call.Protocol)) {
+			return getValue(call.Protocol);
+		}
 		try {
-			return await xapi.Status.Call[1].Protocol.get();
+			return normalizeEventValue(await xapi.Status.Call[1].Protocol.get());
+		} catch (error) {
+			return '';
+		}
+	}
+
+	async function getMeetingInviteLink() {
+		try {
+			return normalizeEventValue(await xapi.Status.Conference.Call.Webex.MeetingInviteLink.get());
 		} catch (error) {
 			return '';
 		}
@@ -722,9 +850,14 @@ function createParentCallCoordination(options) {
 
 	async function handleActiveCallDetailsRequest(message) {
 		const boardRecord = registeredBoards.find(board => board.Serial === message.Serial) || normalizeBoardRecord(message);
+		await reconcileCurrentCallState('ActiveCallDetailsRequest', false);
 		await sendRegistrationResponse('CallSync', message, boardRecord, {
 			CallKind: 'ActiveCallDetails',
 			ParentHasActiveCall: !!activeParentCallDetails,
+			RemoteNumber: activeParentCallDetails && activeParentCallDetails.DialedRemoteNumber || '',
+			JoinTarget: activeParentCallDetails && activeParentCallDetails.JoinTarget || '',
+			MeetingPlatform: activeParentCallDetails && activeParentCallDetails.MeetingPlatform || '',
+			Protocol: activeParentCallDetails && activeParentCallDetails.Protocol || '',
 			ParentCall: activeParentCallDetails || {},
 			Request: message.Payload || {}
 		}, true);

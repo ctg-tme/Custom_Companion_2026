@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 22, 2026
- * Version:                 0.1.2.30
+ * Version:                 0.1.2.31
  *
  * Description:             Parent room registration, validation, deregistration, and peripheral-cleanup entry macro used as the install source.
  *                          The numbered source remains inactive on the board; parent installation renames
@@ -108,7 +108,7 @@ async function init() {
 		parentCallCoordinationController.setRegisteredBoards(registeredBoards);
 			registerMessageHandler();
 			registerStandbyStateHandler();
-			parentCallCoordinationController.start();
+			await parentCallCoordinationController.start();
 			await validateRegisteredBoards();
 		log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredBoardCount: registeredBoards.length });
 	} catch (error) {

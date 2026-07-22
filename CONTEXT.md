@@ -77,7 +77,7 @@ A temporary Paired condition in which the companion board preserves an active ca
 _Avoid_: StandAlone, disconnected call
 
 **Paired Call Limit**:
-The invariant that a companion board participates in at most one call while Paired. StandAlone retains native RoomOS call behavior.
+The invariant that a companion board participates in at most one active-parent-authorized call while Paired. A board call without current Parent authorization is reconciled once and disconnected if no active Parent call authorizes it. Parent runtime initialization, Parent selection, board initialization, and periodic checks replay authoritative Parent call state so late pairing and runtime restarts converge. A failed periodic network check does not end a known authorized call; Call Preservation State still owns parent-unavailable behavior. StandAlone retains native RoomOS call behavior.
 _Avoid_: Global call limit, StandAlone call restriction
 
 **Paired Do Not Disturb Lease**:
@@ -111,6 +111,8 @@ The companion WebWidget `info3` field is solution-owned runtime status space and
 During the Unhealthy State, `info3` persistently tells the In-Room User that Companion controls are unavailable and to contact a Device Administrator. Failure to update an unavailable Web Widget is logged but does not create another hard error.
 
 During Call Preservation, `info3` remains visible with `{room} is temporarily unavailable. Your call will continue.` until the selected parent is resynchronized or the call ends. The 60-second expiry applies only to the final StandAlone connection-failure message.
+
+When an active Parent call is not a joinable Webex meeting, call synchronization does not dial it and `info3` reads `The Companion Device can not join [Platform] calls, only Webex. To use the Companion Device, have the Paired Room join a Webex Call`, with `[Platform]` replaced by the detected platform or `non-Webex`.
 
 ## Transport
 

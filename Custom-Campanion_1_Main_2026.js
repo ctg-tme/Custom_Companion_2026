@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 22, 2026
- * Version:                 0.1.2.30
+ * Version:                 0.1.2.31
  *
  * Description:             Companion board entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -219,8 +219,9 @@ const boardCallSyncController = boardCallSync.create({
 	log: log,
 	utils: utils,
 	policy: {
-		joinRetryCount: 5,
-		joinRetryDelayMs: 5000
+		unauthorizedCallGraceMs: 5000,
+		parentCallCheckIntervalMs: 10000,
+		joinCommandSettleMs: 10000
 	},
 	callbacks: {
 		getRuntimeContext: () => ({
@@ -319,6 +320,9 @@ async function init() {
 		await parentRegistrationController.reconcilePendingDeregistrations();
 		parentConnectivityController.start();
 		await parentConnectivityController.evaluate();
+		if (boardState.mode === 'Paired') {
+			await boardCallSyncController.requestActiveParentCallState('BoardInitialization');
+		}
 
 		companionState.warnIfCredentialsAreStored(parentDevices, log);
 		log.info({ Message: 'Custom Campanion initialized', Version: config.version, ActiveParent: boardState.activeParent.name });
@@ -401,6 +405,9 @@ async function handleCompanionMessage(message) {
 			break;
 		case 'ConfigAccepted':
 			log.info({ Message: 'Parent accepted board configuration', Source: message.Source, Payload: message.Payload });
+			if (message.Serial === activeParentSerial && boardState.mode === 'Paired') {
+				await boardCallSyncController.requestActiveParentCallState('ConfigAccepted');
+			}
 			break;
 		case 'ConfigDenied':
 			await xapi.Command.UserInterface.Message.Prompt.Display({
@@ -640,6 +647,7 @@ async function completeVerifiedParentSelection(refreshedParentDevice, parentStat
 		return false;
 	}
 	await standbyCoordinationController.scheduleSelectedParentSync(refreshedParentDevice);
+	await boardCallSyncController.requestActiveParentCallState('ParentSelection');
 	return true;
 }
 
