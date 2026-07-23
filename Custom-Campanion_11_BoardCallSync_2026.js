@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.8
+ * Version:                 1.0.9
  *
  * Description:             Board Call Synchronization controller for the Custom Companion Solution.
  *                          Owns board call sync classification, Webex join and disconnect behavior,
@@ -179,10 +179,23 @@ function createBoardCallSync(options) {
 			return;
 		}
 
-		if (request === 'HostPinOrGuest' || request === 'PanelistPinOrAttendee') {
+		if (requiresGuestRoleSelection(request)) {
 			pendingMeetingPasswordRequest = null;
 			await clearMeetingPasswordNotice('GuestAuthenticationAvailable');
-			await sendGuestAuthenticationResponse(callId);
+			try {
+				await sendGuestAuthenticationResponse(callId);
+			} catch (error) {
+				if (!requiresGuestMeetingPassword(request)) {
+					throw error;
+				}
+				dependencies.log.info({
+					Message: 'Guest role-only authentication response was not accepted; requesting Meeting Password for a combined response',
+					AuthenticationRequest: request,
+					CallId: callId,
+					Error: error.message || error.code || 'Unknown authentication response error'
+				});
+				await requestMeetingPassword(callId, request);
+			}
 			return;
 		}
 
@@ -314,6 +327,13 @@ function createBoardCallSync(options) {
 			dependencies.log.warn({ Message: 'Failed to read active board CallId for conference authentication', Error: error.message || error.code || 'Unknown call status error' });
 		}
 		return null;
+	}
+
+	function requiresGuestRoleSelection(request) {
+		return request === 'HostPinOrGuest'
+			|| request === 'HostPinOrGuestPin'
+			|| request === 'PanelistPinOrAttendee'
+			|| request === 'PanelistPinOrAttendeePin';
 	}
 
 	function requiresGuestMeetingPassword(request) {
