@@ -153,6 +153,11 @@ function createBoardCallSync(options) {
 		try {
 			await handleAuthenticationRequest(await statusNode.get(), 'BoardInitialization');
 		} catch (error) {
+			if (isMissingIndexedStatusError(error)) {
+				authenticationRequest = 'None';
+				dependencies.log.debug({ Message: 'Initial conference call authentication request is unavailable while no conference call is active' });
+				return;
+			}
 			dependencies.log.warn({ Message: 'Failed to read initial conference call authentication request', Error: error.message || error.code || 'Unknown authentication request read error' });
 		}
 	}
@@ -316,6 +321,11 @@ function createBoardCallSync(options) {
 			|| request === 'HostPinOrGuestPin'
 			|| request === 'AnyHostPinOrGuestPin'
 			|| request === 'PanelistPinOrAttendeePin';
+	}
+
+	function isMissingIndexedStatusError(error) {
+		const message = String(error && (error.message || error.code) || error || '');
+		return message.indexOf('No match on Path argument') >= 0;
 	}
 
 	function normalizeMeetingPassword(value) {
