@@ -112,7 +112,7 @@ During the Unhealthy State, `info3` persistently tells the In-Room User that Com
 
 During Call Preservation, `info3` remains visible with `{room} is temporarily unavailable. Your call will continue.` until the selected parent is resynchronized or the call ends. The 60-second expiry applies only to the final StandAlone connection-failure message.
 
-When an active Parent call is not a joinable Webex meeting, call synchronization does not dial it and `info3` reads `The Companion Device can not join [Platform] calls, only Webex. To use the Companion Device, have the Paired Room join a Webex Call`, with `[Platform]` replaced by the detected platform or `non-Webex`.
+When an active Parent call is not a joinable Webex meeting, call synchronization does not dial it and `info3` reads `[Platform] isn't supported. Start a Webex call from the Parent Room.`, with `[Platform]` replaced by the detected platform or `non-Webex`.
 
 ## Transport
 

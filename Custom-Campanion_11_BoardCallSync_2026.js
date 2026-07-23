@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.6
+ * Version:                 1.0.7
  *
  * Description:             Board Call Synchronization controller for the Custom Companion Solution.
  *                          Owns board call sync classification, Webex join and disconnect behavior,
@@ -153,11 +153,11 @@ function createBoardCallSync(options) {
 			clearUnauthorizedCallCheck();
 			stopParentCallMonitoring();
 			await disconnectAllCalls();
-			const unsupportedText = getUnsupportedCallInfoText({ MeetingPlatform: 'BYOD' });
-			await setInfo(unsupportedText);
+			const unsupportedPayload = { MeetingPlatform: 'BYOD' };
+			await setInfo(getUnsupportedCallInfoText(unsupportedPayload));
 			await dependencies.xapi.Command.UserInterface.Message.Alert.Display({
 				Title: 'Unsupported Call Type',
-				Text: unsupportedText,
+				Text: getUnsupportedCallAlertText(unsupportedPayload),
 				Duration: 15
 			});
 			dependencies.log.info({ Message: 'BYOD call sync received; board join not supported', Payload: payload });
@@ -818,6 +818,10 @@ function createBoardCallSync(options) {
 	}
 
 	function getUnsupportedCallInfoText(payload) {
+		return `${getUnsupportedCallPlatformName(payload)} isn't supported. Start a Webex call from the Parent Room.`;
+	}
+
+	function getUnsupportedCallAlertText(payload) {
 		return `The Companion Device can not join ${getUnsupportedCallPlatformName(payload)} calls, only Webex. To use the Companion Device, have the Paired Room join a Webex Call`;
 	}
 

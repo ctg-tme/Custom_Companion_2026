@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 22, 2026
- * Version:                 1.0.20
+ * Revised:                 July 23, 2026
+ * Version:                 1.0.21
  *
  * Description:             Companion access/hidden panels, PIN/registration/status prompts, and WebWidget adapter.
  *
@@ -60,6 +60,7 @@ const WEB_WIDGET_PANEL_ID = 'cc26WebWidget';
 const WEB_WIDGET_NAME = 'Custom Companion 2026';
 const WEB_WIDGET_REFRESH_INTERVAL = 0;
 const WEB_WIDGET_DEFAULT_URL = 'https://ctg-tme.github.io/Simple-WebWidget/';
+const WEB_WIDGET_INFO3_MAX_CHARACTERS = 90;
 
 /*
  * UI xAPI surface:
@@ -432,7 +433,7 @@ function buildCompanionWebWidgetUrl(options) {
 		heading: 'Custom Companion 2026',
 		info1: options.mode === 'StandAlone' ? 'Operating in Standalone' : `Paired to Room:\n${options.roomName || 'Unknown Room'}`,
 		info2: contextConfig.info2 || '',
-		info3: options.runtimeInfo3 || '',
+		info3: limitWebWidgetInfoText(options.runtimeInfo3),
 		iconUrl: contextConfig.iconUrl || ''
 	};
 
@@ -481,6 +482,19 @@ async function clearPrompt(XAPIObject, feedbackId) {
 
 function getWebWidgetBaseUrl(configuredUrl) {
 	return String(configuredUrl || WEB_WIDGET_DEFAULT_URL).split('#')[0];
+}
+
+function limitWebWidgetInfoText(value) {
+	const infoText = String(value || '').trim();
+	if (infoText.length <= WEB_WIDGET_INFO3_MAX_CHARACTERS) {
+		return infoText;
+	}
+
+	const clippedText = infoText.slice(0, WEB_WIDGET_INFO3_MAX_CHARACTERS - 1);
+	const lastWordBoundary = clippedText.lastIndexOf(' ');
+	const minimumWordBoundary = Math.floor(WEB_WIDGET_INFO3_MAX_CHARACTERS * 0.6);
+	const visibleText = lastWordBoundary >= minimumWordBoundary ? clippedText.slice(0, lastWordBoundary) : clippedText;
+	return `${visibleText.trim()}…`;
 }
 
 function buildHashParams(params) {
