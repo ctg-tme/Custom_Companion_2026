@@ -1,24 +1,39 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
-  <title id="title">Custom Companion compact</title>
-  <desc id="description">A mobile companion display overlaps a larger parent room display.</desc>
+  <title id="title">Custom Companion separated</title>
+  <desc id="description">A mobile companion display is visually separated from a larger parent room display.</desc>
   <metadata>
     Original compact Custom Companion artwork designed for the constrained RoomOS
     home-screen icon region. Device calibration confirmed that RoomOS renders the
     complete source canvas into a 60x60 slot without cropping. This edition maximizes
-    the filled Momentum-inspired silhouette inside a 5% production safe area.
+    the filled Momentum-inspired silhouette inside a 5% production safe area and
+    preserves a two-screen-pixel separation between the overlapping devices.
   </metadata>
+
+  <defs>
+    <!--
+      RoomOS renders this 16-source-pixel halo at approximately two screen pixels.
+      The rounded cutout follows the Companion Device silhouette so the foreground
+      device remains legible without introducing a second outline weight.
+    -->
+    <mask id="parent-companion-separation" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect x="0" y="0" width="512" height="512" fill="#FFFFFF"/>
+      <rect x="248" y="232" width="244" height="178" rx="50" fill="#000000"/>
+    </mask>
+  </defs>
 
   <!-- Artwork bounds target 5% horizontal padding in the 512x512 source canvas. -->
   <g id="roomos-glyph" fill="#FFFFFF" transform="translate(-10.4727 -24.0045) scale(1.040909)">
-    <!-- Parent Room Device: a strong filled frame rather than a thin outline. -->
-    <path id="parent-room-device" fill-rule="evenodd" d="
-      M78 84h216a42 42 0 0 1 42 42v126a42 42 0 0 1-42 42H78a42 42 0 0 1-42-42V126a42 42 0 0 1 42-42
-      M96 128h180a14 14 0 0 1 14 14v84a14 14 0 0 1-14 14H96a14 14 0 0 1-14-14v-84a14 14 0 0 1 14-14
-    "/>
-    <path d="M152 286h68v60h-68z"/>
-    <rect x="112" y="334" width="146" height="32" rx="16"/>
+    <g id="parent-room-device" mask="url(#parent-companion-separation)">
+      <!-- Parent Room Device: a strong filled frame rather than a thin outline. -->
+      <path id="parent-display-frame" fill-rule="evenodd" d="
+        M78 84h216a42 42 0 0 1 42 42v126a42 42 0 0 1-42 42H78a42 42 0 0 1-42-42V126a42 42 0 0 1 42-42
+        M96 128h180a14 14 0 0 1 14 14v84a14 14 0 0 1-14 14H96a14 14 0 0 1-14-14v-84a14 14 0 0 1 14-14
+      "/>
+      <path d="M152 286h68v60h-68z"/>
+      <rect x="112" y="334" width="146" height="32" rx="16"/>
+    </g>
 
-    <!-- Companion Device: overlapping placement communicates pairing without tiny arrows. -->
+    <!-- Companion Device: foreground placement communicates pairing without tiny arrows. -->
     <path id="companion-device" fill-rule="evenodd" d="
       M298 248h144a34 34 0 0 1 34 34v78a34 34 0 0 1-34 34H298a34 34 0 0 1-34-34v-78a34 34 0 0 1 34-34
       M316 285h108a12 12 0 0 1 12 12v48a12 12 0 0 1-12 12H316a12 12 0 0 1-12-12v-48a12 12 0 0 1 12-12
