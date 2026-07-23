@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.12
+ * Version:                 1.0.13
  *
  * Description:             Companion Device Call Synchronization controller for the Custom Companion solution.
  *                          Owns Companion Device call sync classification, Webex join and disconnect behavior,
@@ -34,7 +34,7 @@ or implied.
  *
  * Hardware Platforms:      Board Pro Series
  *
- * Code Dependencies:       None
+ * Code Dependencies:       Custom-Campanion_4_UI_2026
  *
  * AI Generation:           Percentage: 95%
  *                          Model(s): GPT-5.3-Codex
@@ -48,9 +48,9 @@ or implied.
  *   Status.Conference.Call.AuthenticationRequest.
  * - Conditional read: Status.Call when a Parent Room Device sends a disconnect sync.
  * - Commands: Command.Webex.Join, Command.Conference.Call.AuthenticationResponse,
- *   Command.Call.Disconnect,
- *   Command.UserInterface.Message.Alert.Display, and
- *   Command.UserInterface.Message.Alert.Clear.
+ *   and Command.Call.Disconnect.
+ * - Companion Device alerts are displayed and cleared through the shared
+ *   ownership helpers in Custom-Campanion_4_UI_2026.
  * - Network command: DeviceComms sendMessageCommand to ActiveCallDetailsRequest after initialization,
  *   Parent selection, an unverified local call, a local call drop, each active-call monitor interval,
  *   and MeetingPasswordRequest when Guest authentication requires a password.
@@ -78,12 +78,17 @@ function createCompanionDeviceCallSync(options) {
 	let meetingPasswordRequestCounter = 0;
 	let pendingMeetingPasswordRequest = null;
 	let meetingPasswordNoticeActive = false;
+	let meetingPasswordNoticeToken = 0;
 
 	const UNAUTHORIZED_CALL_INFO_TEXT = 'Start calls from the Parent Room Device.';
 	const UNAUTHORIZED_CALL_ALERT_TEXT = 'Calling is available through the Parent Room Device while this Companion Device is Paired. Start the call from the Parent Room Device, or run this Companion Device as Standalone to call directly.';
 	const UNAUTHORIZED_CALL_ALERT_TITLE = 'Start Calls from Parent Room Device';
 	const MEETING_PASSWORD_INFO_TEXT = 'Enter the meeting password manually on this Companion Device.';
 	const MEETING_PASSWORD_ALERT_TITLE = 'Meeting Password Required';
+	const MEETING_PASSWORD_ALERT_OWNER = 'board-call-sync:meeting-password';
+	const BYOD_ALERT_OWNER = 'board-call-sync:unsupported-call';
+	const CALL_JOIN_FAILURE_ALERT_OWNER = 'board-call-sync:join-failure';
+	const UNAUTHORIZED_CALL_ALERT_OWNER = 'board-call-sync:unauthorized-call';
 
 	function registerCallCountHandler() {
 		dependencies.xapi.Status.SystemUnit.State.NumberOfActiveCalls.on(callCount => {
@@ -390,14 +395,23 @@ function createCompanionDeviceCallSync(options) {
 	}
 
 	async function showMeetingPasswordNotice(reason) {
+		const noticeToken = ++meetingPasswordNoticeToken;
 		meetingPasswordNoticeActive = true;
 		await setInfo(MEETING_PASSWORD_INFO_TEXT);
+		if (noticeToken !== meetingPasswordNoticeToken || !meetingPasswordNoticeActive) {
+			return;
+		}
 		try {
-			await dependencies.xapi.Command.UserInterface.Message.Alert.Display({
-				Title: MEETING_PASSWORD_ALERT_TITLE,
-				Text: MEETING_PASSWORD_INFO_TEXT,
-				Duration: 0
+			await dependencies.companionUi.showOwnedAlert(dependencies.xapi, {
+				ownerId: MEETING_PASSWORD_ALERT_OWNER,
+				ownershipToken: noticeToken,
+				title: MEETING_PASSWORD_ALERT_TITLE,
+				text: MEETING_PASSWORD_INFO_TEXT,
+				duration: 0
 			});
+			if (noticeToken !== meetingPasswordNoticeToken || !meetingPasswordNoticeActive) {
+				dependencies.companionUi.relinquishOwnedAlert(MEETING_PASSWORD_ALERT_OWNER, noticeToken);
+			}
 		} catch (error) {
 			dependencies.log.warn({ Message: 'Failed to display manual Meeting Password alert', Reason: reason, Error: error.message || error.code || 'Unknown alert display error' });
 		}
@@ -408,12 +422,14 @@ function createCompanionDeviceCallSync(options) {
 		if (!meetingPasswordNoticeActive) {
 			return;
 		}
+		const noticeToken = meetingPasswordNoticeToken;
+		meetingPasswordNoticeToken++;
 		meetingPasswordNoticeActive = false;
 		if (infoText === MEETING_PASSWORD_INFO_TEXT) {
 			await setInfo('');
 		}
 		try {
-			await dependencies.xapi.Command.UserInterface.Message.Alert.Clear();
+			await dependencies.companionUi.clearOwnedAlert(dependencies.xapi, MEETING_PASSWORD_ALERT_OWNER, noticeToken);
 		} catch (error) {
 			dependencies.log.warn({ Message: 'Failed to clear manual Meeting Password alert', Reason: reason, Error: error.message || error.code || 'Unknown alert clear error' });
 		}
@@ -427,10 +443,26 @@ function createCompanionDeviceCallSync(options) {
 			return;
 		}
 
-		if (callbacks.clearStandbySyncState) {
-			callbacks.clearStandbySyncState();
+		const payload = message.Payload || {};
+		if (shouldClearStandbySyncState(payload) && callbacks.clearStandbySyncState) {
+			await callbacks.clearStandbySyncState();
 		}
-		await handlePayload(message.Payload || {});
+		await handlePayload(payload);
+	}
+
+	function shouldClearStandbySyncState(payload) {
+		switch (payload && payload.CallKind) {
+			case 'ActiveCallDetails':
+				return !!payload.ParentHasActiveCall;
+			case 'Network':
+			case 'BYOD':
+			case 'AdmissionRequired':
+			case 'AdmissionAdmitted':
+				return true;
+			case 'Disconnect':
+			default:
+				return false;
+		}
 	}
 
 	async function handlePayload(payload) {
@@ -464,10 +496,11 @@ function createCompanionDeviceCallSync(options) {
 			await disconnectAllCalls();
 			const unsupportedPayload = { MeetingPlatform: 'BYOD' };
 			await setInfo(getUnsupportedCallInfoText(unsupportedPayload));
-			await dependencies.xapi.Command.UserInterface.Message.Alert.Display({
-				Title: 'Unsupported Call Type',
-				Text: getUnsupportedCallAlertText(unsupportedPayload),
-				Duration: 15
+			await dependencies.companionUi.showOwnedAlert(dependencies.xapi, {
+				ownerId: BYOD_ALERT_OWNER,
+				title: 'Unsupported Call Type',
+				text: getUnsupportedCallAlertText(unsupportedPayload),
+				duration: 15
 			});
 			dependencies.log.debug({ Message: 'BYOD call sync received; Companion Device join not supported', Payload: payload });
 			return;
@@ -733,10 +766,11 @@ function createCompanionDeviceCallSync(options) {
 			joinCommandPendingUntil = 0;
 			stopParentCallMonitoring();
 			await setInfo(getCallJoinFailureInfoText(payload));
-			await dependencies.xapi.Command.UserInterface.Message.Alert.Display({
-				Title: 'Call Sync Failed',
-				Text: getCallJoinFailureAlertText(payload),
-				Duration: 20
+			await dependencies.companionUi.showOwnedAlert(dependencies.xapi, {
+				ownerId: CALL_JOIN_FAILURE_ALERT_OWNER,
+				title: 'Call Sync Failed',
+				text: getCallJoinFailureAlertText(payload),
+				duration: 20
 			});
 			dependencies.utils.softError({ Context: 'Failed to join Parent Room Device call', Error: error, Payload: payload });
 		}
@@ -922,6 +956,9 @@ function createCompanionDeviceCallSync(options) {
 		clearUnauthorizedCallNoticeTimeout();
 		unauthorizedCallNoticeActive = true;
 		await setInfo(UNAUTHORIZED_CALL_INFO_TEXT);
+		if (noticeToken !== unauthorizedCallNoticeToken || !unauthorizedCallNoticeActive) {
+			return;
+		}
 		unauthorizedCallNoticeTimeout = setTimeout(() => {
 			unauthorizedCallNoticeTimeout = null;
 			if (noticeToken !== unauthorizedCallNoticeToken || !unauthorizedCallNoticeActive) {
@@ -937,13 +974,15 @@ function createCompanionDeviceCallSync(options) {
 		}, noticeDurationMs);
 
 		try {
-			await dependencies.xapi.Command.UserInterface.Message.Alert.Display({
-				Title: UNAUTHORIZED_CALL_ALERT_TITLE,
-				Text: UNAUTHORIZED_CALL_ALERT_TEXT,
-				Duration: getUnauthorizedCallNoticeDurationSeconds()
+			await dependencies.companionUi.showOwnedAlert(dependencies.xapi, {
+				ownerId: UNAUTHORIZED_CALL_ALERT_OWNER,
+				ownershipToken: noticeToken,
+				title: UNAUTHORIZED_CALL_ALERT_TITLE,
+				text: UNAUTHORIZED_CALL_ALERT_TEXT,
+				duration: getUnauthorizedCallNoticeDurationSeconds()
 			});
 			if (noticeToken !== unauthorizedCallNoticeToken || !unauthorizedCallNoticeActive) {
-				await clearUnauthorizedCallAlert('NoticeSupersededDuringDisplay');
+				dependencies.companionUi.relinquishOwnedAlert(UNAUTHORIZED_CALL_ALERT_OWNER, noticeToken);
 			}
 		} catch (error) {
 			dependencies.log.warn({ Message: 'Failed to display Paired calling policy alert', Reason: reason, Error: error.message || error.code || 'Unknown alert display error' });
@@ -960,6 +999,7 @@ function createCompanionDeviceCallSync(options) {
 
 	async function clearUnauthorizedCallNotice(reason) {
 		const wasActive = unauthorizedCallNoticeActive;
+		const noticeToken = unauthorizedCallNoticeToken;
 		unauthorizedCallNoticeToken++;
 		unauthorizedCallNoticeActive = false;
 		clearUnauthorizedCallNoticeTimeout();
@@ -969,13 +1009,13 @@ function createCompanionDeviceCallSync(options) {
 		if (!wasActive) {
 			return;
 		}
-		await clearUnauthorizedCallAlert(reason);
+		await clearUnauthorizedCallAlert(reason, noticeToken);
 		dependencies.log.debug({ Message: 'Paired calling policy notice cleared early', Reason: reason });
 	}
 
-	async function clearUnauthorizedCallAlert(reason) {
+	async function clearUnauthorizedCallAlert(reason, noticeToken) {
 		try {
-			await dependencies.xapi.Command.UserInterface.Message.Alert.Clear();
+			await dependencies.companionUi.clearOwnedAlert(dependencies.xapi, UNAUTHORIZED_CALL_ALERT_OWNER, noticeToken);
 		} catch (error) {
 			dependencies.log.warn({ Message: 'Failed to clear Paired calling policy alert', Reason: reason, Error: error.message || error.code || 'Unknown alert clear error' });
 		}
@@ -1027,13 +1067,7 @@ function createCompanionDeviceCallSync(options) {
 		dependencies.log.debug({ Message: 'Parent Room Device call-state monitoring stopped' });
 	}
 
-	function cancel() {
-		clearUnauthorizedCallNotice('CallSyncCanceled').catch(error => {
-			dependencies.utils.softError({ Context: 'Failed to clear the Paired calling policy notice while canceling call sync', Error: error });
-		});
-		clearMeetingPasswordNotice('CallSyncCanceled').catch(error => {
-			dependencies.utils.softError({ Context: 'Failed to clear the manual Meeting Password notice while canceling call sync', Error: error });
-		});
+	async function cancel() {
 		syncToken++;
 		lastWebexPayload = null;
 		isRejoinInProgress = false;
@@ -1044,6 +1078,16 @@ function createCompanionDeviceCallSync(options) {
 		parentCallRequestInFlight = false;
 		clearUnauthorizedCallCheck();
 		stopParentCallMonitoring();
+		try {
+			await clearUnauthorizedCallNotice('CallSyncCanceled');
+		} catch (error) {
+			dependencies.utils.softError({ Context: 'Failed to clear the Paired calling policy notice while canceling call sync', Error: error });
+		}
+		try {
+			await clearMeetingPasswordNotice('CallSyncCanceled');
+		} catch (error) {
+			dependencies.utils.softError({ Context: 'Failed to clear the manual Meeting Password notice while canceling call sync', Error: error });
+		}
 		infoText = '';
 	}
 

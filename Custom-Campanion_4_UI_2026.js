@@ -21,9 +21,10 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.23
+ * Version:                 1.0.24
  *
- * Description:             Companion access/hidden panels, PIN/registration/status prompts, and WebWidget adapter.
+ * Description:             Companion access/hidden panels, PIN/registration/status prompts,
+ *                          shared alert ownership, and WebWidget adapter.
  *
  * Documentation:           N/A
  *
@@ -61,6 +62,9 @@ const WEB_WIDGET_NAME = 'Custom Companion 2026';
 const WEB_WIDGET_REFRESH_INTERVAL = 0;
 const WEB_WIDGET_DEFAULT_URL = 'https://ctg-tme.github.io/Simple-WebWidget/';
 const WEB_WIDGET_INFO3_MAX_CHARACTERS = 90;
+let alertOwnershipSequence = 0;
+let currentAlertOwnership = null;
+let alertOwnershipExpiryTimer = null;
 
 /*
  * UI xAPI surface:
@@ -335,6 +339,75 @@ async function showCompanionPrompt(XAPIObject, options) {
 	await XAPIObject.Command.UserInterface.Message.Prompt.Display(command);
 }
 
+async function showOwnedAlert(XAPIObject, options) {
+	const ownerId = String(options && options.ownerId || '').trim();
+	if (!ownerId) {
+		throw new Error('Companion Device alert ownerId is required');
+	}
+
+	const ownershipToken = options.ownershipToken === undefined
+		? ++alertOwnershipSequence
+		: options.ownershipToken;
+	clearAlertOwnershipExpiryTimer();
+	currentAlertOwnership = {
+		ownerId: ownerId,
+		ownershipToken: ownershipToken
+	};
+	const durationSeconds = Number(options.duration);
+	if (Number.isFinite(durationSeconds) && durationSeconds > 0) {
+		alertOwnershipExpiryTimer = setTimeout(() => {
+			relinquishOwnedAlert(ownerId, ownershipToken);
+		}, durationSeconds * 1000);
+	}
+
+	try {
+		await XAPIObject.Command.UserInterface.Message.Alert.Display({
+			Title: options.title,
+			Text: options.text,
+			Duration: options.duration
+		});
+	} catch (error) {
+		relinquishOwnedAlert(ownerId, ownershipToken);
+		throw error;
+	}
+
+	return ownershipToken;
+}
+
+async function clearOwnedAlert(XAPIObject, ownerId, ownershipToken) {
+	if (!isCurrentAlertOwner(ownerId, ownershipToken)) {
+		return false;
+	}
+
+	relinquishOwnedAlert(ownerId, ownershipToken);
+	await XAPIObject.Command.UserInterface.Message.Alert.Clear();
+	return true;
+}
+
+function relinquishOwnedAlert(ownerId, ownershipToken) {
+	if (!isCurrentAlertOwner(ownerId, ownershipToken)) {
+		return false;
+	}
+
+	clearAlertOwnershipExpiryTimer();
+	currentAlertOwnership = null;
+	return true;
+}
+
+function isCurrentAlertOwner(ownerId, ownershipToken) {
+	if (!currentAlertOwnership || currentAlertOwnership.ownerId !== ownerId) {
+		return false;
+	}
+	return ownershipToken === undefined || currentAlertOwnership.ownershipToken === ownershipToken;
+}
+
+function clearAlertOwnershipExpiryTimer() {
+	if (alertOwnershipExpiryTimer) {
+		clearTimeout(alertOwnershipExpiryTimer);
+	}
+	alertOwnershipExpiryTimer = null;
+}
+
 async function showErrorPrompt(XAPIObject) {
 	await XAPIObject.Command.UserInterface.Message.Prompt.Display({
 		Title: 'Companion Device Unavailable',
@@ -463,7 +536,7 @@ function buildCompanionWebWidgetUrl(options) {
 async function showStandbySyncPrompt(XAPIObject, options) {
 	await XAPIObject.Command.UserInterface.Message.Prompt.Display({
 		Title: 'Parent Room Device Standby',
-		Text: `The active Parent Room Device is currently in ${options.state}. This Companion Device will match it in ${options.remainingSeconds} seconds.`,
+		Text: `The active Parent Room Device is currently in ${options.state}. This Companion Device will match its latest standby state in ${options.remainingSeconds} seconds.`,
 		FeedbackId: options.feedbackId,
 		'Option.1': 'Bypass 5 min',
 		'Option.2': 'Bypass 30 min',
@@ -620,6 +693,9 @@ const companionUi = {
 	showCompanionTextInput,
 	clearCompanionTextInput,
 	showCompanionPrompt,
+	showOwnedAlert,
+	clearOwnedAlert,
+	relinquishOwnedAlert,
 	showErrorPrompt,
 	setSelectedParent,
 	setPinModeFeedback,

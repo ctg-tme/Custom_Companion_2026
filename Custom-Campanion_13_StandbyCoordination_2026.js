@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.1
+ * Version:                 1.0.2
  *
  * Description:             Standby Coordination controller for the Custom Companion Solution.
  *                          Owns Standalone standby preference restoration, delayed parent sync,
@@ -65,10 +65,10 @@ function createStandbyCoordination(options) {
 	let standaloneConfig = {};
 	let isApplyingConfig = false;
 	let pendingSyncTimer = null;
-	let pendingPromptRefreshTimer = null;
 	let pendingSyncDeadline = 0;
 	let pendingSyncState = '';
 	let promptDismissed = false;
+	let isPromptActive = false;
 	let bypassUntil = 0;
 	let bypassTimer = null;
 
@@ -195,13 +195,13 @@ function createStandbyCoordination(options) {
 					dependencies.utils.softError({ Context: 'Failed to apply pending standby sync', State: pendingSyncState, Error: error });
 				});
 			}, policy.applyDelayMs);
+			await showPendingPrompt();
 		}
-		await refreshPrompt();
 	}
 
 	async function applyPendingSync() {
 		const state = pendingSyncState;
-		clearSyncTimers();
+		await clearSyncTimers();
 		await applySyncState(state);
 	}
 
@@ -229,6 +229,8 @@ function createStandbyCoordination(options) {
 			return false;
 		}
 
+		isPromptActive = false;
+		promptDismissed = true;
 		switch (String(event.OptionId || event.Option || '')) {
 			case '1':
 				await activateBypass(policy.shortBypassMs);
@@ -237,39 +239,53 @@ function createStandbyCoordination(options) {
 				await activateBypass(policy.longBypassMs);
 				break;
 			case '3':
-				promptDismissed = true;
-				clearPromptRefreshTimer();
-				await dependencies.companionUi.clearPrompt(dependencies.xapi, STANDBY_SYNC_PROMPT_ID);
 				break;
 		}
 		return true;
 	}
 
-	async function refreshPrompt() {
-		if (promptDismissed || !pendingSyncState) {
+	async function handlePromptCleared(event) {
+		if (!event || event.FeedbackId !== STANDBY_SYNC_PROMPT_ID) {
+			return false;
+		}
+
+		if (isPromptActive) {
+			isPromptActive = false;
+			promptDismissed = true;
+			dependencies.log.debug({ Message: 'Standby sync prompt dismissed while pending synchronization remains active', State: pendingSyncState });
+		}
+		return true;
+	}
+
+	async function showPendingPrompt() {
+		if (promptDismissed || !pendingSyncState || isPromptActive) {
 			return;
 		}
-
 		const remainingSeconds = Math.max(0, Math.ceil((pendingSyncDeadline - Date.now()) / 1000));
-		await dependencies.companionUi.showStandbySyncPrompt(dependencies.xapi, {
-			feedbackId: STANDBY_SYNC_PROMPT_ID,
-			state: pendingSyncState,
-			remainingSeconds: remainingSeconds
-		});
-
-		clearPromptRefreshTimer();
-		if (remainingSeconds > 0) {
-			pendingPromptRefreshTimer = setTimeout(() => {
-				refreshPrompt().catch(error => {
-					dependencies.utils.softError({ Context: 'Failed to refresh standby sync prompt', Error: error });
-				});
-			}, policy.promptRefreshMs);
+		isPromptActive = true;
+		try {
+			await dependencies.companionUi.showStandbySyncPrompt(dependencies.xapi, {
+				feedbackId: STANDBY_SYNC_PROMPT_ID,
+				state: pendingSyncState,
+				remainingSeconds: remainingSeconds
+			});
+		} catch (error) {
+			isPromptActive = false;
+			throw error;
 		}
+	}
+
+	async function clearPromptIfActive() {
+		if (!isPromptActive) {
+			return;
+		}
+		isPromptActive = false;
+		await dependencies.companionUi.clearPrompt(dependencies.xapi, STANDBY_SYNC_PROMPT_ID);
 	}
 
 	async function activateBypass(durationMs) {
 		bypassUntil = Date.now() + durationMs;
-		clearSyncTimers();
+		await clearSyncTimers();
 		clearBypassTimer();
 		bypassTimer = setTimeout(() => {
 			bypassUntil = 0;
@@ -281,31 +297,21 @@ function createStandbyCoordination(options) {
 		dependencies.log.info({ Message: 'Standby sync bypass activated', BypassUntil: new Date(bypassUntil).toISOString() });
 	}
 
-	function clear() {
-		clearSyncTimers();
+	async function clear() {
+		await clearSyncTimers();
 		clearBypassTimer();
 		bypassUntil = 0;
 	}
 
-	function clearSyncTimers() {
+	async function clearSyncTimers() {
 		if (pendingSyncTimer) {
 			clearTimeout(pendingSyncTimer);
 		}
-		clearPromptRefreshTimer();
 		pendingSyncTimer = null;
 		pendingSyncDeadline = 0;
 		pendingSyncState = '';
 		promptDismissed = false;
-		dependencies.companionUi.clearPrompt(dependencies.xapi, STANDBY_SYNC_PROMPT_ID).catch(error => {
-			dependencies.utils.softError({ Context: 'Failed to clear standby sync prompt', Error: error });
-		});
-	}
-
-	function clearPromptRefreshTimer() {
-		if (pendingPromptRefreshTimer) {
-			clearTimeout(pendingPromptRefreshTimer);
-		}
-		pendingPromptRefreshTimer = null;
+		await clearPromptIfActive();
 	}
 
 	function clearBypassTimer() {
@@ -401,6 +407,7 @@ function createStandbyCoordination(options) {
 		handleMessage,
 		scheduleSelectedParentSync,
 		handlePromptResponse,
+		handlePromptCleared,
 		clear,
 		getInfoText
 	};

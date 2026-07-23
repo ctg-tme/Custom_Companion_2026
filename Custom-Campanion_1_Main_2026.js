@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 0.1.2.40
+ * Version:                 0.1.2.41
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -63,6 +63,9 @@ const INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS = 5;
 const ALLOW_STANDALONE_DURING_ACTIVE_CALL = true;
 const PERIPHERAL_TYPE = 'ControlSystem';
 const UNHEALTHY_INFO_TEXT = 'Companion Device controls are unavailable. Contact a Device Administrator.';
+const CONFIG_DENIED_PROMPT_ID = 'cc26_config_denied';
+const ACTIVE_CALL_STANDALONE_BLOCKED_PROMPT_ID = 'cc26_active_call_standalone_blocked';
+const PARENT_UNAVAILABLE_PROMPT_ID = 'cc26_parent_unavailable';
 const HTTP_CLIENT_CONFIG = {
 	mode: 'On',
 	allowInsecureHTTPS: config.httpClient.allowInsecureHTTPS,
@@ -199,7 +202,6 @@ const standbyCoordinationController = standbyCoordination.create({
 	utils: utils,
 	policy: {
 		applyDelayMs: 30000,
-		promptRefreshMs: 5000,
 		shortBypassMs: 5 * 60 * 1000,
 		longBypassMs: 30 * 60 * 1000
 	},
@@ -218,6 +220,7 @@ const companionDeviceCallSyncController = companionDeviceCallSync.create({
 	httpClientConfig: HTTP_CLIENT_CONFIG,
 	activeCallDetailsRoute: MESSAGE_CONFIG.routes.activeCallDetailsRequest,
 	meetingPasswordRequestRoute: MESSAGE_CONFIG.routes.meetingPasswordRequest,
+	companionUi: companionUi,
 	log: log,
 	utils: utils,
 	policy: {
@@ -234,7 +237,7 @@ const companionDeviceCallSyncController = companionDeviceCallSync.create({
 		}),
 		getActiveParentDevice: () => companionState.findActiveParentDevice(companionDeviceState, parentDevices),
 		getRuntimeCompanionDeviceInformation: async () => companionDeviceServices.getRuntimeCompanionDeviceInformation(xapi, getConfiguredCompanionDeviceInformation(), log),
-		clearStandbySyncState: () => standbyCoordinationController.clear(),
+		clearStandbySyncState: async () => standbyCoordinationController.clear(),
 		onCallCountZeroBoundary: handleCallCountZeroBoundary,
 		onInfoChanged: async () => applyRuntimeWebWidget()
 	}
@@ -424,6 +427,7 @@ async function handleCompanionMessage(message) {
 			await xapi.Command.UserInterface.Message.Prompt.Display({
 				Title: 'Parent Room Device Registration Denied',
 				Text: message.Payload && message.Payload.Reason ? message.Payload.Reason : 'The Parent Room Device denied this Companion Device registration request.',
+				FeedbackId: CONFIG_DENIED_PROMPT_ID,
 				Duration: 10
 			});
 			break;
@@ -505,7 +509,7 @@ function registerUiEventHandlers() {
 	});
 
 	xapi.Event.UserInterface.Message.Prompt.Cleared.on(event => {
-		parentRegistrationController.handlePromptCleared(event).catch(error => {
+		handlePromptCleared(event).catch(error => {
 			utils.softError({ Context: 'Failed to handle prompt cleared event', Event: event, Error: error });
 		});
 	});
@@ -553,6 +557,13 @@ async function handlePromptResponse(event) {
 		return;
 	}
 	await standbyCoordinationController.handlePromptResponse(event);
+}
+
+async function handlePromptCleared(event) {
+	if (await parentRegistrationController.handlePromptCleared(event)) {
+		return;
+	}
+	await standbyCoordinationController.handlePromptCleared(event);
 }
 
 async function handleTextInputResponse(event) {
@@ -628,6 +639,7 @@ async function selectStandaloneMode() {
 		await xapi.Command.UserInterface.Message.Prompt.Display({
 			Title: 'Call In Progress',
 			Text: 'End the active call before running this Companion Device in Standalone mode.',
+			FeedbackId: ACTIVE_CALL_STANDALONE_BLOCKED_PROMPT_ID,
 			Duration: 10
 		});
 		return;
@@ -647,8 +659,8 @@ async function selectParentByIndex(parentIndex) {
 }
 
 async function completeVerifiedParentSelection(refreshedParentDevice, parentStatus) {
-	standbyCoordinationController.clear();
-	companionDeviceCallSyncController.cancel();
+	await standbyCoordinationController.clear();
+	await companionDeviceCallSyncController.cancel();
 	activeParentSerial = parentStatus.serial;
 	companionDeviceState = createCompanionDeviceState(activeParentSerial);
 	await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
@@ -670,8 +682,8 @@ async function transitionToStandalone(options = {}) {
 	const hadActiveCall = wasPaired && !options.SkipMediaRestore ? await isCompanionDeviceInActiveCall() : false;
 
 	await parentConnectivityController.cancel(!options.PreserveParentConnectivityInfo);
-	companionDeviceCallSyncController.cancel();
-	standbyCoordinationController.clear();
+	await companionDeviceCallSyncController.cancel();
+	await standbyCoordinationController.clear();
 	activeParentSerial = companionState.STANDALONE_PARENT_SERIAL;
 	companionDeviceState = createCompanionDeviceState(activeParentSerial);
 	await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
@@ -687,7 +699,7 @@ async function transitionToStandalone(options = {}) {
 }
 
 async function releaseActiveParentForDeregistration() {
-	companionDeviceCallSyncController.cancel();
+	await companionDeviceCallSyncController.cancel();
 	await companionDeviceCallSyncController.disconnectAllCalls();
 	await transitionToStandalone({ Reason: 'ParentRoomDeregistration', SkipMediaRestore: true });
 	await pairedEnvironmentController.handleStandaloneRelease(false);
@@ -800,6 +812,7 @@ async function showSelectedParentOfflinePrompt(parentDevice) {
 	await xapi.Command.UserInterface.Message.Prompt.Display({
 		Title: 'Parent Room Device Unavailable',
 		Text: `${parentRoomDeviceName} is unavailable. This Companion Device is now running Standalone.`,
+		FeedbackId: PARENT_UNAVAILABLE_PROMPT_ID,
 		Duration: 10
 	});
 }

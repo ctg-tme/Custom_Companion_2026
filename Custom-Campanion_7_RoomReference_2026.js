@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 0.1.2.40
+ * Version:                 0.1.2.41
  *
  * Description:             Parent Room registration, validation, deregistration, and peripheral-cleanup entry macro used as the install source.
  *                          The numbered source remains inactive on the Companion Device; Parent Room installation renames

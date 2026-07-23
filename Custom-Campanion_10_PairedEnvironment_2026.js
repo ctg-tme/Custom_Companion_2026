@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.3
+ * Version:                 1.0.4
  *
  * Description:             Paired Environment policy controller for the Custom Companion Solution.
  *                          Owns call-feature policy, Companion Web Widget mode, Paired microphone
@@ -50,8 +50,9 @@ or implied.
  * - Conditional read: Config.Audio.DefaultVolume only when safe restoration is requested.
  * - Commands: Command.Audio.Microphones.Mute, Command.Audio.Volume.Set,
  *   Command.Conference.DoNotDisturb.Activate/Deactivate,
- *   Command.UserInterface.Message.Prompt.Display, and Command.UserInterface.Message.Alert.Display.
- * - Companion Web Widget panel commands remain encapsulated by Custom-Campanion_4_UI_2026.
+ *   and Command.UserInterface.Message.Prompt.Display.
+ * - Companion alerts and Web Widget panel commands remain encapsulated by
+ *   Custom-Campanion_4_UI_2026.
  */
 
 const PAIRED_UI_FEATURE_POLICY = [
@@ -81,6 +82,7 @@ const PAIRED_UI_FEATURE_POLICY = [
 ];
 
 const RESTORE_VOLUME_PROMPT_ID = 'cc26_restore_volume';
+const STANDALONE_VOLUME_RESTORED_ALERT_OWNER = 'paired-environment:standalone-volume-restored';
 
 function createPairedEnvironment(options) {
 	const dependencies = options || {};
@@ -386,10 +388,11 @@ function createPairedEnvironment(options) {
 		}
 
 		try {
-			await dependencies.xapi.Command.UserInterface.Message.Alert.Display({
-				Title: 'Standalone Volume Restored',
-				Text: 'Volume was restored to the Companion Device default. Microphones remain muted; unmute when ready.',
-				Duration: 10
+			await dependencies.companionUi.showOwnedAlert(dependencies.xapi, {
+				ownerId: STANDALONE_VOLUME_RESTORED_ALERT_OWNER,
+				title: 'Standalone Volume Restored',
+				text: 'Volume was restored to the Companion Device default. Microphones remain muted; unmute when ready.',
+				duration: 10
 			});
 		} catch (error) {
 			dependencies.log.warn({

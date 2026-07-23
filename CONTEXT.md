@@ -88,6 +88,14 @@ _Avoid_: Parent offline, room unavailable
 A temporary Paired condition in which the Companion Device preserves an active call while communication with its Parent Room Device is unavailable. Communication is considered restored only after the selected Parent Room Device returns a valid identity response whose serial number matches the selected Parent Room Device serial; normal heartbeat and call-state synchronization then resume through their existing paths.
 _Avoid_: Standalone, disconnected call
 
+**Pending Standby Synchronization**:
+The 30-second decision window in which a newly selected Parent Room Device's latest valid standby state is held for application at the original deadline. Dismissing its prompt ends only the prompt lifecycle; bypass, a mode reset, or proof of an active Parent Room Device call ends the pending synchronization.
+_Avoid_: Standby prompt timer, dismissed standby action
+
+**Companion Alert Ownership**:
+The current Companion Device workflow's claim over the single global RoomOS alert surface. A newer alert claim supersedes the previous owner, and only the current owner and lifecycle token may clear the surface.
+_Avoid_: Alert FeedbackId, per-alert RoomOS clear
+
 **Paired Call Limit**:
 The invariant that a Companion Device participates in at most one active-Parent Room Device-authorized call while Paired. Calling remains available through the Parent Room Device while Paired; a direct Companion Device call without current Parent Room Device authorization is disconnected and explained as requiring the call to start from the Parent Room Device. Parent Room runtime initialization, Parent Room Device selection, Companion Device initialization, and periodic checks replay authoritative Parent Room Device call state so late Paired transitions and runtime restarts converge. A failed periodic network check does not end a known authorized call; Call Preservation State still owns Parent Room Device-unavailable behavior. Standalone retains native RoomOS call behavior.
 _Avoid_: Global call limit, Standalone call restriction
