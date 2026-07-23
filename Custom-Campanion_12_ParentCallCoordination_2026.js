@@ -20,12 +20,13 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 20, 2026
- * Revised:                 July 22, 2026
- * Version:                 1.0.2
+ * Revised:                 July 23, 2026
+ * Version:                 1.0.3
  *
  * Description:             Parent Call Coordination controller for the Custom Companion Solution.
  *                          Owns parent call detection, BYOD detection, participant admission,
- *                          call-detail responses, and call synchronization sent to registered boards.
+ *                          current-booking Meeting Password lookup, call-detail responses, and call
+ *                          synchronization sent to registered boards.
  *
  * Documentation:           N/A
  *
@@ -49,7 +50,8 @@ or implied.
  *   Status.Video.Output.HDMI.Passthrough.Status.
  * - Reads: Command.Conference.ParticipantList.Search, Status.SystemUnit.State.NumberOfActiveCalls,
  *   Status.Call[1].CallId, Status.Call, Status.Conference.Call.MeetingPlatform,
- *   Status.Conference.Call.Webex.MeetingInviteLink, and Status.Call[1].Protocol.
+ *   Status.Conference.Call.Webex.MeetingInviteLink, Status.Call[1].Protocol, and
+ *   Command.Bookings.List with ScheduleType Current.
  * - Command: Command.Conference.Participant.Admit.
  * - Network read: DeviceComms getCallStatus for a registered companion board.
  */
@@ -67,6 +69,7 @@ function createParentCallCoordination(options) {
 	const HTTP_CLIENT_CONFIG = dependencies.httpClientConfig;
 	const sendRegistrationResponse = dependencies.sendRegistrationResponse;
 	const normalizeBoardRecord = dependencies.normalizeBoardRecord;
+	const now = typeof dependencies.now === 'function' ? dependencies.now : Date.now;
 	let registeredBoards = [];
 	let admissionCheckTimeout = null;
 	let admissionPollInterval = null;
@@ -848,6 +851,190 @@ function createParentCallCoordination(options) {
 		}
 	}
 
+	async function handleMeetingPasswordRequest(message) {
+		const payload = message && message.Payload || {};
+		const requestId = String(payload.RequestId || '');
+		const boardRecord = registeredBoards.find(board => board.Serial === message.Serial) || normalizeBoardRecord(message);
+		let resolution = {
+			passwordAvailable: false,
+			meetingPassword: '',
+			reason: requestId ? 'NoMatchingCurrentBooking' : 'InvalidMeetingPasswordRequest'
+		};
+
+		if (requestId) {
+			await reconcileCurrentCallState('MeetingPasswordRequest', false);
+			if (!activeParentCallDetails) {
+				resolution.reason = 'NoActiveParentCall';
+			} else if (!isWebexParentCall()) {
+				resolution.reason = 'ActiveParentCallIsNotWebex';
+			} else {
+				resolution = await resolveCurrentBookingMeetingPassword();
+			}
+		}
+
+		await sendRegistrationResponse('MeetingPasswordResponse', message, boardRecord, {
+			RequestId: requestId,
+			PasswordAvailable: resolution.passwordAvailable,
+			MeetingPassword: resolution.meetingPassword,
+			Reason: resolution.reason
+		}, true);
+		log.info({
+			Message: 'Parent Meeting Password lookup completed',
+			Serial: message.Serial,
+			RequestId: requestId,
+			PasswordAvailable: resolution.passwordAvailable,
+			Reason: resolution.reason
+		});
+	}
+
+	async function resolveCurrentBookingMeetingPassword() {
+		let response;
+		try {
+			response = await xapi.Command.Bookings.List({ ScheduleType: 'Current', Limit: 20 });
+		} catch (error) {
+			log.warn({ Message: 'Failed to list current Parent Room bookings for Meeting Password lookup', Error: error.message || error.code || 'Unknown Bookings List error' });
+			return {
+				passwordAvailable: false,
+				meetingPassword: '',
+				reason: 'BookingsListFailed'
+			};
+		}
+
+		const bookings = normalizeBookingsList(response);
+		const currentMatches = bookings.filter(booking =>
+			isBookingCurrent(booking)
+			&& doesBookingMatchActiveParentCall(booking)
+		);
+		if (currentMatches.length !== 1) {
+			return {
+				passwordAvailable: false,
+				meetingPassword: '',
+				reason: currentMatches.length > 1 ? 'AmbiguousCurrentBooking' : 'NoMatchingCurrentBooking'
+			};
+		}
+
+		const meetingPassword = getBookingMeetingPassword(currentMatches[0]);
+		if (!meetingPassword) {
+			return {
+				passwordAvailable: false,
+				meetingPassword: '',
+				reason: 'MatchingBookingHasNoPassword'
+			};
+		}
+
+		return {
+			passwordAvailable: true,
+			meetingPassword: meetingPassword,
+			reason: 'MatchingCurrentBooking'
+		};
+	}
+
+	function normalizeBookingsList(response) {
+		const commandResponse = response && response.CommandResponse || {};
+		const result = commandResponse.BookingsListResult
+			|| response && response.BookingsListResult
+			|| response
+			|| {};
+		const bookings = result.Booking
+			|| result.Bookings && result.Bookings.Booking
+			|| [];
+		return Array.isArray(bookings) ? bookings : bookings ? [bookings] : [];
+	}
+
+	function isBookingCurrent(booking) {
+		const time = booking && booking.Time || {};
+		const startTime = Date.parse(String(getValue(booking && booking.StartTime) || getValue(time.StartTime) || ''));
+		let endTime = Date.parse(String(getValue(booking && booking.EndTime) || getValue(time.EndTime) || ''));
+		if (!Number.isFinite(startTime)) {
+			return false;
+		}
+
+		if (!Number.isFinite(endTime)) {
+			const durationMinutes = Number(getValue(booking && booking.Duration) || getValue(time.Duration));
+			if (!Number.isFinite(durationMinutes) || durationMinutes < 1) {
+				return false;
+			}
+			endTime = startTime + durationMinutes * 60 * 1000;
+		}
+
+		const currentTime = Number(now());
+		return Number.isFinite(currentTime) && currentTime >= startTime && currentTime <= endTime;
+	}
+
+	function doesBookingMatchActiveParentCall(booking) {
+		if (!activeParentCallDetails) {
+			return false;
+		}
+
+		const activeCallIdentities = [
+			activeParentCallDetails.JoinTarget,
+			activeParentCallDetails.MeetingInviteLink,
+			activeParentCallDetails.DialedRemoteNumber,
+			activeParentCallDetails.CallbackNumber,
+			activeParentCallDetails.RemoteNumber,
+			activeParentCallDetails.RemoteURI
+		].map(normalizeCallIdentity).filter(value => !!value);
+		const bookingIdentities = getBookingCallIdentities(booking);
+		for (let index = 0; index < bookingIdentities.length; index++) {
+			if (activeCallIdentities.indexOf(bookingIdentities[index]) >= 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	function getBookingCallIdentities(booking) {
+		const webex = booking && booking.Webex || {};
+		const dialInfo = booking && booking.DialInfo || {};
+		const callsContainer = dialInfo.Calls || {};
+		const calls = normalizeBookingsList({ Booking: callsContainer.Call || dialInfo.Call || [] });
+		const values = [
+			booking && booking.Number,
+			booking && booking.MeetingNumber,
+			booking && booking.JoinTarget,
+			booking && booking.MeetingInviteLink,
+			webex.Number,
+			webex.MeetingNumber,
+			webex.JoinTarget,
+			webex.MeetingInviteLink,
+			webex.Url,
+			webex.URL
+		];
+		for (let index = 0; index < calls.length; index++) {
+			values.push(calls[index].Number, calls[index].URI, calls[index].Url, calls[index].URL);
+		}
+
+		const identities = [];
+		for (let index = 0; index < values.length; index++) {
+			const identity = normalizeCallIdentity(getValue(values[index]));
+			if (identity && identities.indexOf(identity) < 0) {
+				identities.push(identity);
+			}
+		}
+		return identities;
+	}
+
+	function getBookingMeetingPassword(booking) {
+		const webex = booking && booking.Webex || {};
+		const dialInfo = booking && booking.DialInfo || {};
+		const candidates = [
+			booking && booking.MeetingPassword,
+			booking && booking.Password,
+			webex.MeetingPassword,
+			webex.Password,
+			webex.JoinMeetingPassword,
+			dialInfo.MeetingPassword,
+			dialInfo.Password
+		];
+		for (let index = 0; index < candidates.length; index++) {
+			const meetingPassword = String(getValue(candidates[index]) || '').trim().replace(/#+$/, '');
+			if (meetingPassword) {
+				return meetingPassword;
+			}
+		}
+		return '';
+	}
+
 	async function handleActiveCallDetailsRequest(message) {
 		const boardRecord = registeredBoards.find(board => board.Serial === message.Serial) || normalizeBoardRecord(message);
 		await reconcileCurrentCallState('ActiveCallDetailsRequest', false);
@@ -869,7 +1056,8 @@ function createParentCallCoordination(options) {
 	return {
 		setRegisteredBoards,
 		start,
-		handleActiveCallDetailsRequest
+		handleActiveCallDetailsRequest,
+		handleMeetingPasswordRequest
 	};
 }
 

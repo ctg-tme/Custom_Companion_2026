@@ -80,6 +80,10 @@ _Avoid_: StandAlone, disconnected call
 The invariant that a companion board participates in at most one active-parent-authorized call while Paired. Calling remains available through the Parent Room while Paired; a direct board call without current Parent authorization is disconnected and explained as requiring the call to start from the Parent Room. Parent runtime initialization, Parent selection, board initialization, and periodic checks replay authoritative Parent call state so late pairing and runtime restarts converge. A failed periodic network check does not end a known authorized call; Call Preservation State still owns parent-unavailable behavior. StandAlone retains native RoomOS call behavior.
 _Avoid_: Global call limit, StandAlone call restriction
 
+**Meeting Password**:
+The transient password used to join a protected Webex meeting as Guest. When RoomOS requests Guest authentication, a Paired board may ask only its active Parent to resolve this value from exactly one current booking that matches the active Parent call. A Meeting Password is never solution configuration, PIN Mode state, stored memory, or log context; an unavailable or ambiguous result requires manual entry on the board.
+_Avoid_: PIN Mode PIN, Host PIN, callback password, stored meeting credential
+
 **Paired Do Not Disturb Lease**:
 The solution-owned condition maintained while Paired that prevents incoming calls to the companion board. It is always released when the board enters StandAlone and does not restrict parent-requested outbound calls.
 _Avoid_: Infinite DND loop, permanent Do Not Disturb, restored DND state
@@ -113,6 +117,8 @@ During the Unhealthy State, `info3` persistently tells the In-Room User that Com
 During Call Preservation, `info3` remains visible with `{room} is temporarily unavailable. Your call will continue.` until the selected parent is resynchronized or the call ends. The 60-second expiry applies only to the final StandAlone connection-failure message.
 
 When an active Parent call is not a joinable Webex meeting, call synchronization does not dial it and `info3` reads `[Platform] isn't supported. Start a Webex call from the Parent Room.`, with `[Platform]` replaced by the detected platform or `non-Webex`.
+
+When a protected Webex meeting requires Guest authentication and no matching Meeting Password is available from the active Parent's current booking, `info3` and a duration-0 RoomOS alert read `Enter the meeting password manually on this board.` The notice clears when authentication completes, the Parent call ends, or the board leaves Paired mode.
 
 ## Transport
 

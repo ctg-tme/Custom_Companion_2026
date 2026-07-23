@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 0.1.2.35
+ * Version:                 0.1.2.36
  *
  * Description:             Companion board entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -74,6 +74,7 @@ const MESSAGE_CONFIG = {
 		parentReadyRequest: 'ParentReadyRequest',
 		configSync: 'ConfigSync',
 		activeCallDetailsRequest: 'ActiveCallDetailsRequest',
+		meetingPasswordRequest: 'MeetingPasswordRequest',
 		callState: 'parent.callState',
 		joinCall: 'board.joinCall'
 	}
@@ -216,6 +217,7 @@ const boardCallSyncController = boardCallSync.create({
 	deviceComms: deviceComms,
 	httpClientConfig: HTTP_CLIENT_CONFIG,
 	activeCallDetailsRoute: MESSAGE_CONFIG.routes.activeCallDetailsRequest,
+	meetingPasswordRequestRoute: MESSAGE_CONFIG.routes.meetingPasswordRequest,
 	log: log,
 	utils: utils,
 	policy: {
@@ -301,8 +303,10 @@ async function init() {
 		await loadMemoryState();
 		registerCompanionMessageHandlers();
 		boardCallSyncController.registerCallCountHandler();
+		boardCallSyncController.registerAuthenticationRequestHandler();
 		pairedEnvironmentController.registerMediaHandlers();
 		await boardCallSyncController.initializeActiveCallCount();
+		await boardCallSyncController.initializeAuthenticationRequest();
 		await initializeUiFeatureMode();
 		await standbyCoordinationController.initializeConfig();
 		await parentConnectivityController.refresh({ isInterval: false, notifyAvailabilityChange: false });
@@ -425,6 +429,9 @@ async function handleCompanionMessage(message) {
 			break;
 		case 'CallSync':
 			await boardCallSyncController.handleMessage(message);
+			break;
+		case 'MeetingPasswordResponse':
+			await boardCallSyncController.handleMeetingPasswordResponse(message);
 			break;
 	}
 }

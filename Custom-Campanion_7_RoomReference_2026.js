@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 0.1.2.35
+ * Version:                 0.1.2.36
  *
  * Description:             Parent room registration, validation, deregistration, and peripheral-cleanup entry macro used as the install source.
  *                          The numbered source remains inactive on the board; parent installation renames
@@ -221,6 +221,11 @@ async function handleCompanionMessage(message) {
 
 	if (message.Action === 'ActiveCallDetailsRequest') {
 		await parentCallCoordinationController.handleActiveCallDetailsRequest(message);
+		return;
+	}
+
+	if (message.Action === 'MeetingPasswordRequest') {
+		await parentCallCoordinationController.handleMeetingPasswordRequest(message);
 		return;
 	}
 

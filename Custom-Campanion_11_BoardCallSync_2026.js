@@ -21,12 +21,12 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.7
+ * Version:                 1.0.8
  *
  * Description:             Board Call Synchronization controller for the Custom Companion Solution.
  *                          Owns board call sync classification, Webex join and disconnect behavior,
- *                          Paired call authorization, parent-state reconciliation, rejoin checks,
- *                          and user-facing call sync information.
+ *                          Guest authentication, Paired call authorization, parent-state
+ *                          reconciliation, rejoin checks, and user-facing call sync information.
  *
  * Documentation:           N/A
  *
@@ -44,13 +44,16 @@ or implied.
 
 /*
  * Board Call Synchronization xAPI surface:
- * - Subscription and initial read: Status.SystemUnit.State.NumberOfActiveCalls.
+ * - Subscriptions and initial reads: Status.SystemUnit.State.NumberOfActiveCalls and
+ *   Status.Conference.Call.AuthenticationRequest.
  * - Conditional read: Status.Call when a parent sends a disconnect sync.
- * - Commands: Command.Webex.Join, Command.Call.Disconnect,
+ * - Commands: Command.Webex.Join, Command.Conference.Call.AuthenticationResponse,
+ *   Command.Call.Disconnect,
  *   Command.UserInterface.Message.Alert.Display, and
  *   Command.UserInterface.Message.Alert.Clear.
  * - Network command: DeviceComms sendMessageCommand to ActiveCallDetailsRequest after initialization,
- *   Parent selection, an unverified local call, a local call drop, and each active-call monitor interval.
+ *   Parent selection, an unverified local call, a local call drop, each active-call monitor interval,
+ *   and MeetingPasswordRequest when Guest authentication requires a password.
  * Only Webex automatic joins are implemented. The inert non-Webex reference paths below remain
  * deliberately separated from executable behavior for future investigation.
  */
@@ -71,10 +74,16 @@ function createBoardCallSync(options) {
 	let parentCallCheckInterval = null;
 	let parentCallRequestInFlight = false;
 	let joinCommandPendingUntil = 0;
+	let authenticationRequest = 'None';
+	let meetingPasswordRequestCounter = 0;
+	let pendingMeetingPasswordRequest = null;
+	let meetingPasswordNoticeActive = false;
 
 	const UNAUTHORIZED_CALL_INFO_TEXT = 'Start calls from the Parent Room.';
 	const UNAUTHORIZED_CALL_ALERT_TEXT = 'Calling is available through the Parent Room while this board is Paired. Start the call from the Parent Room, or return this board to StandAlone to call directly.';
 	const UNAUTHORIZED_CALL_ALERT_TITLE = 'Start Calls from the Parent Room';
+	const MEETING_PASSWORD_INFO_TEXT = 'Enter the meeting password manually on this board.';
+	const MEETING_PASSWORD_ALERT_TITLE = 'Meeting Password Required';
 
 	function registerCallCountHandler() {
 		dependencies.xapi.Status.SystemUnit.State.NumberOfActiveCalls.on(callCount => {
@@ -90,6 +99,22 @@ function createBoardCallSync(options) {
 
 			handleCallCountPositive('ActiveCallCount').catch(error => {
 				dependencies.utils.softError({ Context: 'Failed to authorize companion board active call', Error: error });
+			});
+		});
+	}
+
+	function registerAuthenticationRequestHandler() {
+		const statusNode = dependencies.xapi.Status.Conference
+			&& dependencies.xapi.Status.Conference.Call
+			&& dependencies.xapi.Status.Conference.Call.AuthenticationRequest;
+		if (!statusNode || typeof statusNode.on !== 'function') {
+			dependencies.log.warn({ Message: 'Conference call authentication request subscription unavailable' });
+			return;
+		}
+
+		statusNode.on(value => {
+			handleAuthenticationRequest(value, 'StatusChange').catch(error => {
+				dependencies.utils.softError({ Context: 'Failed to handle companion board authentication request', Error: error });
 			});
 		});
 	}
@@ -116,6 +141,223 @@ function createBoardCallSync(options) {
 		}
 	}
 
+	async function initializeAuthenticationRequest() {
+		const statusNode = dependencies.xapi.Status.Conference
+			&& dependencies.xapi.Status.Conference.Call
+			&& dependencies.xapi.Status.Conference.Call.AuthenticationRequest;
+		if (!statusNode || typeof statusNode.get !== 'function') {
+			dependencies.log.warn({ Message: 'Initial conference call authentication request read unavailable' });
+			return;
+		}
+
+		try {
+			await handleAuthenticationRequest(await statusNode.get(), 'BoardInitialization');
+		} catch (error) {
+			dependencies.log.warn({ Message: 'Failed to read initial conference call authentication request', Error: error.message || error.code || 'Unknown authentication request read error' });
+		}
+	}
+
+	async function handleAuthenticationRequest(value, reason) {
+		const request = String(getXapiValue(value) || 'None');
+		authenticationRequest = request;
+		dependencies.log.info({ Message: 'Companion board conference authentication request updated', AuthenticationRequest: request, Reason: reason });
+
+		if (request === 'None') {
+			pendingMeetingPasswordRequest = null;
+			await clearMeetingPasswordNotice('AuthenticationComplete');
+			return;
+		}
+
+		const callId = await getActiveBoardCallId();
+		if (callId === null) {
+			dependencies.log.warn({ Message: 'Conference authentication request ignored because the active board CallId is unavailable', AuthenticationRequest: request, Reason: reason });
+			return;
+		}
+
+		if (request === 'HostPinOrGuest' || request === 'PanelistPinOrAttendee') {
+			pendingMeetingPasswordRequest = null;
+			await clearMeetingPasswordNotice('GuestAuthenticationAvailable');
+			await sendGuestAuthenticationResponse(callId);
+			return;
+		}
+
+		if (requiresGuestMeetingPassword(request)) {
+			await requestMeetingPassword(callId, request);
+			return;
+		}
+
+		pendingMeetingPasswordRequest = null;
+		await showMeetingPasswordNotice('UnsupportedAuthenticationRequest');
+		dependencies.log.warn({ Message: 'Conference authentication request cannot be satisfied under the Guest-only policy', AuthenticationRequest: request, CallId: callId });
+	}
+
+	async function sendGuestAuthenticationResponse(callId, meetingPassword) {
+		const response = {
+			CallId: Number(callId),
+			ParticipantRole: 'Guest'
+		};
+		if (meetingPassword) {
+			response.Pin = appendPinTerminator(meetingPassword);
+		}
+
+		await dependencies.xapi.Command.Conference.Call.AuthenticationResponse(response);
+		dependencies.log.info({
+			Message: 'Companion board conference authentication response accepted',
+			CallId: Number(callId),
+			ParticipantRole: 'Guest',
+			MeetingPasswordSupplied: !!meetingPassword
+		});
+	}
+
+	async function requestMeetingPassword(callId, request) {
+		const context = getRuntimeContext();
+		const activeParentDevice = callbacks.getActiveParentDevice ? callbacks.getActiveParentDevice() : null;
+		if (context.mode !== 'Paired' || !context.activeParentSerial || !activeParentDevice) {
+			pendingMeetingPasswordRequest = null;
+			await showMeetingPasswordNotice('ActiveParentUnavailable');
+			dependencies.log.warn({ Message: 'Meeting Password lookup unavailable because the active Parent Room is unavailable', AuthenticationRequest: request, CallId: callId });
+			return;
+		}
+
+		if (pendingMeetingPasswordRequest
+			&& pendingMeetingPasswordRequest.parentSerial === context.activeParentSerial
+			&& pendingMeetingPasswordRequest.callId === Number(callId)
+			&& pendingMeetingPasswordRequest.authenticationRequest === request) {
+			dependencies.log.debug({ Message: 'Meeting Password request already pending', AuthenticationRequest: request, CallId: callId, RequestId: pendingMeetingPasswordRequest.requestId });
+			return;
+		}
+
+		const requestId = `meeting-password:${Date.now()}:${++meetingPasswordRequestCounter}`;
+		pendingMeetingPasswordRequest = {
+			requestId: requestId,
+			parentSerial: context.activeParentSerial,
+			callId: Number(callId),
+			authenticationRequest: request
+		};
+
+		try {
+			const boardInformation = callbacks.getRuntimeBoardInformation ? await callbacks.getRuntimeBoardInformation() : {};
+			await dependencies.deviceComms.sendMessageCommand(dependencies.xapi, activeParentDevice, dependencies.meetingPasswordRequestRoute, {
+				RequestId: requestId,
+				AuthenticationRequest: request
+			}, {
+				app: 'Companion Board 2026',
+				serial: boardInformation.serial,
+				source: {
+					Role: 'Board',
+					Name: boardInformation.name,
+					Host: boardInformation.host,
+					MacAddress: boardInformation.macAddress
+				}
+			}, dependencies.httpClientConfig);
+			dependencies.log.info({ Message: 'Requested Meeting Password from active Parent Room', AuthenticationRequest: request, CallId: callId, RequestId: requestId });
+		} catch (error) {
+			pendingMeetingPasswordRequest = null;
+			await showMeetingPasswordNotice('MeetingPasswordRequestFailed');
+			dependencies.log.warn({ Message: 'Failed to request Meeting Password from active Parent Room', AuthenticationRequest: request, CallId: callId, Error: error.message || error.code || 'Unknown Meeting Password request error' });
+		}
+	}
+
+	async function handleMeetingPasswordResponse(message) {
+		const context = getRuntimeContext();
+		const payload = message && message.Payload || {};
+		const pendingRequest = pendingMeetingPasswordRequest;
+		if (!pendingRequest
+			|| message.Serial !== context.activeParentSerial
+			|| pendingRequest.parentSerial !== context.activeParentSerial
+			|| payload.RequestId !== pendingRequest.requestId
+			|| !requiresGuestMeetingPassword(authenticationRequest)) {
+			dependencies.log.debug({ Message: 'Ignored stale or unrelated Meeting Password response', SendingParentSerial: message && message.Serial || '', ActiveParentSerial: context.activeParentSerial || '', RequestId: payload.RequestId || '' });
+			return;
+		}
+
+		const activeCallId = await getActiveBoardCallId();
+		if (activeCallId === null || Number(activeCallId) !== pendingRequest.callId) {
+			pendingMeetingPasswordRequest = null;
+			dependencies.log.info({ Message: 'Ignored Meeting Password response because the authenticated call is no longer active', RequestId: payload.RequestId || '' });
+			return;
+		}
+
+		pendingMeetingPasswordRequest = null;
+		const meetingPassword = normalizeMeetingPassword(payload.MeetingPassword);
+		if (!payload.PasswordAvailable || !meetingPassword) {
+			await showMeetingPasswordNotice(payload.Reason || 'MeetingPasswordUnavailable');
+			dependencies.log.info({ Message: 'Active Parent Room did not provide a matching Meeting Password', Reason: payload.Reason || 'MeetingPasswordUnavailable', RequestId: payload.RequestId || '' });
+			return;
+		}
+
+		try {
+			await sendGuestAuthenticationResponse(activeCallId, meetingPassword);
+			await clearMeetingPasswordNotice('MeetingPasswordSubmitted');
+		} catch (error) {
+			await showMeetingPasswordNotice('MeetingPasswordSubmissionFailed');
+			dependencies.log.warn({ Message: 'Failed to submit the Meeting Password as Guest', CallId: activeCallId, Error: error.message || error.code || 'Unknown authentication response error' });
+		}
+	}
+
+	async function getActiveBoardCallId() {
+		try {
+			const calls = normalizeCallStatusList(await dependencies.xapi.Status.Call.get());
+			for (let index = 0; index < calls.length; index++) {
+				const callId = calls[index].CallId !== undefined ? calls[index].CallId : calls[index].id;
+				const numericCallId = Number(getXapiValue(callId));
+				if (Number.isFinite(numericCallId)) {
+					return numericCallId;
+				}
+			}
+		} catch (error) {
+			dependencies.log.warn({ Message: 'Failed to read active board CallId for conference authentication', Error: error.message || error.code || 'Unknown call status error' });
+		}
+		return null;
+	}
+
+	function requiresGuestMeetingPassword(request) {
+		return request === 'GuestPin'
+			|| request === 'HostPinOrGuestPin'
+			|| request === 'AnyHostPinOrGuestPin'
+			|| request === 'PanelistPinOrAttendeePin';
+	}
+
+	function normalizeMeetingPassword(value) {
+		return String(value || '').trim().replace(/#+$/, '');
+	}
+
+	function appendPinTerminator(value) {
+		const password = normalizeMeetingPassword(value);
+		return password ? `${password}#` : '';
+	}
+
+	async function showMeetingPasswordNotice(reason) {
+		meetingPasswordNoticeActive = true;
+		await setInfo(MEETING_PASSWORD_INFO_TEXT);
+		try {
+			await dependencies.xapi.Command.UserInterface.Message.Alert.Display({
+				Title: MEETING_PASSWORD_ALERT_TITLE,
+				Text: MEETING_PASSWORD_INFO_TEXT,
+				Duration: 0
+			});
+		} catch (error) {
+			dependencies.log.warn({ Message: 'Failed to display manual Meeting Password alert', Reason: reason, Error: error.message || error.code || 'Unknown alert display error' });
+		}
+		dependencies.log.info({ Message: 'Manual Meeting Password entry requested', Reason: reason, UserGuidance: MEETING_PASSWORD_INFO_TEXT, NoticeDurationSeconds: 0 });
+	}
+
+	async function clearMeetingPasswordNotice(reason) {
+		if (!meetingPasswordNoticeActive) {
+			return;
+		}
+		meetingPasswordNoticeActive = false;
+		if (infoText === MEETING_PASSWORD_INFO_TEXT) {
+			await setInfo('');
+		}
+		try {
+			await dependencies.xapi.Command.UserInterface.Message.Alert.Clear();
+		} catch (error) {
+			dependencies.log.warn({ Message: 'Failed to clear manual Meeting Password alert', Reason: reason, Error: error.message || error.code || 'Unknown alert clear error' });
+		}
+		dependencies.log.debug({ Message: 'Manual Meeting Password notice cleared', Reason: reason });
+	}
+
 	async function handleMessage(message) {
 		const context = getRuntimeContext();
 		if (message.Serial !== context.activeParentSerial) {
@@ -135,9 +377,11 @@ function createBoardCallSync(options) {
 			lastWebexPayload = null;
 			isRejoinInProgress = false;
 			joinCommandPendingUntil = 0;
-			joinCommandPendingUntil = 0;
+			authenticationRequest = 'None';
+			pendingMeetingPasswordRequest = null;
 			clearUnauthorizedCallCheck();
 			stopParentCallMonitoring();
+			await clearMeetingPasswordNotice('ParentCallDisconnected');
 			await disconnectAllCalls();
 			if (!unauthorizedCallNoticeActive) {
 				await setInfo('');
@@ -150,8 +394,11 @@ function createBoardCallSync(options) {
 			await clearUnauthorizedCallNotice('ParentBYODCallStarted');
 			lastWebexPayload = null;
 			joinCommandPendingUntil = 0;
+			authenticationRequest = 'None';
+			pendingMeetingPasswordRequest = null;
 			clearUnauthorizedCallCheck();
 			stopParentCallMonitoring();
+			await clearMeetingPasswordNotice('ParentBYODCallStarted');
 			await disconnectAllCalls();
 			const unsupportedPayload = { MeetingPlatform: 'BYOD' };
 			await setInfo(getUnsupportedCallInfoText(unsupportedPayload));
@@ -190,8 +437,11 @@ function createBoardCallSync(options) {
 			syncToken++;
 			lastWebexPayload = null;
 			joinCommandPendingUntil = 0;
+			authenticationRequest = 'None';
+			pendingMeetingPasswordRequest = null;
 			clearUnauthorizedCallCheck();
 			stopParentCallMonitoring();
+			await clearMeetingPasswordNotice('ParentUnsupportedCallStarted');
 			await disconnectAllCalls();
 			await setInfo(getUnsupportedCallInfoText(payload));
 			dependencies.log.info({ Message: 'Non-Webex call sync received; board join is out of scope', Payload: payload });
@@ -222,6 +472,9 @@ function createBoardCallSync(options) {
 
 	async function handleCallCountZero() {
 		activeBoardCallCount = 0;
+		joinCommandPendingUntil = 0;
+		authenticationRequest = 'None';
+		pendingMeetingPasswordRequest = null;
 		clearUnauthorizedCallCheck();
 		stopParentCallMonitoring();
 		if (callbacks.onCallCountZeroBoundary && await callbacks.onCallCountZeroBoundary()) {
@@ -229,7 +482,7 @@ function createBoardCallSync(options) {
 		}
 
 		const context = getRuntimeContext();
-		if (context.mode !== 'Paired' || !lastWebexPayload || isRejoinInProgress || Date.now() < joinCommandPendingUntil) {
+		if (context.mode !== 'Paired' || !lastWebexPayload || isRejoinInProgress) {
 			return;
 		}
 
@@ -302,8 +555,11 @@ function createBoardCallSync(options) {
 			syncToken++;
 			lastWebexPayload = null;
 			isRejoinInProgress = false;
+			authenticationRequest = 'None';
+			pendingMeetingPasswordRequest = null;
 			clearUnauthorizedCallCheck();
 			stopParentCallMonitoring();
+			await clearMeetingPasswordNotice('ParentCallNotActive');
 			if (hadActiveBoardCall) {
 				await disconnectAllCalls();
 				await showUnauthorizedCallNotice(requestReason);
@@ -396,6 +652,9 @@ function createBoardCallSync(options) {
 		}
 
 		try {
+			authenticationRequest = 'None';
+			pendingMeetingPasswordRequest = null;
+			await clearMeetingPasswordNotice('JoiningParentCall');
 			await joinParentCall(payload);
 			if (joinToken !== syncToken) {
 				dependencies.log.info({ Message: 'Companion board parent call join completed after cancellation', Payload: payload });
@@ -709,10 +968,15 @@ function createBoardCallSync(options) {
 		clearUnauthorizedCallNotice('CallSyncCanceled').catch(error => {
 			dependencies.utils.softError({ Context: 'Failed to clear the Paired calling policy notice while canceling call sync', Error: error });
 		});
+		clearMeetingPasswordNotice('CallSyncCanceled').catch(error => {
+			dependencies.utils.softError({ Context: 'Failed to clear the manual Meeting Password notice while canceling call sync', Error: error });
+		});
 		syncToken++;
 		lastWebexPayload = null;
 		isRejoinInProgress = false;
 		joinCommandPendingUntil = 0;
+		authenticationRequest = 'None';
+		pendingMeetingPasswordRequest = null;
 		activeBoardCallCount = 0;
 		parentCallRequestInFlight = false;
 		clearUnauthorizedCallCheck();
@@ -870,8 +1134,11 @@ function createBoardCallSync(options) {
 
 	return {
 		registerCallCountHandler,
+		registerAuthenticationRequestHandler,
 		initializeActiveCallCount,
+		initializeAuthenticationRequest,
 		handleMessage,
+		handleMeetingPasswordResponse,
 		requestActiveParentCallState,
 		disconnectAllCalls,
 		cancel,
