@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.9
+ * Version:                 1.0.10
  *
  * Description:             Board Call Synchronization controller for the Custom Companion Solution.
  *                          Owns board call sync classification, Webex join and disconnect behavior,
@@ -184,6 +184,29 @@ function createBoardCallSync(options) {
 			await clearMeetingPasswordNotice('GuestAuthenticationAvailable');
 			try {
 				await sendGuestAuthenticationResponse(callId);
+				if (requiresGuestMeetingPassword(request)) {
+					await delay(getAuthenticationUiSettleMs());
+					if (authenticationRequest !== request) {
+						dependencies.log.debug({
+							Message: 'Combined Guest authentication password lookup skipped because the authentication request changed during UI settle',
+							PreviousAuthenticationRequest: request,
+							AuthenticationRequest: authenticationRequest,
+							CallId: callId
+						});
+						return;
+					}
+					const activeCallId = await getActiveBoardCallId();
+					if (activeCallId === null || Number(activeCallId) !== Number(callId)) {
+						dependencies.log.info({
+							Message: 'Combined Guest authentication password lookup skipped because the call changed during UI settle',
+							AuthenticationRequest: request,
+							CallId: callId,
+							ActiveCallId: activeCallId
+						});
+						return;
+					}
+					await requestMeetingPassword(callId, request);
+				}
 			} catch (error) {
 				if (!requiresGuestMeetingPassword(request)) {
 					throw error;
@@ -341,6 +364,15 @@ function createBoardCallSync(options) {
 			|| request === 'HostPinOrGuestPin'
 			|| request === 'AnyHostPinOrGuestPin'
 			|| request === 'PanelistPinOrAttendeePin';
+	}
+
+	function getAuthenticationUiSettleMs() {
+		const settleMs = Number(policy.authenticationUiSettleMs);
+		return Number.isFinite(settleMs) && settleMs >= 0 ? settleMs : 250;
+	}
+
+	function delay(durationMs) {
+		return new Promise(resolve => setTimeout(resolve, durationMs));
 	}
 
 	function isMissingIndexedStatusError(error) {
