@@ -3,13 +3,12 @@
   <desc id="description">A mobile companion display overlaps a larger parent room display.</desc>
   <metadata>
     Original compact Custom Companion artwork designed for the constrained RoomOS
-    home-screen icon region. Device calibration confirmed that RoomOS renders the
-    complete source canvas into a 60x60 slot without cropping. This edition maximizes
-    the filled Momentum-inspired silhouette inside a 5% production safe area.
+    home-screen icon region. The filled overlapping-device silhouette uses rounded
+    Momentum-inspired geometry and exceeds the 5% transparent safe-area requirement.
   </metadata>
 
-  <!-- Artwork bounds target 5% horizontal padding in the 512x512 source canvas. -->
-  <g id="roomos-glyph" fill="#FFFFFF" transform="translate(-10.4727 -24.0045) scale(1.040909)">
+  <!-- Optical sizing matches the visual footprint of native RoomOS glyphs. -->
+  <g id="roomos-glyph" fill="#FFFFFF" transform="translate(46.08 46.08) scale(.82)">
     <!-- Parent Room Device: a strong filled frame rather than a thin outline. -->
     <path id="parent-room-device" fill-rule="evenodd" d="
       M78 84h216a42 42 0 0 1 42 42v126a42 42 0 0 1-42 42H78a42 42 0 0 1-42-42V126a42 42 0 0 1 42-42
