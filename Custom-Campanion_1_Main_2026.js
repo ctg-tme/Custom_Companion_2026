@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 0.1.2.43
+ * Version:                 0.1.2.44
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -66,6 +66,8 @@ const UNHEALTHY_INFO_TEXT = 'Companion Device controls are unavailable. Contact 
 const CONFIG_DENIED_PROMPT_ID = 'cc26_config_denied';
 const ACTIVE_CALL_STANDALONE_BLOCKED_PROMPT_ID = 'cc26_active_call_standalone_blocked';
 const PARENT_UNAVAILABLE_PROMPT_ID = 'cc26_parent_unavailable';
+const SELECTION_PROGRESS_ALERT_OWNER = 'main:selection-progress';
+const SELECTION_PROGRESS_ALERT_DURATION_SECONDS = 60;
 const HTTP_CLIENT_CONFIG = {
 	mode: 'On',
 	allowInsecureHTTPS: config.httpClient.allowInsecureHTTPS,
@@ -101,6 +103,7 @@ let parentDeviceStatus = [];
 let activeParentSerial = companionState.STANDALONE_PARENT_SERIAL;
 let companionPeripheralId = '';
 let isHandlingSelection = false;
+let selectionProgressAlertToken = null;
 let isUnhealthy = false;
 let unhealthyReleasePending = false;
 let areUiEventHandlersRegistered = false;
@@ -621,6 +624,7 @@ async function handleWidgetAction(event) {
 	}
 
 	isHandlingSelection = true;
+	await showSelectionProgressAlert(widget);
 
 	try {
 		switch (widget.action) {
@@ -632,8 +636,65 @@ async function handleWidgetAction(event) {
 				break;
 		}
 	} finally {
+		await clearSelectionProgressAlert('SelectionHandlerComplete');
 		isHandlingSelection = false;
 	}
+}
+
+async function showSelectionProgressAlert(widget) {
+	const options = getSelectionProgressAlertOptions(widget);
+	if (!options) {
+		return;
+	}
+
+	try {
+		selectionProgressAlertToken = await companionUi.showOwnedAlert(xapi, {
+			ownerId: SELECTION_PROGRESS_ALERT_OWNER,
+			title: options.title,
+			text: options.text,
+			duration: SELECTION_PROGRESS_ALERT_DURATION_SECONDS
+		});
+	} catch (error) {
+		selectionProgressAlertToken = null;
+		utils.softError({ Context: 'Failed to display Companion Device selection progress alert', Action: widget.action, Error: error });
+	}
+}
+
+async function clearSelectionProgressAlert(reason) {
+	const ownershipToken = selectionProgressAlertToken;
+	selectionProgressAlertToken = null;
+	if (ownershipToken === null) {
+		return;
+	}
+
+	try {
+		await companionUi.clearOwnedAlert(xapi, SELECTION_PROGRESS_ALERT_OWNER, ownershipToken);
+	} catch (error) {
+		utils.softError({ Context: 'Failed to clear Companion Device selection progress alert', Reason: reason, Error: error });
+	}
+}
+
+function getSelectionProgressAlertOptions(widget) {
+	if (widget.action === 'Standalone') {
+		return {
+			title: 'Switching to Standalone',
+			text: 'Restoring this Companion Device for normal local use. Please wait.'
+		};
+	}
+
+	if (widget.action === 'ParentRoomDeviceSelect') {
+		const parentDevice = parentDevices[widget.index];
+		if (!parentDevice) {
+			return null;
+		}
+		const parentRoomDeviceName = parentDevice.name || parentDevice.host || 'the selected Parent Room Device';
+		return {
+			title: 'Connecting to Parent Room Device',
+			text: `Connecting to ${parentRoomDeviceName} and preparing this Companion Device. Please wait.`
+		};
+	}
+
+	return null;
 }
 
 async function selectStandaloneMode() {
@@ -676,6 +737,7 @@ async function completeVerifiedParentSelection(refreshedParentDevice, parentStat
 	if (isUnhealthy) {
 		return false;
 	}
+	await clearSelectionProgressAlert('StandbyPromptReady');
 	await standbyCoordinationController.scheduleSelectedParentSync(refreshedParentDevice, prefetchedStandbyState);
 	await companionDeviceCallSyncController.requestActiveParentCallState('ParentSelection');
 	return true;

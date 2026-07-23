@@ -100,6 +100,10 @@ _Avoid_: Standby prompt timer, dismissed standby action
 The current Companion Device workflow's claim over the single global RoomOS alert surface. A newer alert claim supersedes the previous owner, and only the current owner and lifecycle token may clear the surface.
 _Avoid_: Alert FeedbackId, per-alert RoomOS clear
 
+**Selection Progress Alert**:
+The immediate non-interactive Companion Device notice that acknowledges an In-Room User's choice of Standalone or a Parent Room Device while the selected operating mode is prepared. It ends when the transition completes, the standby decision prompt takes over, the selection fails, a newer Companion Alert owner supersedes it, or its safety duration expires.
+_Avoid_: Pairing prompt, registration progress
+
 **Paired Call Limit**:
 The invariant that a Companion Device participates in at most one active-Parent Room Device-authorized call while Paired. Calling remains available through the Parent Room Device while Paired; a direct Companion Device call without current Parent Room Device authorization is disconnected and explained as requiring the call to start from the Parent Room Device. Parent Room runtime initialization, Parent Room Device selection, Companion Device initialization, and periodic checks replay authoritative Parent Room Device call state so late Paired transitions and runtime restarts converge. A failed periodic network check does not end a known authorized call; Call Preservation State still owns Parent Room Device-unavailable behavior. Standalone retains native RoomOS call behavior.
 _Avoid_: Global call limit, Standalone call restriction
