@@ -12,7 +12,7 @@ import {
   redactConfig,
   setLockedInstallerValues,
 } from './config-editor';
-import { groupConfigLeaves, humanizeConfigSegment, type ConfigGroup } from './config-presentation';
+import { groupConfigLeaves, humanizeConfigForReview, humanizeConfigSegment, type ConfigGroup } from './config-presentation';
 import {
   connectToCompanionDevice,
   listInstalledMacros,
@@ -429,7 +429,7 @@ export class InstallerApp {
           <span class="installation-type-copy">
             <small>Clean installation</small>
             <strong>Purge ${GENERATED_STORAGE_MACRO} and Install Custom Companion 2026 Macros</strong>
-            <em>Deletes saved Parent Room Devices, Pending Deregistration cleanup records, the active Parent Room selection, PIN Mode state, and captured Standalone UI and standby settings before installation.</em>
+            <em>Deletes saved Parent Room Devices, Pending Deregistration cleanup records, the active Parent Room Device selection, PIN Mode state, and captured Standalone UI and standby settings before installation.</em>
           </span>
         </label>
       </section>
@@ -445,7 +445,9 @@ export class InstallerApp {
     const legacy = this.currentLegacy();
     const cleanInstallation = this.installationType === 'clean';
     const storageInstalled = this.installed.some((macro) => macro.name === GENERATED_STORAGE_MACRO);
-    const config = this.configDocument ? redactConfig(withLeafValues(this.configDocument, this.configValues)) : {};
+    const config = this.configDocument
+      ? humanizeConfigForReview(redactConfig(withLeafValues(this.configDocument, this.configValues)))
+      : {};
     return `
       ${this.pageHeader('Step 6 of 8', 'Review before installing', 'All source files have passed preflight. The next action begins forward-only changes on the connected Companion Device.')}
       ${this.errorNotice()}
@@ -461,8 +463,8 @@ export class InstallerApp {
           <label class="check-row purge"><input id="purge-legacy" type="checkbox" ${this.purgeLegacy ? 'checked' : ''}><span><strong>Purge legacy files</strong><small>Checked by default. Uncheck to retain these files in an inactive state.</small></span></label>` : '<p class="empty-state">No legacy project macros were found. Generated storage is governed only by the selected installation type; unrelated macros remain outside this installer’s scope.</p>'}
       </section>
       <section class="config-preview" aria-labelledby="config-preview-title">
-        <header><div><h2 id="config-preview-title">Full Config object</h2><p>Every generated setting is shown below. Credential values remain masked in this review.</p></div></header>
-        <pre><code>const config = ${escapeHtml(JSON.stringify(config, null, 2))};</code></pre>
+        <header><div><h2 id="config-preview-title">Configuration summary</h2><p>Every generated setting is shown with human-facing labels. Credential values remain masked in this review.</p></div></header>
+        <pre><code>${escapeHtml(JSON.stringify(config, null, 2))}</code></pre>
       </section>
       <div class="notice danger"><span>${warningIcon}</span><div><strong>No automatic rollback</strong><p>${cleanInstallation ? `${GENERATED_STORAGE_MACRO} and its stored Companion Device state will be permanently removed before matching macros are overwritten.` : 'Matching macros will be overwritten while generated Companion Device storage is preserved.'} Installation continues forward and reports the macro runtime result.</p></div></div>`;
   }
@@ -495,7 +497,7 @@ export class InstallerApp {
           <ol class="completion-steps">
             <li><strong>Open Custom Companion</strong><span>Return to the Companion Device and open its Custom Companion interface.</span></li>
             <li><strong>Complete Parent Room Device configuration</strong><span>Add or update Parent Room Devices from the on-device configuration experience.</span></li>
-            <li><strong>Confirm the device is ready</strong><span>Review the available parent choices and the Standalone state before placing the device into service.</span></li>
+            <li><strong>Confirm the device is ready</strong><span>Review the registered Parent Room Devices and the Standalone state before placing the Companion Device into service.</span></li>
           </ol>
         </div>
       </section>`;

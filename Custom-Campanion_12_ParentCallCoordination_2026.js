@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.4
+ * Version:                 1.0.5
  *
  * Description:             Parent Call Coordination controller for the Custom Companion Solution.
  *                          Owns parent call detection, BYOD detection, participant admission,
@@ -130,7 +130,7 @@ function createParentCallCoordination(options) {
 			}
 
 			pendingCallRemoteNumber = capturedRemoteNumber;
-			log.debug({ Message: 'Captured Parent Room call remote number', RemoteNumber: pendingCallRemoteNumber });
+			log.debug({ Message: 'Captured Parent Room Device call remote number', RemoteNumber: pendingCallRemoteNumber });
 			if (parentActiveCallCount > 0) {
 				sendPendingCallSync(detectionToken, { Trigger: 'ActiveCallCount', ActiveCallCount: parentActiveCallCount });
 				return;
@@ -181,13 +181,13 @@ function createParentCallCoordination(options) {
 		xapi.Status.SystemUnit.State.NumberOfActiveCalls.on(callCount => {
 			const activeCallCount = Number(normalizeEventValue(callCount));
 			parentActiveCallCount = activeCallCount;
-			log.debug({ Message: 'Parent Room active call count updated', ActiveCallCount: activeCallCount });
+			log.debug({ Message: 'Parent Room Device active call count updated', ActiveCallCount: activeCallCount });
 
 			if (activeCallCount > 0) {
 				sendPendingCallSync(callDetectionToken, { Trigger: 'ActiveCallCount', ActiveCallCount: activeCallCount });
 				if (!activeParentCallDetails && !pendingCallRemoteNumber) {
 					reconcileCurrentCallState('ActiveCallCount', true).catch(error => {
-						utils.softError({ Context: 'Failed to reconcile active Parent Room call from call count', ActiveCallCount: activeCallCount, Error: error });
+						utils.softError({ Context: 'Failed to reconcile active Parent Room Device call from call count', ActiveCallCount: activeCallCount, Error: error });
 					});
 				}
 				queueCompanionAdmissionCheck('ActiveCallCount');
@@ -315,7 +315,7 @@ function createParentCallCoordination(options) {
 	async function processCompanionAdmission(reason) {
 		const roster = await getParticipantRoster();
 		if (!roster || roster.participants.length < 1) {
-			log.debug({ Message: 'Companion admission skipped; participant roster unavailable', Reason: reason });
+			log.debug({ Message: 'Companion Device admission skipped; participant roster unavailable', Reason: reason });
 			return { waitingCount: 0 };
 		}
 
@@ -446,7 +446,7 @@ function createParentCallCoordination(options) {
 		try {
 			const validation = await validateCompanionDeviceCallIdentity(waitingMatch.companionDevice);
 			if (!validation.isValid) {
-				log.debug({ Message: 'Companion Device admission skipped; Companion Device call did not match Parent Room call', CompanionDeviceName: waitingMatch.companionDevice.Name, CompanionDeviceCallIdentities: validation.callIdentities, ParentCall: activeParentCallDetails });
+				log.debug({ Message: 'Companion Device admission skipped; Companion Device call did not match Parent Room Device call', CompanionDeviceName: waitingMatch.companionDevice.Name, CompanionDeviceCallIdentities: validation.callIdentities, ParentCall: activeParentCallDetails });
 				return;
 			}
 
@@ -659,7 +659,7 @@ function createParentCallCoordination(options) {
 			}, true);
 		}
 
-		log.debug({ Message: 'Parent Room BYOD call sync sent', Source: source, State: state, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
+		log.debug({ Message: 'Parent Room Device BYOD call sync sent', Source: source, State: state, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 	}
 
 	async function sendCallSync(remoteNumber, call) {
@@ -681,7 +681,7 @@ function createParentCallCoordination(options) {
 			}, true);
 		}
 
-		log.debug({ Message: 'Parent Room call sync sent', Reason: reason, RemoteNumber: remoteNumber || '', JoinTarget: activeParentCallDetails && activeParentCallDetails.JoinTarget || '', MeetingPlatform: callDetails.meetingPlatform, Protocol: callDetails.protocol, ParentCall: activeParentCallDetails, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
+		log.debug({ Message: 'Parent Room Device call sync sent', Reason: reason, RemoteNumber: remoteNumber || '', JoinTarget: activeParentCallDetails && activeParentCallDetails.JoinTarget || '', MeetingPlatform: callDetails.meetingPlatform, Protocol: callDetails.protocol, ParentCall: activeParentCallDetails, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 	}
 
 	async function getActiveParentCallDetails(remoteNumber, call, callDetails) {
@@ -721,7 +721,7 @@ function createParentCallCoordination(options) {
 					activeCallCount = statusCount;
 				}
 			} catch (error) {
-				log.debug({ Message: 'Failed to read Parent Room active call count during reconciliation; using Status.Call count', Reason: reason, CallStatusCount: calls.length, Error: error.message || error.code || 'Unknown active call count error' });
+				log.debug({ Message: 'Failed to read Parent Room Device active call count during reconciliation; using Status.Call count', Reason: reason, CallStatusCount: calls.length, Error: error.message || error.code || 'Unknown active call count error' });
 			}
 			parentActiveCallCount = activeCallCount;
 
@@ -730,12 +730,12 @@ function createParentCallCoordination(options) {
 				if (shouldBroadcast) {
 					await sendCallDisconnectSync(reason);
 				}
-				log.debug({ Message: 'Parent Room call-state reconciliation found no active call', Reason: reason });
+				log.debug({ Message: 'Parent Room Device call-state reconciliation found no active call', Reason: reason });
 				return null;
 			}
 
 			if (calls.length < 1) {
-				log.debug({ Message: 'Parent Room call-state reconciliation found an active count without Status.Call details', Reason: reason, ActiveCallCount: activeCallCount });
+				log.debug({ Message: 'Parent Room Device call-state reconciliation found an active count without Status.Call details', Reason: reason, ActiveCallCount: activeCallCount });
 				prepareCallDetection();
 				return activeParentCallDetails;
 			}
@@ -751,7 +751,7 @@ function createParentCallCoordination(options) {
 			}
 			queueCompanionAdmissionCheck(reason);
 			startAdmissionPolling(reason);
-			log.debug({ Message: 'Parent Room active call state reconciled', Reason: reason, ParentCall: activeParentCallDetails, Broadcast: !!shouldBroadcast });
+			log.debug({ Message: 'Parent Room Device active call state reconciled', Reason: reason, ParentCall: activeParentCallDetails, Broadcast: !!shouldBroadcast });
 			return activeParentCallDetails;
 		})();
 
@@ -766,7 +766,7 @@ function createParentCallCoordination(options) {
 		try {
 			return normalizeCallStatus(await xapi.Status.Call.get());
 		} catch (error) {
-			log.debug({ Message: 'Failed to read current Parent Room call status', Error: error.message || error.code || 'Unknown call status error' });
+			log.debug({ Message: 'Failed to read current Parent Room Device call status', Error: error.message || error.code || 'Unknown call status error' });
 			return [];
 		}
 	}
@@ -810,7 +810,7 @@ function createParentCallCoordination(options) {
 			}, true);
 		}
 
-		log.debug({ Message: 'Parent Room call disconnect sync sent', RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
+		log.debug({ Message: 'Parent Room Device call disconnect sync sent', RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 	}
 
 	async function getParentCallDetails(call) {
@@ -879,7 +879,7 @@ function createParentCallCoordination(options) {
 			Reason: resolution.reason
 		}, true);
 		log.info({
-			Message: 'Parent Room Meeting Password lookup completed',
+			Message: 'Parent Room Device Meeting Password lookup completed',
 			Serial: message.Serial,
 			RequestId: requestId,
 			PasswordAvailable: resolution.passwordAvailable,
@@ -892,7 +892,7 @@ function createParentCallCoordination(options) {
 		try {
 			response = await xapi.Command.Bookings.List({ ScheduleType: 'Current', Limit: 20 });
 		} catch (error) {
-			log.warn({ Message: 'Failed to list current Parent Room bookings for Meeting Password lookup', Error: error.message || error.code || 'Unknown Bookings List error' });
+			log.warn({ Message: 'Failed to list current Parent Room Device bookings for Meeting Password lookup', Error: error.message || error.code || 'Unknown Bookings List error' });
 			return {
 				passwordAvailable: false,
 				meetingPassword: '',
@@ -1049,7 +1049,7 @@ function createParentCallCoordination(options) {
 			Request: message.Payload || {}
 		}, true);
 		startAdmissionPolling('ActiveCallDetailsRequest');
-		log.debug({ Message: 'Parent Room active call details sent to Companion Device', Serial: message.Serial, ParentHasActiveCall: !!activeParentCallDetails, ParentCall: activeParentCallDetails });
+		log.debug({ Message: 'Parent Room Device active call details sent to Companion Device', Serial: message.Serial, ParentHasActiveCall: !!activeParentCallDetails, ParentCall: activeParentCallDetails });
 	}
 
 

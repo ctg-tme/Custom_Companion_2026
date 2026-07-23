@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.1
+ * Version:                 1.0.2
  *
  * Description:             Parent Connectivity controller for the Custom Companion Solution.
  *                          Owns parent identity refresh, serial-verified retries, monitoring,
@@ -84,7 +84,7 @@ function createParentConnectivity(options) {
 			try {
 				const refreshedDevice = await dependencies.deviceComms.parentInitializationRequest(dependencies.xapi, device, dependencies.httpClientConfig);
 				if (device.serial && refreshedDevice.serial !== device.serial) {
-					const mismatchError = new Error('Parent identity serial changed for an existing parent record');
+					const mismatchError = new Error('Parent Room Device identity serial changed for an existing Parent Room Device record');
 					mismatchError.code = 'CC26-PARENT-IDENTITY-MISMATCH';
 					throw mismatchError;
 				}
@@ -144,7 +144,7 @@ function createParentConnectivity(options) {
 			: true;
 		if (canContinue !== false) {
 			await sendHeartbeat();
-			dependencies.log.info({ Message: 'Companion Device Paired to Parent Room', Host: refreshedParentDevice.host, Serial: result.parentStatus.serial, Name: result.parentStatus.name });
+			dependencies.log.info({ Message: 'Companion Device Paired to Parent Room Device', Host: refreshedParentDevice.host, Serial: result.parentStatus.serial, Name: result.parentStatus.name });
 		}
 
 		return result;
@@ -369,8 +369,8 @@ function createParentConnectivity(options) {
 		}
 
 		callPreservationActive = false;
-		const roomName = getParentDisplayName(parentDevice);
-		await setInfo(`Unable to connect to ${roomName}. Running Standalone.`, policy.failureInfoMs);
+		const parentRoomDeviceName = getParentDisplayName(parentDevice);
+		await setInfo(`Unable to connect to ${parentRoomDeviceName}. Running Standalone.`, policy.failureInfoMs);
 		if (callbacks.onUnavailableFallback) {
 			await callbacks.onUnavailableFallback(parentDevice);
 		}
@@ -427,7 +427,7 @@ function createParentConnectivity(options) {
 			}
 		}
 
-		return buildAttemptResult(latestStatus || buildOfflineStatus(parentDevice, new Error('Parent offline after retry')), false, retryCount);
+		return buildAttemptResult(latestStatus || buildOfflineStatus(parentDevice, new Error('Parent Room Device offline after retry')), false, retryCount);
 	}
 
 	function buildAttemptResult(parentStatus, canceled, attempt) {
@@ -545,7 +545,7 @@ function createParentConnectivity(options) {
 	}
 
 	function getParentDisplayName(parentDevice) {
-		return parentDevice.name || parentDevice.host || 'Selected room';
+		return parentDevice.name || parentDevice.host || 'Selected Parent Room Device';
 	}
 
 	function delay(milliseconds) {

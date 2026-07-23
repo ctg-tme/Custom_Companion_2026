@@ -1,4 +1,4 @@
-import type { ConfigLeaf } from './types';
+import type { ConfigLeaf, ConfigValue } from './types';
 
 export interface ConfigGroup {
   path: Array<string | number>;
@@ -19,6 +19,15 @@ export function humanizeConfigSegment(segment: string | number): string {
     .split(/\s+/);
   const acronyms: Record<string, string> = { url: 'URL', ui: 'UI', http: 'HTTP', pin: 'PIN', id: 'ID' };
   return words.map((word) => acronyms[word.toLowerCase()] ?? `${word.charAt(0).toUpperCase()}${word.slice(1)}`).join(' ');
+}
+
+export function humanizeConfigForReview(value: ConfigValue): ConfigValue {
+  if (Array.isArray(value)) return value.map((item) => humanizeConfigForReview(item));
+  if (!value || typeof value !== 'object') return value;
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [humanizeConfigSegment(key), humanizeConfigForReview(child)]),
+  );
 }
 
 export function groupConfigLeaves(leaves: ConfigLeaf[]): ConfigGroup {

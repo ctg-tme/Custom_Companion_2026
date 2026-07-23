@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.11
+ * Version:                 1.0.12
  *
  * Description:             Companion Device Call Synchronization controller for the Custom Companion solution.
  *                          Owns Companion Device call sync classification, Webex join and disconnect behavior,
@@ -79,9 +79,9 @@ function createCompanionDeviceCallSync(options) {
 	let pendingMeetingPasswordRequest = null;
 	let meetingPasswordNoticeActive = false;
 
-	const UNAUTHORIZED_CALL_INFO_TEXT = 'Start calls from the Parent Room.';
-	const UNAUTHORIZED_CALL_ALERT_TEXT = 'Calling is available through the Parent Room while this Companion Device is Paired. Start the call from the Parent Room, or return this Companion Device to Standalone to call directly.';
-	const UNAUTHORIZED_CALL_ALERT_TITLE = 'Start Calls from the Parent Room';
+	const UNAUTHORIZED_CALL_INFO_TEXT = 'Start calls from the Parent Room Device.';
+	const UNAUTHORIZED_CALL_ALERT_TEXT = 'Calling is available through the Parent Room Device while this Companion Device is Paired. Start the call from the Parent Room Device, or run this Companion Device as Standalone to call directly.';
+	const UNAUTHORIZED_CALL_ALERT_TITLE = 'Start Calls from Parent Room Device';
 	const MEETING_PASSWORD_INFO_TEXT = 'Enter the meeting password manually on this Companion Device.';
 	const MEETING_PASSWORD_ALERT_TITLE = 'Meeting Password Required';
 
@@ -135,7 +135,7 @@ function createCompanionDeviceCallSync(options) {
 				Code: 'CC26-CALL-COUNT-READ',
 				Component: 'CompanionDeviceCallSync',
 				Context: 'Failed to read the initial local active call count',
-				Remediation: 'Diagnose Status.SystemUnit.State.NumberOfActiveCalls before relying on automatic release behavior.',
+				Remediation: 'Diagnose Status.SystemUnit.State.NumberOfActiveCalls before relying on automatic Standalone transition behavior.',
 				Error: error
 			});
 		}
@@ -448,7 +448,7 @@ function createCompanionDeviceCallSync(options) {
 			if (!unauthorizedCallNoticeActive) {
 				await setInfo('');
 			}
-			dependencies.log.info({ Message: 'Parent Room call disconnect sync received', Payload: payload });
+			dependencies.log.info({ Message: 'Parent Room Device call disconnect sync received', Payload: payload });
 			return;
 		}
 
@@ -476,14 +476,14 @@ function createCompanionDeviceCallSync(options) {
 		if (payload.CallKind === 'AdmissionRequired') {
 			await clearUnauthorizedCallNotice('ParentWebexCallStarted');
 			await setInfo('A host or cohost needs to admit this Companion Device to the Webex call.');
-			dependencies.log.debug({ Message: 'Parent Room cannot auto-admit Companion Device because it is not host or cohost', Payload: payload });
+			dependencies.log.debug({ Message: 'Parent Room Device cannot auto-admit Companion Device because it is not host or cohost', Payload: payload });
 			return;
 		}
 
 		if (payload.CallKind === 'AdmissionAdmitted') {
 			await clearUnauthorizedCallNotice('ParentWebexCallStarted');
 			await setInfo('');
-			dependencies.log.info({ Message: 'Companion Device admitted by Parent Room host', Payload: payload });
+			dependencies.log.info({ Message: 'Companion Device admitted by Parent Room Device host', Payload: payload });
 			return;
 		}
 
@@ -527,7 +527,7 @@ function createCompanionDeviceCallSync(options) {
 		try {
 			await requestActiveParentCallState(reason);
 		} catch (error) {
-			dependencies.log.warn({ Message: 'Failed to request Parent Room call state for an unverified Paired Companion Device call', Reason: reason, Error: error.message || error.code || 'Unknown Parent Room call state request error' });
+			dependencies.log.warn({ Message: 'Failed to request Parent Room Device call state for an unverified Paired Companion Device call', Reason: reason, Error: error.message || error.code || 'Unknown Parent Room Device call state request error' });
 		}
 		scheduleUnauthorizedCallCheck(reason);
 	}
@@ -555,16 +555,16 @@ function createCompanionDeviceCallSync(options) {
 		}
 
 		isRejoinInProgress = true;
-		await setInfo('Checking the active Parent Room call before rejoining.');
+		await setInfo('Checking the active Parent Room Device call before rejoining.');
 		try {
 			await sendActiveCallDetailsRequest(activeParentDevice, 'CompanionDeviceCallEnded');
 		} catch (error) {
 			isRejoinInProgress = false;
-			dependencies.log.warn({ Message: 'Failed to request Parent Room call details after Companion Device call ended', Host: activeParentDevice.host, Error: error.message || error.code || 'Unknown Parent Room call details request error' });
+			dependencies.log.warn({ Message: 'Failed to request Parent Room Device call details after Companion Device call ended', Host: activeParentDevice.host, Error: error.message || error.code || 'Unknown Parent Room Device call details request error' });
 			return;
 		}
 
-		dependencies.log.info({ Message: 'Requested active Parent Room call details after Companion Device call ended', Host: activeParentDevice.host, Payload: lastWebexPayload });
+		dependencies.log.info({ Message: 'Requested active Parent Room Device call details after Companion Device call ended', Host: activeParentDevice.host, Payload: lastWebexPayload });
 	}
 
 	async function requestActiveParentCallState(reason) {
@@ -579,14 +579,14 @@ function createCompanionDeviceCallSync(options) {
 			return false;
 		}
 		if (parentCallRequestInFlight) {
-			dependencies.log.debug({ Message: 'Parent Room call-state reconciliation already in flight', Reason: reason, Host: activeParentDevice.host });
+			dependencies.log.debug({ Message: 'Parent Room Device call-state reconciliation already in flight', Reason: reason, Host: activeParentDevice.host });
 			return false;
 		}
 
 		parentCallRequestInFlight = true;
 		try {
 			await sendActiveCallDetailsRequest(activeParentDevice, reason || 'Unspecified');
-			dependencies.log.debug({ Message: 'Requested active Parent Room call state', Reason: reason || 'Unspecified', Host: activeParentDevice.host });
+			dependencies.log.debug({ Message: 'Requested active Parent Room Device call state', Reason: reason || 'Unspecified', Host: activeParentDevice.host });
 			return true;
 		} finally {
 			parentCallRequestInFlight = false;
@@ -630,10 +630,10 @@ function createCompanionDeviceCallSync(options) {
 			}
 			const reconciliationLog = hadActiveCompanionDeviceCall ? dependencies.log.info.bind(dependencies.log) : dependencies.log.debug.bind(dependencies.log);
 			reconciliationLog({
-				Message: hadActiveCompanionDeviceCall ? 'Direct Companion Device call disconnected; Paired calls must start from the Parent Room' : 'Parent Room call-state reconciliation found no active call',
+				Message: hadActiveCompanionDeviceCall ? 'Direct Companion Device call disconnected; Paired calls must start from the Parent Room Device' : 'Parent Room Device call-state reconciliation found no active call',
 				RequestReason: requestReason,
 				DisconnectedCompanionDeviceCall: hadActiveCompanionDeviceCall,
-				PairedCallPolicy: hadActiveCompanionDeviceCall ? 'While Paired, start calls from the Parent Room' : '',
+				PairedCallPolicy: hadActiveCompanionDeviceCall ? 'While Paired, start calls from the Parent Room Device' : '',
 				UserGuidance: hadActiveCompanionDeviceCall ? UNAUTHORIZED_CALL_INFO_TEXT : '',
 				AlertGuidance: hadActiveCompanionDeviceCall ? UNAUTHORIZED_CALL_ALERT_TEXT : '',
 				NoticeDurationSeconds: hadActiveCompanionDeviceCall ? getUnauthorizedCallNoticeDurationSeconds() : 0
@@ -655,7 +655,7 @@ function createCompanionDeviceCallSync(options) {
 			isRejoinInProgress = false;
 			joinCommandPendingUntil = 0;
 			await setInfo('');
-			dependencies.log.info({ Message: 'Companion Device call ended and active Parent Room call did not match last synced call; rejoin skipped', ParentHasActiveCall: !!payload.ParentHasActiveCall, ParentCall: payload.ParentCall || {}, Payload: skippedPayload });
+			dependencies.log.info({ Message: 'Companion Device call ended and active Parent Room Device call did not match last synced call; rejoin skipped', ParentHasActiveCall: !!payload.ParentHasActiveCall, ParentCall: payload.ParentCall || {}, Payload: skippedPayload });
 			return;
 		}
 
@@ -680,7 +680,7 @@ function createCompanionDeviceCallSync(options) {
 		lastWebexPayload = payload;
 		clearUnauthorizedCallCheck();
 		if (isSamePendingJoin) {
-			dependencies.log.debug({ Message: 'Duplicate Parent Room call state accepted while Webex join is settling', Reason: reason, Payload: payload });
+			dependencies.log.debug({ Message: 'Duplicate Parent Room Device call state accepted while Webex join is settling', Reason: reason, Payload: payload });
 			return;
 		}
 
@@ -688,18 +688,18 @@ function createCompanionDeviceCallSync(options) {
 			activeCompanionDeviceCallCount = Math.max(activeCompanionDeviceCallCount, 1);
 			startParentCallMonitoring();
 			await setInfo('');
-			dependencies.log.debug({ Message: 'Existing Companion Device call authorized by active Parent Room state', Reason: reason, Payload: payload });
+			dependencies.log.debug({ Message: 'Existing Companion Device call authorized by active Parent Room Device state', Reason: reason, Payload: payload });
 			return;
 		}
 
 		if (hasActiveCall) {
 			isRejoinInProgress = true;
 			await disconnectAllCalls();
-			dependencies.log.info({ Message: 'Disconnected Companion Device call that did not match the active Parent Room call', Reason: reason, Payload: payload });
+			dependencies.log.info({ Message: 'Disconnected Companion Device call that did not match the active Parent Room Device call', Reason: reason, Payload: payload });
 		}
 
 		if (reason === 'CompanionDeviceCallEnded') {
-			await setInfo('Rejoining the Webex call from the active Parent Room.');
+			await setInfo('Rejoining the Webex call from the active Parent Room Device.');
 		}
 		try {
 			await joinParentCallOnce(payload, joinToken);
@@ -710,7 +710,7 @@ function createCompanionDeviceCallSync(options) {
 
 	async function joinParentCallOnce(payload, joinToken) {
 		if (joinToken !== syncToken) {
-			dependencies.log.info({ Message: 'Companion Device call join from Parent Room canceled', Payload: payload });
+			dependencies.log.info({ Message: 'Companion Device call join from Parent Room Device canceled', Payload: payload });
 			return;
 		}
 
@@ -720,14 +720,14 @@ function createCompanionDeviceCallSync(options) {
 			await clearMeetingPasswordNotice('JoiningParentCall');
 			await joinParentCall(payload);
 			if (joinToken !== syncToken) {
-				dependencies.log.info({ Message: 'Companion Device call join from Parent Room completed after cancellation', Payload: payload });
+				dependencies.log.info({ Message: 'Companion Device call join from Parent Room Device completed after cancellation', Payload: payload });
 				return;
 			}
 			const settleMs = Number(policy.joinCommandSettleMs);
 			joinCommandPendingUntil = Date.now() + (Number.isFinite(settleMs) ? Math.max(0, settleMs) : 10000);
 			await setInfo(getCallJoinInfoText(payload));
 			startParentCallMonitoring();
-			dependencies.log.info({ Message: 'Companion Device call join from Parent Room accepted', Payload: payload });
+			dependencies.log.info({ Message: 'Companion Device call join from Parent Room Device accepted', Payload: payload });
 		} catch (error) {
 			lastWebexPayload = null;
 			joinCommandPendingUntil = 0;
@@ -738,7 +738,7 @@ function createCompanionDeviceCallSync(options) {
 				Text: getCallJoinFailureAlertText(payload),
 				Duration: 20
 			});
-			dependencies.utils.softError({ Context: 'Failed to join Parent Room call', Error: error, Payload: payload });
+			dependencies.utils.softError({ Context: 'Failed to join Parent Room Device call', Error: error, Payload: payload });
 		}
 	}
 
@@ -753,7 +753,7 @@ function createCompanionDeviceCallSync(options) {
 			return dependencies.xapi.Command.Webex.Join({ Number: remoteNumber, ParticipantRole: 'Guest', TrackingData: 'CustomCompanion2026' });
 		}
 
-		throw new Error('Only Webex call sync join is in scope for this Companion solution');
+		throw new Error('Only Webex call sync join is in scope for the Custom Companion solution');
 	}
 
 	/*
@@ -829,7 +829,7 @@ function createCompanionDeviceCallSync(options) {
 			activeCompanionDeviceCallCount = activeCallCount;
 			return activeCallCount > 0;
 		} catch (error) {
-			dependencies.log.warn({ Message: 'Could not verify the Paired Call Limit; new Parent Room call join ignored', Error: error.message || error.code || 'Unknown call count error' });
+			dependencies.log.warn({ Message: 'Could not verify the Paired Call Limit; new Parent Room Device call join ignored', Error: error.message || error.code || 'Unknown call count error' });
 			return true;
 		}
 	}
@@ -839,7 +839,7 @@ function createCompanionDeviceCallSync(options) {
 		try {
 			calls = normalizeCallStatusList(await dependencies.xapi.Status.Call.get());
 		} catch (error) {
-			dependencies.log.warn({ Message: 'Could not compare active Companion Device call with Parent Room call state', Error: error.message || error.code || 'Unknown Companion Device call status error' });
+			dependencies.log.warn({ Message: 'Could not compare active Companion Device call with Parent Room Device call state', Error: error.message || error.code || 'Unknown Companion Device call status error' });
 			return false;
 		}
 
@@ -907,9 +907,9 @@ function createCompanionDeviceCallSync(options) {
 		await disconnectAllCalls();
 		await showUnauthorizedCallNotice(reason);
 		dependencies.log.warn({
-			Message: 'Direct Companion Device call disconnected; Paired calls must start from the Parent Room',
+			Message: 'Direct Companion Device call disconnected; Paired calls must start from the Parent Room Device',
 			Reason: reason,
-			PairedCallPolicy: 'While Paired, start calls from the Parent Room',
+			PairedCallPolicy: 'While Paired, start calls from the Parent Room Device',
 			UserGuidance: UNAUTHORIZED_CALL_INFO_TEXT,
 			AlertGuidance: UNAUTHORIZED_CALL_ALERT_TEXT,
 			NoticeDurationSeconds: getUnauthorizedCallNoticeDurationSeconds()
@@ -1012,10 +1012,10 @@ function createCompanionDeviceCallSync(options) {
 				return;
 			}
 			requestActiveParentCallState('PeriodicParentCallCheck').catch(error => {
-				dependencies.log.debug({ Message: 'Periodic Parent Room call-state reconciliation failed', Error: error.message || error.code || 'Unknown Parent Room call state request error' });
+				dependencies.log.debug({ Message: 'Periodic Parent Room Device call-state reconciliation failed', Error: error.message || error.code || 'Unknown Parent Room Device call state request error' });
 			});
 		}, intervalMs);
-		dependencies.log.debug({ Message: 'Parent Room call-state monitoring started', IntervalMs: intervalMs });
+		dependencies.log.debug({ Message: 'Parent Room Device call-state monitoring started', IntervalMs: intervalMs });
 	}
 
 	function stopParentCallMonitoring() {
@@ -1024,7 +1024,7 @@ function createCompanionDeviceCallSync(options) {
 		}
 		clearInterval(parentCallCheckInterval);
 		parentCallCheckInterval = null;
-		dependencies.log.debug({ Message: 'Parent Room call-state monitoring stopped' });
+		dependencies.log.debug({ Message: 'Parent Room Device call-state monitoring stopped' });
 	}
 
 	function cancel() {
@@ -1145,11 +1145,11 @@ function createCompanionDeviceCallSync(options) {
 	}
 
 	function getUnsupportedCallInfoText(payload) {
-		return `${getUnsupportedCallPlatformName(payload)} isn't supported. Start a Webex call from the Parent Room.`;
+		return `${getUnsupportedCallPlatformName(payload)} isn't supported. Start a Webex call from the Parent Room Device.`;
 	}
 
 	function getUnsupportedCallAlertText(payload) {
-		return `The Companion Device can not join ${getUnsupportedCallPlatformName(payload)} calls, only Webex. To use the Companion Device, have the Paired Room join a Webex Call`;
+		return `The Companion Device cannot join ${getUnsupportedCallPlatformName(payload)} calls; only Webex is supported. To use the Companion Device, start a Webex call from the Parent Room Device.`;
 	}
 
 	function getUnsupportedCallPlatformName(payload) {
@@ -1188,7 +1188,7 @@ function createCompanionDeviceCallSync(options) {
 		if (meetingPlatform.indexOf('webex') >= 0 || (remoteNumber.indexOf('webex') >= 0 && remoteNumber.indexOf('com') >= 0)) {
 			return '';
 		}
-		return 'Joining Parent Room call. Admit this Companion Device from the meeting lobby if needed.';
+		return 'Joining the Parent Room Device call. Admit this Companion Device from the meeting lobby if needed.';
 	}
 
 	function getXapiValue(value) {

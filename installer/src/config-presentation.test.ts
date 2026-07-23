@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupConfigLeaves, humanizeConfigSegment } from './config-presentation';
+import { groupConfigLeaves, humanizeConfigForReview, humanizeConfigSegment } from './config-presentation';
 import type { ConfigLeaf } from './types';
 
 function leaf(path: Array<string | number>): ConfigLeaf {
@@ -13,6 +13,29 @@ describe('Config presentation', () => {
     expect(humanizeConfigSegment('pin')).toBe('PIN');
     expect(humanizeConfigSegment('info2')).toBe('Info 2');
     expect(humanizeConfigSegment(0)).toBe('Item 1');
+  });
+
+  it('humanizes compatibility and mode keys in the review-only configuration summary', () => {
+    const source = {
+      CompanionBoardInformation: { host: 'companion.example.com' },
+      UserInterface: {
+        WebWidget: {
+          Standalone: { info2: 'Visible Standalone copy' },
+          Paired: { info2: 'Visible Paired copy' },
+        },
+      },
+    };
+
+    expect(humanizeConfigForReview(source)).toEqual({
+      'Companion Device Information': { Host: 'companion.example.com' },
+      'User Interface': {
+        'Web Widget': {
+          Standalone: { 'Info 2': 'Visible Standalone copy' },
+          Paired: { 'Info 2': 'Visible Paired copy' },
+        },
+      },
+    });
+    expect(source).toHaveProperty('CompanionBoardInformation');
   });
 
   it('builds a heading hierarchy from nested object paths', () => {

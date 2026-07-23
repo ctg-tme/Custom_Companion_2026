@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.22
+ * Version:                 1.0.23
  *
  * Description:             Companion access/hidden panels, PIN/registration/status prompts, and WebWidget adapter.
  *
@@ -44,18 +44,18 @@ const ACCESS_PANEL_ID = 'cc26_access';
 const PANEL_ID = 'cc26_hidden';
 const ERROR_PANEL_ID = 'cc26_error';
 const ERROR_PROMPT_ID = 'cc26_error_prompt';
-const SELECT_DEVICE_PAGE_ID = `${PANEL_ID}~SelectDevice`;
+const PARENT_ROOM_DEVICE_SELECTION_PAGE_ID = `${PANEL_ID}~SelectParentRoomDevice`;
 const CONFIG_PAGE_ID = `${PANEL_ID}~Config`;
-const RELEASE_DEVICE_WIDGET_ID = `${SELECT_DEVICE_PAGE_ID}~ReleaseDevice`;
-const RELEASE_INFO_WIDGET_ID = `${SELECT_DEVICE_PAGE_ID}~ReleaseInfo`;
-const NO_PARENTS_FOUND_WIDGET_ID = `${SELECT_DEVICE_PAGE_ID}~NoParentsFound`;
+const STANDALONE_MODE_WIDGET_ID = `${PARENT_ROOM_DEVICE_SELECTION_PAGE_ID}~Standalone`;
+const STANDALONE_INFO_WIDGET_ID = `${PARENT_ROOM_DEVICE_SELECTION_PAGE_ID}~StandaloneInfo`;
+const NO_PARENT_ROOM_DEVICES_WIDGET_ID = `${PARENT_ROOM_DEVICE_SELECTION_PAGE_ID}~NoParentRoomDevices`;
 const PIN_OFF_WIDGET_ID = `${CONFIG_PAGE_ID}~PinOff`;
 const PIN_ON_WIDGET_ID = `${CONFIG_PAGE_ID}~PinOn`;
 const PIN_EDIT_WIDGET_ID = `${CONFIG_PAGE_ID}~PinEdit`;
 const PIN_INFO_WIDGET_ID = `${CONFIG_PAGE_ID}~PinInfo`;
-const PAIR_NEW_ROOM_WIDGET_ID = `${CONFIG_PAGE_ID}~PairNewDevice`;
-const PAIRING_INFO_WIDGET_ID = `${CONFIG_PAGE_ID}~PairingInfo`;
-const RELEASE_INFO_TEXT = 'Select a room to pair this Companion Device to that room system. Use Standalone to unpair and restore normal local use.';
+const REGISTER_PARENT_ROOM_DEVICE_WIDGET_ID = `${CONFIG_PAGE_ID}~RegisterParentRoomDevice`;
+const REGISTRATION_INFO_WIDGET_ID = `${CONFIG_PAGE_ID}~RegistrationInfo`;
+const STANDALONE_INFO_TEXT = 'Select a registered Parent Room Device to run this Companion Device in Paired mode. Use Standalone to restore normal local use.';
 const WEB_WIDGET_PANEL_ID = 'cc26WebWidget';
 const WEB_WIDGET_NAME = 'Custom Companion 2026';
 const WEB_WIDGET_REFRESH_INTERVAL = 0;
@@ -81,7 +81,7 @@ function buildErrorPanelXml() {
 		<Location>HomeScreen</Location>
 		<Icon>Input</Icon>
 		<Color>#6B7280</Color>
-		<Name>Companion Unavailable</Name>
+		<Name>Companion Device Unavailable</Name>
 		<ActivityType>Custom</ActivityType>
 	</Panel>
 </Extensions>`;
@@ -118,29 +118,29 @@ function buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial) {
 		<Name>Companion Device Select</Name>
 		<ActivityType>Custom</ActivityType>
 		<Page>
-			<Name>Select Device</Name>
+			<Name>Select Parent Room Device</Name>
 			<Row>
-				<Name>Run as Standalone Device</Name>
+				<Name>Run Companion Device as Standalone</Name>
 				<Widget>
-					<WidgetId>${RELEASE_DEVICE_WIDGET_ID}</WidgetId>
-					<Name>Run Standalone</Name>
+					<WidgetId>${STANDALONE_MODE_WIDGET_ID}</WidgetId>
+					<Name>Run as Standalone</Name>
 					<Type>Button</Type>
 					<Options>size=3</Options>
 				</Widget>
 				<Widget>
-					<WidgetId>${RELEASE_INFO_WIDGET_ID}</WidgetId>
+					<WidgetId>${STANDALONE_INFO_WIDGET_ID}</WidgetId>
 					<Type>Button</Type>
 					<Options>size=1;icon=help</Options>
 				</Widget>
 			</Row>
 			${parentRowsXml}
-			<PageId>${SELECT_DEVICE_PAGE_ID}</PageId>
+			<PageId>${PARENT_ROOM_DEVICE_SELECTION_PAGE_ID}</PageId>
 			<Options/>
 		</Page>
 		<Page>
 			<Name>Config</Name>
 			<Row>
-				<Name>Pin Mode</Name>
+				<Name>PIN Mode</Name>
 				<Widget>
 					<WidgetId>${PIN_OFF_WIDGET_ID}</WidgetId>
 					<Name>Off</Name>
@@ -166,15 +166,15 @@ function buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial) {
 				</Widget>
 			</Row>
 			<Row>
-				<Name>Pair New Room</Name>
+				<Name>Register Parent Room Device</Name>
 				<Widget>
-					<WidgetId>${PAIR_NEW_ROOM_WIDGET_ID}</WidgetId>
-					<Name>Start Room Pairing Process</Name>
+					<WidgetId>${REGISTER_PARENT_ROOM_DEVICE_WIDGET_ID}</WidgetId>
+					<Name>Start Registration</Name>
 					<Type>Button</Type>
 					<Options>size=3</Options>
 				</Widget>
 				<Widget>
-					<WidgetId>${PAIRING_INFO_WIDGET_ID}</WidgetId>
+					<WidgetId>${REGISTRATION_INFO_WIDGET_ID}</WidgetId>
 					<Type>Button</Type>
 					<Options>size=1;icon=help</Options>
 				</Widget>
@@ -189,10 +189,10 @@ function buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial) {
 function buildParentRowsXml(parentDevices, parentDeviceStatus) {
 	if (!parentDevices.length) {
 		return `<Row>
-				<Name>Select a Room</Name>
+				<Name>Select a Parent Room Device</Name>
 				<Widget>
-					<WidgetId>${NO_PARENTS_FOUND_WIDGET_ID}</WidgetId>
-					<Name>Rooms are not configured for this Companion device. Navigate to the Config page to setup a new Room</Name>
+					<WidgetId>${NO_PARENT_ROOM_DEVICES_WIDGET_ID}</WidgetId>
+					<Name>No Parent Room Devices are registered. Open Config to register a Parent Room Device.</Name>
 					<Type>Text</Type>
 					<Options>size=4;fontSize=normal;align=center</Options>
 				</Widget>
@@ -200,15 +200,15 @@ function buildParentRowsXml(parentDevices, parentDeviceStatus) {
 	}
 
 	return `<Row>
-				<Name>Select a Room</Name>
+				<Name>Select a Parent Room Device</Name>
 				${parentDevices.map((parentDevice, index) => buildParentWidgetXml(parentDevice, getParentStatus(parentDevice, parentDeviceStatus), index)).join('')}
 			</Row>`;
 }
 
 function buildParentWidgetXml(parentDevice, parentStatus, index) {
-	const parentName = parentDevice.name || parentDevice.host || `Parent ${index + 1}`;
-	const offlineWidgetId = `${SELECT_DEVICE_PAGE_ID}~ParentOffline~${index}`;
-	const selectWidgetId = `${SELECT_DEVICE_PAGE_ID}~ParentSelect~${index}`;
+	const parentName = parentDevice.name || parentDevice.host || `Parent Room Device ${index + 1}`;
+	const offlineWidgetId = `${PARENT_ROOM_DEVICE_SELECTION_PAGE_ID}~ParentRoomDeviceOffline~${index}`;
+	const selectWidgetId = `${PARENT_ROOM_DEVICE_SELECTION_PAGE_ID}~ParentRoomDeviceSelect~${index}`;
 
 	if (!parentStatus || !parentStatus.online) {
 		return `<Widget>
@@ -337,7 +337,7 @@ async function showCompanionPrompt(XAPIObject, options) {
 
 async function showErrorPrompt(XAPIObject) {
 	await XAPIObject.Command.UserInterface.Message.Prompt.Display({
-		Title: 'Companion Unavailable',
+		Title: 'Companion Device Unavailable',
 		Text: 'Contact a Device Administrator.',
 		FeedbackId: ERROR_PROMPT_ID,
 		'Option.1': 'Dismiss',
@@ -346,10 +346,10 @@ async function showErrorPrompt(XAPIObject) {
 }
 
 async function setSelectedParent(XAPIObject, parentDevices, activeParentSerial) {
-	await setWidgetValue(XAPIObject, RELEASE_DEVICE_WIDGET_ID, activeParentSerial === 'Standalone' ? 'active' : 'inactive');
+	await setWidgetValue(XAPIObject, STANDALONE_MODE_WIDGET_ID, activeParentSerial === 'Standalone' ? 'active' : 'inactive');
 
 	for (let index = 0; index < parentDevices.length; index++) {
-		const widgetId = `${SELECT_DEVICE_PAGE_ID}~ParentSelect~${index}`;
+		const widgetId = `${PARENT_ROOM_DEVICE_SELECTION_PAGE_ID}~ParentRoomDeviceSelect~${index}`;
 		const isActive = parentDevices[index].serial === activeParentSerial;
 		await setWidgetValue(XAPIObject, widgetId, isActive ? 'active' : 'inactive');
 	}
@@ -368,10 +368,10 @@ async function setWidgetValue(XAPIObject, widgetId, value) {
 	}
 }
 
-async function showReleaseInfo(XAPIObject) {
+async function showStandaloneInfo(XAPIObject) {
 	await XAPIObject.Command.UserInterface.Message.Prompt.Display({
 		Title: 'Companion Device Select',
-		Text: RELEASE_INFO_TEXT,
+		Text: STANDALONE_INFO_TEXT,
 		Duration: 10
 	});
 }
@@ -427,11 +427,11 @@ function isCompanionWebWidget(webWidget) {
 
 function buildCompanionWebWidgetUrl(options) {
 	const webWidgetConfig = options.webWidgetConfig || {};
-	const contextConfig = options.mode === 'Standalone' ? webWidgetConfig.standalone || {} : webWidgetConfig.paired || {};
+	const contextConfig = options.mode === 'Standalone' ? webWidgetConfig.Standalone || {} : webWidgetConfig.Paired || {};
 	const params = {
 		theme: options.themeName || 'EveningFjord',
 		heading: 'Custom Companion 2026',
-		info1: options.mode === 'Standalone' ? 'Operating in Standalone' : `Paired to Room:\n${options.roomName || 'Unknown Room'}`,
+		info1: options.mode === 'Standalone' ? 'Operating in Standalone' : `Paired to Parent Room Device:\n${options.parentRoomDeviceName || 'Unknown Parent Room Device'}`,
 		info2: contextConfig.info2 || '',
 		info3: limitWebWidgetInfoText(options.runtimeInfo3),
 		iconUrl: contextConfig.iconUrl || ''
@@ -462,8 +462,8 @@ function buildCompanionWebWidgetUrl(options) {
 
 async function showStandbySyncPrompt(XAPIObject, options) {
 	await XAPIObject.Command.UserInterface.Message.Prompt.Display({
-		Title: 'Room Standby Sync',
-		Text: `The room is currently in ${options.state}. This Companion Device will match it in ${options.remainingSeconds} seconds.`,
+		Title: 'Parent Room Device Standby',
+		Text: `The active Parent Room Device is currently in ${options.state}. This Companion Device will match it in ${options.remainingSeconds} seconds.`,
 		FeedbackId: options.feedbackId,
 		'Option.1': 'Bypass 5 min',
 		'Option.2': 'Bypass 30 min',
@@ -558,9 +558,9 @@ function parseWidgetId(widgetId) {
 	};
 }
 
-function isSelectDeviceWidget(widgetId) {
+function isParentRoomDeviceSelectionWidget(widgetId) {
 	const parsed = parseWidgetId(widgetId);
-	return parsed.panelId === PANEL_ID && parsed.pageId === 'SelectDevice';
+	return parsed.panelId === PANEL_ID && parsed.pageId === 'SelectParentRoomDevice';
 }
 
 function isProtectedPanelWidget(widgetId) {
@@ -572,18 +572,18 @@ function isPinModeWidget(widgetId) {
 	return parsed.panelId === PANEL_ID && parsed.pageId === 'Config' && ['PinOff', 'PinOn', 'PinEdit', 'PinInfo'].includes(parsed.action);
 }
 
-function isPairNewRoomWidget(widgetId) {
+function isParentRegistrationWidget(widgetId) {
 	const parsed = parseWidgetId(widgetId);
-	return parsed.panelId === PANEL_ID && parsed.pageId === 'Config' && (parsed.action === 'PairNewDevice' || parsed.action === 'PairingInfo');
+	return parsed.panelId === PANEL_ID && parsed.pageId === 'Config' && (parsed.action === 'RegisterParentRoomDevice' || parsed.action === 'RegistrationInfo');
 }
 
 function isParentDeviceWidget(widgetId) {
 	const parsed = parseWidgetId(widgetId);
-	return parsed.panelId === PANEL_ID && parsed.pageId === 'SelectDevice' && (parsed.action === 'ParentSelect' || parsed.action === 'ParentOffline');
+	return parsed.panelId === PANEL_ID && parsed.pageId === 'SelectParentRoomDevice' && (parsed.action === 'ParentRoomDeviceSelect' || parsed.action === 'ParentRoomDeviceOffline');
 }
 
 function isProtectedPanelPage(pageId) {
-	return String(pageId || '') === SELECT_DEVICE_PAGE_ID || String(pageId || '') === CONFIG_PAGE_ID;
+	return String(pageId || '') === PARENT_ROOM_DEVICE_SELECTION_PAGE_ID || String(pageId || '') === CONFIG_PAGE_ID;
 }
 
 function getParentStatus(parentDevice, parentDeviceStatus) {
@@ -603,10 +603,10 @@ const companionUi = {
 	PANEL_ID,
 	ACCESS_PANEL_ID,
 	ERROR_PANEL_ID,
-	RELEASE_DEVICE_WIDGET_ID,
-	RELEASE_INFO_WIDGET_ID,
-	PAIR_NEW_ROOM_WIDGET_ID,
-	PAIRING_INFO_WIDGET_ID,
+	STANDALONE_MODE_WIDGET_ID,
+	STANDALONE_INFO_WIDGET_ID,
+	REGISTER_PARENT_ROOM_DEVICE_WIDGET_ID,
+	REGISTRATION_INFO_WIDGET_ID,
 	savePanel,
 	saveErrorPanel,
 	removeErrorPanel,
@@ -623,7 +623,7 @@ const companionUi = {
 	showErrorPrompt,
 	setSelectedParent,
 	setPinModeFeedback,
-	showReleaseInfo,
+	showStandaloneInfo,
 	getCurrentWebWidget,
 	saveWebWidget,
 	saveCompanionWebWidget,
@@ -634,10 +634,10 @@ const companionUi = {
 	showStandbySyncPrompt,
 	clearPrompt,
 	parseWidgetId,
-	isSelectDeviceWidget,
+	isParentRoomDeviceSelectionWidget,
 	isProtectedPanelWidget,
 	isPinModeWidget,
-	isPairNewRoomWidget,
+	isParentRegistrationWidget,
 	isParentDeviceWidget,
 	isProtectedPanelPage
 };

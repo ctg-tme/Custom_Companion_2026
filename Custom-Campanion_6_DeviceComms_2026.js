@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.14
+ * Version:                 1.0.15
  *
  * Description:             Device-to-device transport, queue policy, Message envelopes, putxml
  *                          builders, response validation, and dependency-free XML parsing.
@@ -96,7 +96,7 @@ async function parentInitializationRequest(XAPIObject, parentDevice, httpClientC
 	const broadcastName = getXmlPathValue(document, ['SystemUnit', 'BroadcastName']) || getXmlPathValue(document, ['BroadcastName']);
 
 	if (!serial || !broadcastName) {
-		throw buildError('Parent initialization response did not include both SerialNumber and BroadcastName', {
+		throw buildError('Parent Room Device initialization response did not include both SerialNumber and BroadcastName', {
 			Code: 'cc.parent-init.1',
 			Host: parentDevice.host,
 			ResponseStatusCode: response.StatusCode
@@ -129,7 +129,7 @@ async function parentStandbyStateRequest(XAPIObject, parentDevice, httpClientCon
 	const standbyState = getXmlPathValue(document, ['Standby', 'State']) || getXmlPathValue(document, ['State']);
 
 	if (!standbyState) {
-		throw buildError('Parent standby state response did not include State', {
+		throw buildError('Parent Room Device standby state response did not include State', {
 			Code: 'cc.parent-standby.1',
 			Host: parentDevice.host,
 			ResponseStatusCode: response.StatusCode

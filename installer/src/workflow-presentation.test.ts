@@ -15,11 +15,13 @@ describe('installer workflow presentation', () => {
     expect(source).not.toContain('The serial read from the Companion Device is never displayed or logged.');
   });
 
-  it('keeps the complete Config object visible and ends with on-device setup', async () => {
+  it('shows the complete Config with human-facing labels and ends with on-device setup', async () => {
     const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
 
-    expect(source).toContain('Full Config object');
-    expect(source).toContain('const config = ${escapeHtml(JSON.stringify(config, null, 2))};');
+    expect(source).toContain('Configuration summary');
+    expect(source).not.toContain('Full Config object');
+    expect(source).toContain('humanizeConfigForReview(redactConfig(withLeafValues');
+    expect(source).toContain('Every generated setting is shown with human-facing labels.');
     expect(source).toContain("'Complete Setup'");
     expect(source).toContain('Complete setup on the Companion Device');
     expect(source).toContain('this.completeInstallation()');

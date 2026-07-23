@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 0.1.2.39
+ * Version:                 0.1.2.40
  *
  * Description:             Parent Room registration, validation, deregistration, and peripheral-cleanup entry macro used as the install source.
  *                          The numbered source remains inactive on the Companion Device; Parent Room installation renames
@@ -110,11 +110,11 @@ async function init() {
 			registerStandbyStateHandler();
 			await parentCallCoordinationController.start();
 			await validateRegisteredCompanionDevices();
-		log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
+		log.info({ Message: 'Custom Companion initialized on Parent Room Device', RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 	} catch (error) {
 		const diagnostic = error.Diagnostic || {};
 		log.error({
-			Message: 'Custom Campanion Room Reference initialization stopped',
+			Message: 'Custom Companion initialization stopped on Parent Room Device',
 			Code: diagnostic.Code || error.code || 'CC26-INIT-UNKNOWN',
 			Component: diagnostic.Component || 'RoomReference',
 			Context: diagnostic.Context || 'Unhandled initialization failure',
@@ -182,7 +182,7 @@ async function sendStandbySync(state) {
 		await sendRegistrationResponse('StandbySync', { MessageId: '' }, registeredCompanionDevices[index], { State: state }, true);
 	}
 
-	log.debug({ Message: 'Parent Room standby sync sent', State: state, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
+	log.debug({ Message: 'Parent Room Device standby sync sent', State: state, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 }
 
 function normalizeEventValue(value) {
@@ -304,7 +304,7 @@ async function handleDeregisterRequest(message) {
 		Status: 'Deregistered',
 		PeripheralId: peripheralId
 	}), true);
-	log.info({ Message: 'Companion Device deregistered from Parent Room', Serial: companionDeviceRecord.Serial, PeripheralId: peripheralId, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
+	log.info({ Message: 'Companion Device deregistered from Parent Room Device', Serial: companionDeviceRecord.Serial, PeripheralId: peripheralId, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 }
 
 async function purgeCompanionDevicePeripheral(peripheralId) {
@@ -410,7 +410,7 @@ async function sendRegistrationResponse(action, inboundMessage, companionDeviceR
 		}, HTTP_CLIENT_CONFIG);
 	} catch (error) {
 		await xapi.Command.UserInterface.Message.Prompt.Display({
-			Title: 'Companion Registration Error',
+			Title: 'Companion Device Registration Error',
 			Text: `${isAccepted ? 'Accepted' : 'Denied'} ${companionDeviceRecord.Name}, but response failed. Check Companion Device credentials.`,
 			Duration: 10
 		});

@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 22, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.2
+ * Version:                 1.0.3
  *
  * Description:             Parent Room Registration and Deregistration controller. Owns the
  *                          PIN-authorized wizard, locked provisioning stages, long-hold removal,
@@ -61,17 +61,17 @@ const LONG_PRESS_MS = 3000;
 const RESULT_DURATION_SECONDS = 60;
 
 const FEEDBACK_IDS = {
-	pairInfo: 'cc26_registration_info',
+	registrationInfo: 'cc26_registration_info',
 	host: 'cc26_registration_host',
 	serial: 'cc26_registration_serial',
 	username: 'cc26_registration_username',
 	password: 'cc26_registration_password',
 	confirmPassword: 'cc26_registration_confirm_password',
-	confirmPair: 'cc26_registration_confirm_pair',
+	confirmRegistration: 'cc26_registration_confirm',
 	overwrite: 'cc26_registration_overwrite',
 	progress: 'cc26_registration_progress',
 	result: 'cc26_registration_result',
-	deleteConfirm: 'cc26_deregistration_confirm'
+	deregistrationConfirm: 'cc26_deregistration_confirm'
 };
 
 function createParentRegistration(options) {
@@ -121,13 +121,13 @@ function createParentRegistration(options) {
 			return false;
 		}
 
-		if (dependencies.companionUi.isPairNewRoomWidget(event.WidgetId)) {
+		if (dependencies.companionUi.isParentRegistrationWidget(event.WidgetId)) {
 			if (event.Type !== 'released') {
 				return true;
 			}
 			const widget = dependencies.companionUi.parseWidgetId(event.WidgetId);
-			if (widget.action === 'PairingInfo') {
-				await showPairingInformation();
+			if (widget.action === 'RegistrationInfo') {
+				await showRegistrationInformation();
 			} else {
 				await requestRegistrationAuthorization();
 			}
@@ -159,7 +159,7 @@ function createParentRegistration(options) {
 			longPressTimeout = null;
 			longPressTriggeredWidgetId = widgetId;
 			const parsed = dependencies.companionUi.parseWidgetId(widgetId);
-			showDeleteConfirmation(parsed.index).catch(error => {
+			showDeregistrationConfirmation(parsed.index).catch(error => {
 				dependencies.utils.softError({ Context: 'Failed to show Parent Room Deregistration confirmation', Error: error });
 			});
 		}, LONG_PRESS_MS);
@@ -173,11 +173,11 @@ function createParentRegistration(options) {
 		longPressWidgetId = '';
 	}
 
-	async function showPairingInformation() {
+	async function showRegistrationInformation() {
 		dependencies.pinModeController.touchSession();
 		await dependencies.companionUi.showCompanionPrompt(dependencies.xapi, {
-			title: 'Pair New Room',
-			text: 'Register a Parent Room Device to make it available in Select Device. You will need its host address, serial number, and RoomOS account. Registration does not select the room or interrupt Standalone use.',
+			title: 'Register Parent Room Device',
+			text: 'Register a Parent Room Device to make it available in Companion Device Select. You will need its host address, serial number, and RoomOS account. Registration does not select the Parent Room Device or interrupt Standalone use.',
 			feedbackId: FEEDBACK_IDS.result,
 			options: ['Dismiss'],
 			duration: RESULT_DURATION_SECONDS
@@ -190,12 +190,12 @@ function createParentRegistration(options) {
 		}
 		const context = getRuntimeContext();
 		if (context.mode === 'Paired' && await callbacks.isCompanionDeviceInActiveCall()) {
-			await showResult('Call In Progress', 'Registering another room is unavailable while this Paired Companion Device is in a call. End the Companion Device call or run Standalone first.');
+			await showResult('Call In Progress', 'Registering another Parent Room Device is unavailable while this Paired Companion Device is in a call. End the Companion Device call or run Standalone first.');
 			return;
 		}
 
 		await dependencies.pinModeController.requestAuthorization({
-			title: 'Pair New Room',
+			title: 'Register Parent Room Device',
 			text: 'Enter the current PIN to register a Parent Room Device.',
 			submitText: 'Continue',
 			onAuthorized: beginRegistrationWizard
@@ -206,9 +206,9 @@ function createParentRegistration(options) {
 		wizard = { host: '', serial: '', username: '', password: '', step: 'info' };
 		dependencies.pinModeController.touchSession();
 		await dependencies.companionUi.showCompanionPrompt(dependencies.xapi, {
-			title: 'Pair New Room',
+			title: 'Register Parent Room Device',
 			text: 'You will enter the Parent Room Device host address, expected serial number, and a RoomOS account that can install and run the Custom Companion Parent Room macros. Credentials are stored on this Companion Device for autonomous communication.',
-			feedbackId: FEEDBACK_IDS.pairInfo,
+			feedbackId: FEEDBACK_IDS.registrationInfo,
 			options: ['Next', 'Cancel'],
 			duration: STAGE_TIMEOUT_MS / 1000
 		});
@@ -265,7 +265,7 @@ function createParentRegistration(options) {
 			return true;
 		}
 
-		await showPairConfirmation();
+		await showRegistrationConfirmation();
 		return true;
 	}
 
@@ -286,17 +286,17 @@ function createParentRegistration(options) {
 			resolve(String(event.OptionId || event.Option || '') === '1');
 			return true;
 		}
-		if (event.FeedbackId === FEEDBACK_IDS.deleteConfirm) {
-			if (String(event.OptionId || event.Option || '') === '1' && operation && operation.kind === 'delete-confirmation') {
+		if (event.FeedbackId === FEEDBACK_IDS.deregistrationConfirm) {
+			if (String(event.OptionId || event.Option || '') === '1' && operation && operation.kind === 'deregistration-confirmation') {
 				const parentDevice = operation.parentDevice;
 				operation = null;
 				await dependencies.pinModeController.requestAuthorization({
-					title: 'Delete Room',
-					text: 'Enter the current PIN to remove this Companion Device from the Parent Room.',
-					submitText: 'Delete',
+					title: 'Deregister Parent Room Device',
+					text: 'Enter the current PIN to deregister this Companion Device from the Parent Room Device.',
+					submitText: 'Deregister',
 					onAuthorized: () => deregisterParent(parentDevice)
 				});
-			} else if (operation && operation.kind === 'delete-confirmation') {
+			} else if (operation && operation.kind === 'deregistration-confirmation') {
 				operation = null;
 			}
 			return true;
@@ -306,7 +306,7 @@ function createParentRegistration(options) {
 		}
 
 		const option = String(event.OptionId || event.Option || '');
-		if (event.FeedbackId === FEEDBACK_IDS.pairInfo) {
+		if (event.FeedbackId === FEEDBACK_IDS.registrationInfo) {
 			if (option === '1') {
 				await showHostInput();
 			} else {
@@ -314,7 +314,7 @@ function createParentRegistration(options) {
 			}
 			return true;
 		}
-		if (event.FeedbackId === FEEDBACK_IDS.confirmPair) {
+		if (event.FeedbackId === FEEDBACK_IDS.confirmRegistration) {
 			if (option === '1') {
 				const credentials = wizard;
 				wizard = null;
@@ -337,11 +337,11 @@ function createParentRegistration(options) {
 			await reopenLockedPrompt();
 			return true;
 		}
-		if (operation && operation.kind === 'delete-confirmation' && event.FeedbackId === FEEDBACK_IDS.deleteConfirm) {
+		if (operation && operation.kind === 'deregistration-confirmation' && event.FeedbackId === FEEDBACK_IDS.deregistrationConfirm) {
 			operation = null;
 			return true;
 		}
-		if (wizard && (event.FeedbackId === FEEDBACK_IDS.pairInfo || event.FeedbackId === FEEDBACK_IDS.confirmPair)) {
+		if (wizard && (event.FeedbackId === FEEDBACK_IDS.registrationInfo || event.FeedbackId === FEEDBACK_IDS.confirmRegistration)) {
 			cancelWizard();
 			return true;
 		}
@@ -392,7 +392,7 @@ function createParentRegistration(options) {
 			text: text || 'Enter the expected serial number for the Parent Room Device.',
 			feedbackId: FEEDBACK_IDS.serial,
 			inputType: 'SingleLine',
-			placeholder: 'Parent serial number',
+			placeholder: 'Parent Room Device serial number',
 			submitText: 'Next',
 			duration: STAGE_TIMEOUT_MS / 1000
 		});
@@ -426,14 +426,14 @@ function createParentRegistration(options) {
 		});
 	}
 
-	async function showPairConfirmation() {
+	async function showRegistrationConfirmation() {
 		wizard.step = 'confirm';
 		dependencies.pinModeController.touchSession();
 		await dependencies.companionUi.showCompanionPrompt(dependencies.xapi, {
-			title: 'Register Parent Room?',
-			text: `Host: ${wizard.host}\nSerial: ${wizard.serial}\nUsername: ${wizard.username}\n\nThe Companion Device will verify this identity before installing the shared Parent Room macros and registering with the room.`,
-			feedbackId: FEEDBACK_IDS.confirmPair,
-			options: ['Register Room', 'Cancel'],
+			title: 'Register Parent Room Device?',
+			text: `Host: ${wizard.host}\nSerial: ${wizard.serial}\nUsername: ${wizard.username}\n\nThe Companion Device will verify this identity before installing the shared Parent Room macros and registering with the Parent Room Device.`,
+			feedbackId: FEEDBACK_IDS.confirmRegistration,
+			options: ['Register Device', 'Cancel'],
 			duration: STAGE_TIMEOUT_MS / 1000
 		});
 	}
@@ -457,14 +457,14 @@ function createParentRegistration(options) {
 		await dependencies.companionUi.closeProtectedPanel(dependencies.xapi);
 
 		try {
-			const candidate = await runLocalStage('Verifying Parent Room', `Checking the host, expected serial number, and credentials for ${credentials.host}.`, () => dependencies.deviceComms.parentInitializationRequest(dependencies.xapi, credentials, dependencies.httpClientConfig));
+			const candidate = await runLocalStage('Verifying Parent Room Device', `Checking the host, expected serial number, and credentials for ${credentials.host}.`, () => dependencies.deviceComms.parentInitializationRequest(dependencies.xapi, credentials, dependencies.httpClientConfig));
 			validateExpectedParentSerial(credentials.serial, candidate.serial, credentials.host);
 			operation.candidate = candidate;
 			operation.hadExistingRegistration = !!findParentBySerial(candidate.serial);
 			await confirmRegistrationIntent(candidate);
 			validateCompanionDeviceCapacity(candidate);
 
-			await runLocalStage('Installing Parent Room Macros', `Installing and starting the shared Custom Companion Parent Room macros on ${candidate.name}.`, async () => {
+			await runLocalStage('Installing Parent Room Runtime', `Installing and starting the shared Custom Companion Parent Room macros on ${candidate.name}.`, async () => {
 				const macroPayloads = await dependencies.companionDeviceServices.getParentInstallMacroPayloads(dependencies.xapi, dependencies.installConfig);
 				await dependencies.deviceComms.installParentMacros(dependencies.xapi, candidate, macroPayloads, dependencies.installConfig, dependencies.httpClientConfig);
 			});
@@ -476,13 +476,13 @@ function createParentRegistration(options) {
 				await dependencies.deviceComms.sendPeripheralHeartbeat(dependencies.xapi, candidate, peripheralInfo.ID, dependencies.initialHeartbeatTimeout, dependencies.httpClientConfig);
 			});
 
-			await runMessageStage('Waiting for Parent Runtime', `${candidate.name} is starting the parent runtime and confirming readiness.`, 'ParentReady', () => sendParentReadyRequest(candidate, companionDeviceInformation, transactionId));
+			await runMessageStage('Waiting for Parent Room Runtime', `${candidate.name} is starting the Parent Room runtime and confirming readiness.`, 'ParentReady', () => sendParentReadyRequest(candidate, companionDeviceInformation, transactionId));
 			operation.mayHaveRegistered = true;
-			await runMessageStage('Confirming Registration', `${candidate.name} is validating capacity and saving this Companion Device registration.`, 'ConfigAccepted', () => sendConfigSync(candidate, companionDeviceInformation, transactionId));
+			await runMessageStage('Confirming Parent Room Registration', `${candidate.name} is validating capacity and saving this Companion Device registration.`, 'ConfigAccepted', () => sendConfigSync(candidate, companionDeviceInformation, transactionId));
 
-			await runLocalStage('Saving Room Registration', `Saving ${candidate.name} to this Companion Device.`, () => commitRegistration(candidate));
+			await runLocalStage('Saving Parent Room Registration', `Saving ${candidate.name} to this Companion Device.`, () => commitRegistration(candidate));
 			await finishOperation();
-			await showResult('Room Registered', `${candidate.name} was successfully registered. It is now available in Select Device.`);
+			await showResult('Parent Room Device Registered', `${candidate.name} was successfully registered. It is now available in Companion Device Select.`);
 			dependencies.log.info({ Message: 'Parent Room Registration completed', Host: candidate.host, Serial: candidate.serial, TransactionId: transactionId });
 		} catch (error) {
 			await handleRegistrationFailure(error);
@@ -492,7 +492,7 @@ function createParentRegistration(options) {
 	async function confirmRegistrationIntent(candidate) {
 		const tombstone = findPendingDeregistration(candidate.serial);
 		if (tombstone) {
-			const confirmed = await runDecisionStage('Re-register Parent Room?', `${candidate.name} is pending removal. Re-registering makes the new registration the current intent and cancels pending cleanup.`, ['Re-register', 'Cancel']);
+			const confirmed = await runDecisionStage('Re-register Parent Room Device?', `${candidate.name} has a Pending Deregistration. Re-registering makes the new registration the current intent and cancels pending cleanup.`, ['Re-register', 'Cancel']);
 			if (!confirmed) {
 				throw buildOperationError('Registration canceled; pending removal was retained.', 'CC26-REGISTRATION-CANCELED');
 			}
@@ -504,7 +504,7 @@ function createParentRegistration(options) {
 
 		const existing = findParentBySerial(candidate.serial);
 		if (existing) {
-			const confirmed = await runDecisionStage('Overwrite Room Registration?', `${candidate.name} is already registered. Replace its saved host and credentials with the newly verified values?`, ['Overwrite', 'Cancel']);
+			const confirmed = await runDecisionStage('Overwrite Parent Room Registration?', `${candidate.name} is already registered. Replace its saved host and credentials with the newly verified values?`, ['Overwrite', 'Cancel']);
 			if (!confirmed) {
 				throw buildOperationError('Registration overwrite was canceled.', 'CC26-REGISTRATION-CANCELED');
 			}
@@ -513,7 +513,7 @@ function createParentRegistration(options) {
 
 	function validateCompanionDeviceCapacity(candidate) {
 		if (!findParentBySerial(candidate.serial) && parentDevices.length >= policy.maxParentDevices) {
-			throw buildOperationError(`This Companion Device already has the maximum of ${policy.maxParentDevices} registered rooms. Delete a room before adding another.`, 'CC26-BOARD-PARENT-LIMIT');
+			throw buildOperationError(`This Companion Device already has the maximum of ${policy.maxParentDevices} registered Parent Room Devices. Deregister a Parent Room Device before registering another.`, 'CC26-BOARD-PARENT-LIMIT');
 		}
 	}
 
@@ -686,16 +686,16 @@ function createParentRegistration(options) {
 
 		await finishOperation();
 		if (error && error.code === 'CC26-REGISTRATION-CANCELED') {
-			await showResult('Registration Canceled', error.UserMessage || 'Parent Room Registration was canceled.');
+			await showResult('Parent Room Registration Canceled', error.UserMessage || 'Parent Room Registration was canceled.');
 			return;
 		}
 		const failureText = error && error.UserMessage ? error.UserMessage : 'The Parent Room Device could not be registered.';
 		const logGuidance = failedOperation && failedOperation.mayHaveRegistered ? ' Inspect the Parent Room Device macro logs for more details.' : '';
-		await showResult('Room Registration Failed', `${failureText}${logGuidance}`);
+		await showResult('Parent Room Registration Failed', `${failureText}${logGuidance}`);
 		dependencies.log.warn({ Message: 'Parent Room Registration failed', Code: error && error.code || 'CC26-REGISTRATION-FAILED', Error: error && error.message || 'Unknown registration error', ErrorContext: error && error.Context || {} });
 	}
 
-	async function showDeleteConfirmation(parentIndex) {
+	async function showDeregistrationConfirmation(parentIndex) {
 		if (isBusy() || isUnhealthy()) {
 			return;
 		}
@@ -704,16 +704,16 @@ function createParentRegistration(options) {
 			return;
 		}
 		const context = getRuntimeContext();
-		const deletingActiveParent = context.activeParentSerial === parentDevice.serial;
-		const hasActiveCall = deletingActiveParent && await callbacks.isCompanionDeviceInActiveCall();
-		const callWarning = hasActiveCall ? ' This Companion Device will leave its call and transition to Standalone; the call will remain active in the Parent Room.' : '';
-		operation = { kind: 'delete-confirmation', parentDevice: parentDevice };
+		const deregisteringActiveParent = context.activeParentSerial === parentDevice.serial;
+		const hasActiveCall = deregisteringActiveParent && await callbacks.isCompanionDeviceInActiveCall();
+		const callWarning = hasActiveCall ? ' This Companion Device will leave its call and transition to Standalone; the call will remain active on the Parent Room Device.' : '';
+		operation = { kind: 'deregistration-confirmation', parentDevice: parentDevice };
 		dependencies.pinModeController.touchSession();
 		await dependencies.companionUi.showCompanionPrompt(dependencies.xapi, {
-			title: 'Delete Parent Room?',
-			text: `Remove ${parentDevice.name || parentDevice.host} from this Companion Device? The shared Parent Room macros will remain installed for other Companion Devices.${callWarning}`,
-			feedbackId: FEEDBACK_IDS.deleteConfirm,
-			options: ['Delete Room', 'Cancel'],
+			title: 'Deregister Parent Room Device?',
+			text: `Deregister ${parentDevice.name || parentDevice.host} from this Companion Device? The shared Parent Room macros will remain installed for other Companion Devices.${callWarning}`,
+			feedbackId: FEEDBACK_IDS.deregistrationConfirm,
+			options: ['Deregister Device', 'Cancel'],
 			duration: STAGE_TIMEOUT_MS / 1000
 		});
 	}
@@ -734,29 +734,29 @@ function createParentRegistration(options) {
 		let tombstone;
 		try {
 			if (context.activeParentSerial === parentDevice.serial) {
-				await runLocalStage('Leaving Parent Room', `Ending this Companion Device's active call, if any, and returning it to Standalone before removing ${parentDevice.name || parentDevice.host}.`, callbacks.releaseActiveParentForDeregistration);
+				await runLocalStage('Returning to Standalone', `Ending this Companion Device's active call, if any, and returning it to Standalone before deregistering ${parentDevice.name || parentDevice.host}.`, callbacks.releaseActiveParentForDeregistration);
 			}
 			const companionDeviceInformation = await callbacks.getRuntimeCompanionDeviceInformation();
 			tombstone = buildTombstone(parentDevice, companionDeviceInformation, createTransactionId('deregistration'));
 			operation.transactionId = tombstone.transactionId;
 			operation.candidate = tombstone;
-			await runLocalStage('Removing Parent Room', `Removing ${parentDevice.name || parentDevice.host} from this Companion Device and preserving cleanup details until the Parent Room Device confirms.`, () => retireParentLocally(parentDevice, tombstone));
+			await runLocalStage('Saving Parent Room Deregistration', `Deregistering ${parentDevice.name || parentDevice.host} from this Companion Device and preserving cleanup details until the Parent Room Device confirms.`, () => retireParentLocally(parentDevice, tombstone));
 		} catch (error) {
 			await finishOperation();
-			await showResult('Room Removal Failed', 'The Companion Device could not complete local room removal. Inspect the Companion Device macro logs for details.');
+			await showResult('Parent Room Deregistration Failed', 'The Companion Device could not save the local Parent Room Deregistration. Inspect the Companion Device macro logs for details.');
 			dependencies.log.error({ Message: 'Parent Room Deregistration failed locally', Error: error.code || error.message || 'Unknown deregistration error' });
 			return;
 		}
 
 		try {
-			await runMessageStage('Confirming Parent Cleanup', `${parentDevice.name || parentDevice.host} is removing this Companion Device's registration and peripheral.`, 'DeregistrationAccepted', () => sendDeregistrationRequest(tombstone));
+			await runMessageStage('Confirming Parent Room Deregistration', `${parentDevice.name || parentDevice.host} is removing this Companion Device's registration and peripheral.`, 'DeregistrationAccepted', () => sendDeregistrationRequest(tombstone));
 			await finishOperation();
-			await showResult('Room Removed', `${parentDevice.name || parentDevice.host} was removed from this Companion Device and the Parent Room.`);
+			await showResult('Parent Room Device Deregistered', `${parentDevice.name || parentDevice.host} was deregistered from this Companion Device and the Parent Room Device.`);
 			dependencies.log.info({ Message: 'Parent Room Deregistration completed', Host: parentDevice.host, Serial: parentDevice.serial, TransactionId: tombstone.transactionId });
 		} catch (error) {
 			await finishOperation();
 			if (!findPendingDeregistration(parentDevice.serial)) {
-				await showResult('Room Removed', `${parentDevice.name || parentDevice.host} was removed from this Companion Device and the Parent Room.`);
+				await showResult('Parent Room Device Deregistered', `${parentDevice.name || parentDevice.host} was deregistered from this Companion Device and the Parent Room Device.`);
 				return;
 			}
 			cleanupResultNotice = {
@@ -764,7 +764,7 @@ function createParentRegistration(options) {
 				name: parentDevice.name || parentDevice.host,
 				transactionId: tombstone.transactionId
 			};
-			await showResult('Parent Cleanup Pending', `${parentDevice.name || parentDevice.host} was removed from this Companion Device, but the Parent Room did not confirm cleanup. The Companion Device will retry automatically after either device reconnects.`);
+			await showResult('Parent Room Deregistration Pending', `${parentDevice.name || parentDevice.host} was deregistered from this Companion Device, but the Parent Room Device did not confirm cleanup. The Companion Device will retry automatically after either device reconnects.`);
 			dependencies.log.warn({ Message: 'Parent Room Deregistration remains pending after the user-visible cleanup stage', Serial: parentDevice.serial, TransactionId: tombstone.transactionId, Error: error.code || error.message || 'Unknown deregistration confirmation error' });
 		}
 	}
@@ -859,7 +859,7 @@ function createParentRegistration(options) {
 			&& !isRegistrationSupersedingTombstone(message.Serial)) {
 			const confirmedNotice = cleanupResultNotice;
 			cleanupResultNotice = null;
-			await showResult('Room Removed', `${confirmedNotice.name} was removed from this Companion Device and the Parent Room. Cleanup is now confirmed.`);
+			await showResult('Parent Room Device Deregistered', `${confirmedNotice.name} was deregistered from this Companion Device and the Parent Room Device. Cleanup is now confirmed.`);
 		}
 		return true;
 	}

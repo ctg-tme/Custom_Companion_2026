@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 0.1.2.39
+ * Version:                 0.1.2.40
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -62,7 +62,7 @@ const MAX_PARENT_DEVICES = 6;
 const INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS = 5;
 const ALLOW_STANDALONE_DURING_ACTIVE_CALL = true;
 const PERIPHERAL_TYPE = 'ControlSystem';
-const UNHEALTHY_INFO_TEXT = 'Companion controls are unavailable. Contact a Device Administrator.';
+const UNHEALTHY_INFO_TEXT = 'Companion Device controls are unavailable. Contact a Device Administrator.';
 const HTTP_CLIENT_CONFIG = {
 	mode: 'On',
 	allowInsecureHTTPS: config.httpClient.allowInsecureHTTPS,
@@ -146,13 +146,13 @@ const parentConnectivityController = parentConnectivity.create({
 			pendingDeregistrations = parentRegistrationController.getState().pendingDeregistrations;
 			parentRegistrationController.setState(parentDevices, pendingDeregistrations);
 		},
-		onAvailabilityChanged: async () => renderSelectDeviceUi(),
+		onAvailabilityChanged: async () => renderParentRoomDeviceSelectionUi(),
 		onInfoChanged: async () => applyRuntimeWebWidget(),
 		onSelectionVerified: completeVerifiedParentSelection,
 		onCallPreservationChanged: async () => applyUiFeatureMode(companionDeviceState.mode),
 		onRecovered: async () => {
 			await applyUiFeatureMode(companionDeviceState.mode);
-			await renderSelectDeviceUi();
+			await renderParentRoomDeviceSelectionUi();
 		},
 		onUnavailableFallback: async parentDevice => {
 			await transitionToStandalone({ Reason: 'ParentUnavailable', PreserveParentConnectivityInfo: true });
@@ -320,7 +320,7 @@ async function init() {
 		if (isUnhealthy) {
 			return;
 		}
-		await renderSelectDeviceUi();
+		await renderParentRoomDeviceSelectionUi();
 		await installParentMacrosOnOnlineParents();
 		await connectPeripheralToOnlineParents();
 		await parentRegistrationController.reconcilePendingDeregistrations();
@@ -331,7 +331,7 @@ async function init() {
 		}
 
 		companionState.warnIfCredentialsAreStored(parentDevices, log);
-		log.info({ Message: 'Custom Campanion initialized', Version: config.version, ActiveParentRoom: companionDeviceState.activeParent.name });
+		log.info({ Message: 'Custom Companion initialized on Companion Device', Version: config.version, ActiveParentRoomDevice: companionDeviceState.activeParent.name });
 	} catch (error) {
 		await handleInitializationFailure(error);
 	}
@@ -343,7 +343,7 @@ async function handleInitializationFailure(error) {
 	await pinModeController.stop();
 	parentConnectivityController.stop();
 	log.error({
-		Message: 'Custom Campanion Companion Device initialization stopped',
+		Message: 'Custom Companion initialization stopped on Companion Device',
 		Code: diagnostic.Code || error.code || 'CC26-INIT-UNKNOWN',
 		Component: diagnostic.Component || 'CompanionDeviceMain',
 		Context: diagnostic.Context || 'Unhandled initialization failure',
@@ -358,7 +358,7 @@ async function handleInitializationFailure(error) {
 		log.error({
 			Code: 'CC26-INIT-ERROR-PANEL',
 			Component: 'CompanionUI',
-			Context: 'Failed to install the Companion Unavailable action panel',
+			Context: 'Failed to install the Companion Device Unavailable action panel',
 			Remediation: 'Diagnose the UserInterface Extensions xAPI failure, then restart the Macro Runtime.',
 			Error: panelError
 		});
@@ -422,7 +422,7 @@ async function handleCompanionMessage(message) {
 			break;
 		case 'ConfigDenied':
 			await xapi.Command.UserInterface.Message.Prompt.Display({
-				Title: 'Room Configuration Denied',
+				Title: 'Parent Room Device Registration Denied',
 				Text: message.Payload && message.Payload.Reason ? message.Payload.Reason : 'The Parent Room Device denied this Companion Device registration request.',
 				Duration: 10
 			});
@@ -474,7 +474,7 @@ async function connectPeripheralToOnlineParents() {
 	});
 }
 
-async function renderSelectDeviceUi() {
+async function renderParentRoomDeviceSelectionUi() {
 	if (isUnhealthy) {
 		return;
 	}
@@ -589,7 +589,7 @@ async function handleWidgetAction(event) {
 	if (await parentRegistrationController.handleWidgetAction(event)) {
 		return;
 	}
-	if (event.Type !== 'released' || !companionUi.isSelectDeviceWidget(event.WidgetId)) {
+	if (event.Type !== 'released' || !companionUi.isParentRoomDeviceSelectionWidget(event.WidgetId)) {
 		return;
 	}
 	if (isUnhealthy) {
@@ -602,8 +602,8 @@ async function handleWidgetAction(event) {
 
 	const widget = companionUi.parseWidgetId(event.WidgetId);
 
-	if (widget.action === 'ReleaseInfo') {
-		await companionUi.showReleaseInfo(xapi);
+	if (widget.action === 'StandaloneInfo') {
+		await companionUi.showStandaloneInfo(xapi);
 		return;
 	}
 
@@ -611,10 +611,10 @@ async function handleWidgetAction(event) {
 
 	try {
 		switch (widget.action) {
-			case 'ReleaseDevice':
+			case 'Standalone':
 				await selectStandaloneMode();
 				break;
-			case 'ParentSelect':
+			case 'ParentRoomDeviceSelect':
 				await selectParentByIndex(widget.index);
 				break;
 		}
@@ -683,7 +683,7 @@ async function transitionToStandalone(options = {}) {
 		await pairedEnvironmentController.handleStandaloneRelease(hadActiveCall);
 	}
 
-	log.info({ Message: 'Companion Device released to Standalone mode', Reason: options.Reason || 'Unspecified', ActiveCallPreserved: hadActiveCall });
+	log.info({ Message: 'Companion Device transitioned to Standalone', Reason: options.Reason || 'Unspecified', ActiveCallPreserved: hadActiveCall });
 }
 
 async function releaseActiveParentForDeregistration() {
@@ -709,7 +709,7 @@ async function handleParentRegistrationStateChanged(snapshot) {
 	}
 	parentConnectivityController.setParentDevices(parentDevices, parentDeviceStatus);
 	companionDeviceState = createCompanionDeviceState(activeParentSerial);
-	await renderSelectDeviceUi();
+	await renderParentRoomDeviceSelectionUi();
 }
 
 function replaceParentDeviceStatus(statuses, replacement) {
@@ -734,7 +734,7 @@ async function isCompanionDeviceInActiveCall() {
 		log.error({
 			Code: 'CC26-CALL-COUNT-READ',
 			Component: 'CompanionDeviceMain',
-			Context: 'Failed to read the local active call count at a release boundary',
+			Context: 'Failed to read the local active call count during a Standalone transition',
 			Remediation: 'Diagnose Status.SystemUnit.State.NumberOfActiveCalls. Volume will remain unchanged because call safety cannot be confirmed.',
 			Error: error
 		});
@@ -776,7 +776,7 @@ async function handleRuntimeHardFailure(diagnostic) {
 		log.error({
 			Code: 'CC26-RUNTIME-ERROR-PANEL',
 			Component: 'CompanionUI',
-			Context: 'Failed to install the Companion Unavailable action panel after a required runtime failure',
+			Context: 'Failed to install the Companion Device Unavailable action panel after a required runtime failure',
 			Remediation: 'Diagnose UserInterface.Extensions.Panel and restart the Macro Runtime.',
 			Error: panelError
 		});
@@ -796,10 +796,10 @@ async function handleRuntimeHardFailure(diagnostic) {
 }
 
 async function showSelectedParentOfflinePrompt(parentDevice) {
-	const roomName = parentDevice.name || parentDevice.host || 'Selected room';
+	const parentRoomDeviceName = parentDevice.name || parentDevice.host || 'Selected Parent Room Device';
 	await xapi.Command.UserInterface.Message.Prompt.Display({
-		Title: 'Room Unavailable',
-		Text: `${roomName} is unavailable. This Companion Device is now running Standalone.`,
+		Title: 'Parent Room Device Unavailable',
+		Text: `${parentRoomDeviceName} is unavailable. This Companion Device is now running Standalone.`,
 		Duration: 10
 	});
 }

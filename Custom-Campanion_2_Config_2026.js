@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 0.1.2.39
+ * Version:                 0.1.2.40
  *
  * Description:             User-facing configuration for the Custom Companion solution on supported wheel-kit devices.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -41,7 +41,7 @@ or implied.
  */
 
 const config = {
-  version: '0.1.2.39',
+  version: '0.1.2.40',
   CompanionBoardInformation: {
     host: '10.0.0.120',
     username: '',
@@ -75,12 +75,12 @@ const config = {
           mode: true,
           timeZone: 'America/New_York'
         },
-        standalone: {
-          info2: 'Use Companion Device Select to pair this Companion Device to a room.',
+        Standalone: {
+          info2: 'Use Companion Device Select to register or select a Parent Room Device.',
           iconUrl: 'https://github.com/ctg-tme.png'
         },
-        paired: {
-          info2: 'Use Companion Device Select to release this Companion Device or choose another room.',
+        Paired: {
+          info2: 'Use Companion Device Select to choose Standalone or another Parent Room Device.',
           iconUrl: 'https://github.com/ctg-tme.png'
         }
       }

@@ -5,19 +5,19 @@ Custom Companion 2026 is a Cisco RoomOS macro solution for Board Pro Series endp
 ## High-Level Scope
 
 - Maintain a Companion Device-local list of Parent Room Devices using `Memory-Storage-Functions-V2`.
-- Provide PIN-gated Companion Device Select access for registering and deleting Parent Room Devices, listing configured Parent Room Devices, selecting an online Parent Room Device, returning the Companion Device to Standalone, and managing PIN Mode from the Config page.
+- Provide PIN-gated Companion Device Select access for Parent Room Registration and Parent Room Deregistration, listing registered Parent Room Devices, selecting an online Parent Room Device, returning the Companion Device to Standalone, and managing PIN Mode from the Config page.
 - Initialize and use RoomOS HTTPClient for device-to-device communication.
 - Use Message API and putxml-based routing to sanitize and handle custom communication between the Companion Device and Parent Room Devices.
 - Apply an explicit Paired UI policy that keeps Video Mute, Participants, and Whiteboard available while hiding the other known call/share controls; native Raise Hand remains subject to device acceptance testing.
-- When a Parent Room joins a supported Webex call, instruct the Companion Device to join the same call context.
+- When a Parent Room Device joins a supported Webex call, instruct the Companion Device to join the same call context.
 - Keep microphones muted, volume at level 1, and a renewable Do Not Disturb lease active while Paired, while leaving Video Mute available as a user control.
 
 ## Current Runtime Roles
 
 - Companion Device: the movable Board Pro Series device running `Custom-Campanion_1_Main_2026`.
 - Parent Room Device: the fixed room codec that receives the installed `Custom-Campanion_Room_2026` macro.
-- Memory storage: generated state owned by `Memory-Storage-Functions-V2`; this stores Companion Device Parent Room records, Pending Deregistration tombstones, Companion Device PIN Mode state, and Parent Room registration records.
-- Transport: RoomOS HTTPClient posts putxml payloads to remote codecs, usually to invoke `Message.Send`, `Peripherals.Connect`, `Peripherals.HeartBeat`, or macro save/activate commands. Parent cleanup uses local `Peripherals.Purge`.
+- Memory storage: generated state owned by `Memory-Storage-Functions-V2`; this stores Companion Device Parent Room Device records, Pending Deregistration tombstones, Companion Device PIN Mode state, and Parent Room Registration records.
+- Transport: RoomOS HTTPClient posts putxml payloads to remote codecs, usually to invoke `Message.Send`, `Peripherals.Connect`, `Peripherals.HeartBeat`, or macro save/activate commands. Parent Room Device cleanup uses local `Peripherals.Purge`.
 
 ## Source Macro Architecture
 
@@ -34,12 +34,12 @@ The deployable source remains unbundled and uses 15 numbered macros. On the Comp
 | `Custom-Campanion_7_RoomReference_2026` | Inactive Parent Room entry source; installed and activated on a Parent Room Device as `Custom-Campanion_Room_2026`. |
 | `Custom-Campanion_8_Services_2026` | Parent package provisioning and runtime Companion Device identity discovery. |
 | `Custom-Campanion_9_ParentConnectivity_2026` | Parent identity refresh, retries, heartbeat, recovery, and Call Preservation. |
-| `Custom-Campanion_10_PairedEnvironment_2026` | Paired UI policy, WebWidget mode, microphone/volume/DND enforcement, and safe release restoration. |
+| `Custom-Campanion_10_PairedEnvironment_2026` | Paired UI policy, WebWidget mode, microphone/volume/DND enforcement, and safe Standalone restoration. |
 | `Custom-Campanion_11_BoardCallSync_2026` | Companion Device-side Webex call synchronization, Guest authentication, disconnect, rejoin, retries, and call messaging. |
 | `Custom-Campanion_12_ParentCallCoordination_2026` | Parent Room-side call/BYOD detection, participant admission, current-booking Meeting Password lookup, and call-detail responses. |
 | `Custom-Campanion_13_StandbyCoordination_2026` | Standalone standby preferences, parent standby sync, delayed application, prompts, and bypass. |
 | `Custom-Campanion_14_PinMode_2026` | Companion Device-local PIN state, protected-panel access, edit/disable verification, persistence retry, and inactivity session. |
-| `Custom-Campanion_15_ParentRegistration_2026` | Pair New Room wizard, locked provisioning stages, long-hold deregistration, tombstones, and reconciliation. |
+| `Custom-Campanion_15_ParentRegistration_2026` | Register Parent Room Device wizard, locked provisioning stages, long-hold deregistration, tombstones, and reconciliation. |
 
 No build or bundling step is required for the runtime macros. The Companion Installer installs these source files without changing their runtime boundaries. See [ADR 0001](docs/adr/0001-unbundled-domain-macros.md).
 
@@ -47,7 +47,7 @@ No build or bundling step is required for the runtime macros. The Companion Inst
 
 The static browser installer in `installer/` deploys a selected release or the current Main Fork (Beta) snapshot to a Companion Device through JSXAPI. The root `manifest.json` is the Release Manifest and remains authoritative for installable project macros, minimum RoomOS, supported product platforms, and external dependencies. The installer never targets a Parent Room Device; the installed Companion Device runtime retains Parent Room provisioning ownership.
 
-After Companion Device configuration and before Review, the installer requires the Device Administrator to choose a Standard Installation or Clean Installation. Standard Installation preserves `Custom-Campanion-Storage`. Clean Installation deactivates the existing project macros, removes only `Custom-Campanion-Storage` when present, and then installs the selected release. This permanently resets the Companion Device's saved Parent Room Devices, Pending Deregistration tombstones, active Parent Room selection, PIN Mode state, and captured Standalone UI and standby settings. Generated storage remains outside the Release Manifest and is never treated as a Legacy Project Macro.
+After Companion Device configuration and before Review, the installer requires the Device Administrator to choose a Standard Installation or Clean Installation. Standard Installation preserves `Custom-Campanion-Storage`. Clean Installation deactivates the existing project macros, removes only `Custom-Campanion-Storage` when present, and then installs the selected release. This permanently resets the Companion Device's saved Parent Room Devices, Pending Deregistration tombstones, active Parent Room Device selection, PIN Mode state, and captured Standalone UI and standby settings. Generated storage remains outside the Release Manifest and is never treated as a Legacy Project Macro.
 
 Before packaging, `npm run verify:release` checks that the Release Manifest exactly covers the eligible root macros, the runtime project version is synchronized across Main, Config, `config.version`, and RoomReference, every macro passes JavaScript syntax validation, relative macro imports resolve to Release Manifest resources, and Main still emits the initialization messages used by installer verification. Installer tests and builds run the same Release Contract verification before generating the pinned source snapshot.
 
@@ -64,7 +64,7 @@ flowchart TD
 	C --> D[Initialize MemoryStorage]
 	C -- Failure --> X[Log diagnostic and install cc26_error]
 	D -- Failure --> X
-	D --> E[Read stored Parent Room, Companion Device mode, and PIN Mode state]
+	D --> E[Read stored Parent Room Devices, Companion Device mode, and PIN Mode state]
 	E -- Invalid PIN state --> X
 	E --> F[Register message, UI, call-count, microphone-mute, and volume subscriptions]
 	F --> G[Perform initial call, UI, standby, and media reads]
@@ -72,7 +72,7 @@ flowchart TD
 	H --> I[Apply Standalone or Paired policy]
 	I --> J[Render Companion Device Select panel]
 	J --> K[Install Parent Room runtime package on online Parent Room Devices]
-	K --> L[Connect Companion Device as Parent Room peripheral]
+	K --> L[Connect Companion Device as Parent Room Device peripheral]
 	L --> M[Send initial heartbeat and ParentReadyRequest]
 	M --> N[Retry Pending Deregistrations, then start parent status and heartbeat interval]
 ```
@@ -85,7 +85,7 @@ The macro save, activate, and runtime restart operations are sent in one putxml 
 
 ```mermaid
 flowchart TD
-	A[Companion Device has online Parent Room status] --> B[Read local macro contents]
+	A[Companion Device has online Parent Room Device status] --> B[Read local macro contents]
 	B --> C[RoomReference source macro]
 	B --> D[Parent Call Coordination module]
 	B --> E[Utils module]
@@ -124,10 +124,10 @@ sequenceDiagram
 	alt Companion Device already registered
 		ParentMacro->>ParentMemory: Overwrite Companion Device record and boardConfigs entry
 		ParentMacro->>CompanionDevice: HTTPClient POST /putxml Message.Send ConfigAccepted
-	else Parent Room has fewer than 3 Companion Devices
+	else Parent Room Device has fewer than 3 Companion Devices
 		ParentMacro->>ParentMemory: Store Companion Device record and boardConfigs entry
 		ParentMacro->>CompanionDevice: HTTPClient POST /putxml Message.Send ConfigAccepted
-	else Parent Room already has 3 Companion Devices
+	else Parent Room Device already has 3 Companion Devices
 		ParentMacro->>CompanionDevice: HTTPClient POST /putxml Message.Send ConfigDenied
 		ParentMacro->>ParentMemory: No write
 	end
@@ -169,12 +169,12 @@ flowchart TD
 	E --> F{Parent response}
 	F -- ParentReady --> G[Send Message.Send ConfigSync]
 	G --> H{Config response}
-	H -- ConfigAccepted --> I[Pair workflow commits room; initialization refresh logs acceptance]
+	H -- ConfigAccepted --> I[Parent Room Registration commits the Parent Room Device; initialization refresh logs acceptance]
 	H -- ConfigDenied --> J[Companion Device shows capacity or configuration denial]
 	F -- No response or HTTP failure --> K[Companion Device logs peripheral connect failure]
 ```
 
-The Pair New Room `ParentReadyRequest` payload includes the runtime Companion Device identity and return path:
+The Register Parent Room Device `ParentReadyRequest` payload includes the runtime Companion Device identity and return path:
 
 - `Board.Serial`
 - `Board.Name`
@@ -228,20 +228,20 @@ flowchart TD
 	Q -- No --> S[Send ConfigRequired]
 ```
 
-If the Parent Room Device accepts or denies configuration but cannot send the response back to the Companion Device with the credentials supplied by the Companion Device, it shows a touch panel prompt: `Companion Registration Error`.
+If the Parent Room Device accepts or denies configuration but cannot send the response back to the Companion Device with the credentials supplied by the Companion Device, it shows a touch panel prompt: `Companion Device Registration Error`.
 
 ## Parent Selection and Ongoing Heartbeat
 
-The Companion Device keeps tracking Parent Room availability and maintains the active Parent Room peripheral heartbeat. Selecting a Parent Room runs a serial-verified identity check with up to five attempts and five seconds between completed failures. `info3` shows `Connecting to {room} — attempt {N} of 5`. A failed selection never restores the previous Parent Room: the Companion Device enters Standalone, shows the neutral `Room Unavailable` prompt, and displays `Unable to connect to {room}. Running Standalone.` for 60 seconds.
+The Companion Device keeps tracking Parent Room Device availability and maintains the active Parent Room Device peripheral heartbeat. Selecting a Parent Room Device runs a serial-verified identity check with up to five attempts and five seconds between completed failures. `info3` shows `Connecting to {device} — attempt {N} of 5`. A failed selection never restores the previous Parent Room Device: the Companion Device enters Standalone, shows the neutral `Parent Room Device Unavailable` prompt, and displays `Unable to connect to {device}. Running Standalone.` for 60 seconds.
 
-An active Paired Parent Room Device that becomes unavailable follows the same five-attempt path. If the Companion Device has no active call, it enters Standalone. If a call is active, it enters Call Preservation State, keeps the current Parent Room assignment and call intact, exposes the native End Call control, and continues one serial-verified network attempt every five seconds. `info3` remains `{room} is temporarily unavailable. Your call will continue.` until communication recovers or the call ends. A matching serial response restores normal Paired controls; a call ending before recovery returns the Companion Device to Standalone.
+An active Paired Parent Room Device that becomes unavailable follows the same five-attempt path. If the Companion Device has no active call, it enters Standalone. If a call is active, it enters Call Preservation State, keeps the current Parent Room Device assignment and call intact, exposes the native End Call control, and continues one serial-verified network attempt every five seconds. `info3` remains `{device} is temporarily unavailable. Your call will continue.` until communication recovers or the call ends. A matching serial response restores normal Paired controls; a call ending before recovery returns the Companion Device to Standalone.
 
 ```mermaid
 flowchart TD
 	A[30 second interval fires] --> B{Selection or recovery already active?}
 	B -- Yes --> C[Skip overlapping interval work]
 	B -- No --> D[Refresh parent identities]
-	D --> E{Selected Parent Room serial verified?}
+	D --> E{Selected Parent Room Device serial verified?}
 	E -- Yes --> F[Send Peripherals.HeartBeat]
 	E -- No --> G[Run five connection attempts]
 	G --> H{Companion Device call active?}
@@ -263,25 +263,25 @@ Turning PIN Mode on writes the state, updates the On/Off widget feedback, closes
 
 The protected UI session closes after 60 seconds of inactivity. Opening the launcher, opening or changing a protected page, any widget action within `cc26_hidden`, and PIN/registration stage display or response reset the timer. RoomOS exposes only the final TextInput response—not individual keypad presses—so typing a digit cannot reset the timer. Expiry clears the active PIN input or naturally expires a 60-second registration input, discards unsaved input, and closes the protected panel.
 
-Parent Room Registration and Deregistration each require a fresh current-PIN authorization when PIN Mode is enabled, even when the protected panel is already open. The authorization is scoped to that one operation; incorrect input re-prompts, while dismissal or expiry cancels it.
+Parent Room Registration and Parent Room Deregistration each require a fresh current-PIN authorization when PIN Mode is enabled, even when the protected panel is already open. The authorization is scoped to that one operation; incorrect input re-prompts, while dismissal or expiry cancels it.
 
 ## Parent Room Registration and Deregistration
 
-`Pair New Room` collects host, expected Parent serial, username, password, and password confirmation after an information page. The registration confirmation shows the host, normalized serial, and username but never the password. The final Register Room choice begins a locked workflow: the hidden panel closes, a zero-duration progress prompt remains on screen, selecting its waiting option reopens the same stage, and `Prompt.Cleared` also reopens it. Each visible stage owns a fresh 60-second watchdog. The final success or failure prompt lasts up to 60 seconds.
+`Register Parent Room Device` collects host, expected Parent Room Device serial, username, password, and password confirmation after an information page. The registration confirmation shows the host, normalized serial, and username but never the password. The final Register Device choice begins a locked workflow: the hidden panel closes, a zero-duration progress prompt remains on screen, selecting its waiting option reopens the same stage, and `Prompt.Cleared` also reopens it. Each visible stage owns a fresh 60-second watchdog. The final success or failure prompt lasts up to 60 seconds.
 
-The locked stages authenticate to the host, read its live identity, and require the observed serial to match the entered serial before any Parent Room macro changes. A mismatch reports failure without displaying the observed serial. After identity confirmation, the workflow asks before replacing an existing serial or canceling that serial's Pending Deregistration, installs/starts the shared Parent Room macros, connects and heartbeats the Companion Device peripheral, waits for `ParentReady`, waits for `ConfigAccepted`, and finally saves the Parent Room record. `ParentReadyRequest` and `ConfigSync` retry every five seconds only inside their respective 60-second stages. The candidate credentials stay transient until the Parent Room Device accepts and the Companion Device storage write succeeds. A new serial is rejected when the Companion Device already has six rooms; a Parent Room Device rejects a new Companion Device when it already has three. Registration is blocked only while the Companion Device is Paired and in an active call. A Standalone call does not block it.
+The locked stages authenticate to the host, read its live identity, and require the observed serial to match the entered serial before any Parent Room macro changes. A mismatch reports failure without displaying the observed serial. After identity confirmation, the workflow asks before replacing an existing serial or canceling that serial's Pending Deregistration, installs/starts the shared Parent Room macros, connects and heartbeats the Companion Device peripheral, waits for `ParentReady`, waits for `ConfigAccepted`, and finally saves the Parent Room Device record. `ParentReadyRequest` and `ConfigSync` retry every five seconds only inside their respective 60-second stages. The candidate credentials stay transient until the Parent Room Device accepts and the Companion Device storage write succeeds. A new serial is rejected when the Companion Device already has six registered Parent Room Devices; a Parent Room Device rejects a new Companion Device when it already has three. Registration is blocked only while the Companion Device is Paired and in an active call. A Standalone call does not block it.
 
 If the verified serial already exists, the Companion Device asks whether to overwrite the saved name, host, and credentials. If the serial has a Pending Deregistration tombstone, it asks whether the user wants to make registration the newer intent. Decline keeps the existing state. Acceptance suppresses cleanup retries for that serial while the complete registration handshake is in progress, preventing the older removal intent from racing the new registration. Only `ConfigAccepted` plus the local registration write replaces the old record or tombstone. A failure does not create a selectable Parent Room Registration. If configuration may already have reached the Parent, the Companion Device retains only a hidden cleanup tombstone and tells the user to inspect macro logs.
 
-Pressing and holding any online or offline room button for three seconds displays Delete Room. A fresh PIN is required after confirmation when PIN Mode is enabled. The room disappears from Select Device immediately after durable local retirement. If it was active, the Companion Device cancels call rejoin, ends every local Companion Device call, enters Standalone, and informs the user before confirmation that the call remains active in the Parent Room. The shared Parent Room macros are never uninstalled because other Companion Devices may rely on them.
+Pressing and holding any online or offline Parent Room Device button for three seconds displays Deregister Parent Room Device. A fresh PIN is required after confirmation when PIN Mode is enabled. The Parent Room Device disappears from Companion Device Select immediately after durable local retirement. If it was active, the Companion Device cancels call rejoin, ends every local Companion Device call, enters Standalone, and informs the user before confirmation that the call remains active on the Parent Room Device. The shared Parent Room macros are never uninstalled because other Companion Devices may rely on them.
 
-After durable local retirement, deregistration enters a locked `Confirming Parent Cleanup` stage. `DeregisterRequest` retries every five seconds during that 60-second stage. `Room Removed` appears only after the matching `DeregistrationAccepted` confirms that both devices completed removal. If the stage expires or transport fails, `Parent Cleanup Pending` explains that the room is already gone from the Companion Device but remote cleanup remains unconfirmed. A later matching acknowledgement replaces that notice with confirmed success.
+After durable local retirement, deregistration enters a locked `Confirming Parent Room Deregistration` stage. `DeregisterRequest` retries every five seconds during that 60-second stage. `Parent Room Device Deregistered` appears only after the matching `DeregistrationAccepted` confirms that both devices completed removal. If the stage expires or transport fails, `Parent Room Deregistration Pending` explains that the Parent Room Device is already gone from the Companion Device but remote cleanup remains unconfirmed. A later matching acknowledgement replaces that notice with confirmed success.
 
-The hidden `pendingDeregistrations` record retains the Parent Room serial and connection data until a matching `DeregistrationAccepted` transaction arrives. The Parent Room Device purges the Companion Device's `Peripherals ConnectedDevice` entry, removes `registeredBoards` and `boardConfigs`, and only then acknowledges. An already-absent peripheral counts as complete. Cleanup is attempted during the locked deletion stage, at Companion Device initialization, and whenever a valid message arrives from that pending Parent Room Device. Parent Room initialization sends `RegistrationValidation` to its saved Companion Devices; an active registration replies `RegistrationValidated`, while a pending removal immediately retries `DeregisterRequest`. Messages from unknown or retired Parent Room Devices are otherwise ignored. See [ADR 0006](docs/adr/0006-parent-registration-and-tombstone-reconciliation.md).
+The hidden `pendingDeregistrations` record retains the Parent Room Device serial and connection data until a matching `DeregistrationAccepted` transaction arrives. The Parent Room Device purges the Companion Device's `Peripherals ConnectedDevice` entry, removes `registeredBoards` and `boardConfigs`, and only then acknowledges. An already-absent peripheral counts as complete. Cleanup is attempted during the locked Parent Room Deregistration stage, at Companion Device initialization, and whenever a valid message arrives from that pending Parent Room Device. Parent Room Device initialization sends `RegistrationValidation` to its saved Companion Devices; an active registration replies `RegistrationValidated`, while a Pending Deregistration immediately retries `DeregisterRequest`. Messages from unknown or retired Parent Room Devices are otherwise ignored. See [ADR 0006](docs/adr/0006-parent-registration-and-tombstone-reconciliation.md).
 
 ```mermaid
 flowchart TD
-	A[Pair New Room] --> B[Fresh PIN if enabled]
+	A[Register Parent Room Device] --> B[Fresh PIN if enabled]
 	B --> C[Information, host, serial, username, password, confirm]
 	C --> D[Confirm host, serial, and username]
 	D --> E[Verify live Parent identity matches entered serial]
@@ -298,36 +298,36 @@ flowchart TD
 
 ## UI Feature Mode
 
-The Companion Device switches between Standalone and Paired behavior based on the active Parent Room selection.
+The Companion Device switches between Standalone and Paired behavior based on the active Parent Room Device selection.
 
-`config.UserInterface.WebWidget.CompanionWidget.enabled` is `true` by default. The Companion Device reads the current Web Widget from `Status.UserInterface.WebView` and saves its URL and restore metadata once into memory. By default, Companion Widget is shown in both Standalone and Paired modes; set `config.UserInterface.WebWidget.CompanionWidget.restoreStandaloneExisting` to `true` to restore the original Web Widget when unpaired. In Paired mode, the Companion Device removes its own Companion widget when needed with `UserInterface.Extensions.WebWidget.Remove`, then saves the built-in Simple-WebWidget URL with hash parameters unless `config.UserInterface.WebWidget.urlOverride` is supplied. Configurable CompanionWidget hash fields include weather.mode, weather.latitude, weather.longitude, weather.temperatureUnit, time.mode, time.timeZone, context-specific info2, and context-specific iconUrl. The Companion Device supplies theme, heading, info1, solution-owned runtime `info3`, and `hideSettings=true` in code, and re-saves the widget if `UserInterface Theme Name` changes.
+`config.UserInterface.WebWidget.CompanionWidget.enabled` is `true` by default. The Companion Device reads the current Web Widget from `Status.UserInterface.WebView` and saves its URL and restore metadata once into memory. By default, Companion Widget is shown in both Standalone and Paired modes; set `config.UserInterface.WebWidget.CompanionWidget.restoreStandaloneExisting` to `true` to restore the original Web Widget when running Standalone. In Paired mode, the Companion Device removes its own Companion widget when needed with `UserInterface.Extensions.WebWidget.Remove`, then saves the built-in Simple-WebWidget URL with hash parameters unless `config.UserInterface.WebWidget.urlOverride` is supplied. Configurable CompanionWidget hash fields include weather.mode, weather.latitude, weather.longitude, weather.temperatureUnit, time.mode, time.timeZone, `Standalone.info2`, `Standalone.iconUrl`, `Paired.info2`, and `Paired.iconUrl`. The Companion Device supplies theme, heading, info1, solution-owned runtime `info3`, and `hideSettings=true` in code, and re-saves the widget if `UserInterface Theme Name` changes.
 
-Standalone standby preferences are saved in Companion Device memory for `Standby Control`, `Standby Halfwake Mode`, and `Time OfficeHours Enabled`. In Paired mode, the Companion Device forces those values to `Off`, `Manual`, and `False` so it does not enter standby independently. When a Parent Room is selected, the Companion Device clears any pending standby sync or bypass state, reads that Parent Room Device's current `Status.Standby.State` directly, and shows one 30-second prompt before applying `Off`, `Standby`, or `Halfwake`. Parent Room Devices also subscribe to `Status.Standby.State` and send debounced `StandbySync` messages to registered Companion Devices; after pairing, the Companion Device follows those active-Parent Room standby commands immediately without showing a prompt. The Companion Device ignores `EnteringStandby`. A user can start 5-minute or 30-minute bypass windows; while bypass is active, Parent Room standby commands are ignored and the Web Widget `info3` shows `Standby sync bypass until HH:MM AM/PM`. Runtime `info3` precedence is Unhealthy State, Parent Connectivity/Call Preservation, call synchronization, then standby. The WebWidget adapter limits `info3` to 90 characters and, when needed, trims at a word boundary with an ellipsis so dynamic status text cannot run beneath the fixed footer.
+Standalone standby preferences are saved in Companion Device memory for `Standby Control`, `Standby Halfwake Mode`, and `Time OfficeHours Enabled`. In Paired mode, the Companion Device forces those values to `Off`, `Manual`, and `False` so it does not enter standby independently. When a Parent Room Device is selected, the Companion Device clears any pending standby sync or bypass state, reads that Parent Room Device's current `Status.Standby.State` directly, and shows one 30-second prompt before applying `Off`, `Standby`, or `Halfwake`. Parent Room Devices also subscribe to `Status.Standby.State` and send debounced `StandbySync` messages to registered Companion Devices; after entering Paired mode, the Companion Device follows those active-Parent Room Device standby commands immediately without showing a prompt. The Companion Device ignores `EnteringStandby`. A user can start 5-minute or 30-minute bypass windows; while bypass is active, Parent Room Device standby commands are ignored and the Web Widget `info3` shows `Standby sync bypass until HH:MM AM/PM`. Runtime `info3` precedence is Unhealthy State, Parent Connectivity/Call Preservation, call synchronization, then standby. The WebWidget adapter limits `info3` to 90 characters and, when needed, trims at a word boundary with an ellipsis so dynamic status text cannot run beneath the fixed footer.
 
-The editable Paired UI policy is in `Custom-Campanion_10_PairedEnvironment_2026`. It captures supported Standalone values and restores them on release. Video Mute, Participant List, and Whiteboard Start are set to `Auto`; the other known call controls plus Share Start are set to `Hidden`. Call End is `Hidden` during normal Paired operation and temporarily `Auto` during Call Preservation or an active-call Unhealthy State. Unsupported optional feature paths are logged and skipped. Because RoomOS does not expose a dedicated Raise Hand visibility configuration, device acceptance must confirm Raise Hand remains available with MidCallControls hidden.
+The editable Paired UI policy is in `Custom-Campanion_10_PairedEnvironment_2026`. It captures supported Standalone values and restores them when returning to Standalone. Video Mute, Participant List, and Whiteboard Start are set to `Auto`; the other known call controls plus Share Start are set to `Hidden`. Call End is `Hidden` during normal Paired operation and temporarily `Auto` during Call Preservation or an active-call Unhealthy State. Unsupported optional feature paths are logged and skipped. Because RoomOS does not expose a dedicated Raise Hand visibility configuration, device acceptance must confirm Raise Hand remains available with MidCallControls hidden.
 
 While Paired, the Companion Device performs initial reads and subscribes to `Status.Audio.Microphones.Mute` and `Status.Audio.Volume`. An observed unmute invokes `Command.Audio.Microphones.Mute` once; a volume other than 1 invokes `Command.Audio.Volume.Set` once with `Level: 1` and no `Device` parameter. The Companion Device also invokes `Command.Conference.DoNotDisturb.Activate({ Timeout: 5 })` and renews that solution-owned lease every two minutes so incoming calls are rejected. Entering Standalone clears the renewal timer and invokes `Command.Conference.DoNotDisturb.Deactivate()`; a DND state that predated Paired mode is intentionally not restored. These local commands are not retried. Leaving Paired keeps the microphone state muted. If no call is active, the Companion Device immediately reads `Config.Audio.DefaultVolume`, restores that value, and reminds the user to unmute. If a call is active, the Companion Device enters Standalone immediately and asks whether to restore volume; decline, dismissal, or prompt failure leaves the level unchanged.
 
-The Paired Companion Device participates in at most one call. DND blocks ordinary incoming calls, and a new Parent Room call join request is ignored whenever `Status.SystemUnit.State.NumberOfActiveCalls` shows an existing call. Every synchronized `Webex.Join` explicitly uses `ParticipantRole: Guest`. The Companion Device reads and subscribes to the conference authentication request: it answers Guest-capable role selection immediately, including the Guest choice in combined role-and-PIN requests. After an accepted combined request, the Companion Device allows the native authentication UI 250 milliseconds to settle and then begins password lookup unless the authentication request or call changed. If RoomOS requires that combined request to include the PIN, the rejected role-only response falls through to the same password lookup rather than failing the authentication workflow. The Companion Device asks only its active Parent Room Device for a Meeting Password when Guest authentication requires one. The Parent Room Device performs one current `Bookings.List` read and returns a password only when exactly one booking is current, matches the active Parent Room call identity, and contains a password. The password remains transient and is never stored or written to macro logs. An unavailable, ambiguous, stale, or unmatched password leaves native manual entry available and displays `Enter the meeting password manually on this Companion Device.` in both Infoblock 3 and a duration-0 alert. If the call drops during authentication while the Parent Room Device is still connected, the Companion Device immediately requests authoritative Parent Room call state and rejoins the active Webex call.
+The Paired Companion Device participates in at most one call. DND blocks ordinary incoming calls, and a new Parent Room Device call join request is ignored whenever `Status.SystemUnit.State.NumberOfActiveCalls` shows an existing call. Every synchronized `Webex.Join` explicitly uses `ParticipantRole: Guest`. The Companion Device reads and subscribes to the conference authentication request: it answers Guest-capable role selection immediately, including the Guest choice in combined role-and-PIN requests. After an accepted combined request, the Companion Device allows the native authentication UI 250 milliseconds to settle and then begins password lookup unless the authentication request or call changed. If RoomOS requires that combined request to include the PIN, the rejected role-only response falls through to the same password lookup rather than failing the authentication workflow. The Companion Device asks only its active Parent Room Device for a Meeting Password when Guest authentication requires one. The Parent Room Device performs one current `Bookings.List` read and returns a password only when exactly one booking is current, matches the active Parent Room Device call identity, and contains a password. The password remains transient and is never stored or written to macro logs. An unavailable, ambiguous, stale, or unmatched password leaves native manual entry available and displays `Enter the meeting password manually on this Companion Device.` in both Infoblock 3 and a duration-0 alert. If the call drops during authentication while the Parent Room Device is still connected, the Companion Device immediately requests authoritative Parent Room Device call state and rejoins the active Webex call.
 
-If an In-Room User starts a call directly from the Paired Companion Device without current Parent Room authorization, reconciliation disconnects it and displays `Start calls from the Parent Room.` in Infoblock 3 for 15 seconds. The RoomOS alert retains the title `Start Calls from the Parent Room` and the detailed text `Calling is available through the Parent Room while this Companion Device is Paired. Start the call from the Parent Room, or return this Companion Device to Standalone to call directly.` for the same duration. An authorized Parent Room call or a transition away from Paired dismisses both notices early, and the macro log records that Paired calls must start from the Parent Room together with both guidance forms and the notice duration. When an active Parent Room call uses another platform, Infoblock 3 displays `[Platform] isn't supported. Start a Webex call from the Parent Room.` instead of the longer alert-oriented explanation. Standalone retains native RoomOS call behavior.
+If an In-Room User starts a call directly from the Paired Companion Device without current Parent Room Device authorization, reconciliation disconnects it and displays `Start calls from the Parent Room Device.` in Infoblock 3 for 15 seconds. The RoomOS alert retains the title `Start Calls from Parent Room Device` and the detailed text `Calling is available through the Parent Room Device while this Companion Device is Paired. Start the call from the Parent Room Device, or run this Companion Device as Standalone to call directly.` for the same duration. An authorized Parent Room Device call or a transition away from Paired dismisses both notices early, and the macro log records that Paired calls must start from the Parent Room Device together with both guidance forms and the notice duration. When an active Parent Room Device call uses another platform, Infoblock 3 displays `[Platform] isn't supported. Start a Webex call from the Parent Room Device.` instead of the longer alert-oriented explanation. Standalone retains native RoomOS call behavior.
 
 ```mermaid
 flowchart TD
-	A[User releases Companion Device or selects Parent Room] --> B{Selected Standalone?}
+	A[User selects Standalone or a Parent Room Device] --> B{Selected Standalone?}
 	B -- Yes --> C[Set activeParentSerial to Standalone]
 	C --> D[Write active Parent Room memory]
 	D --> E[Restore stored Standalone UI feature values]
 	B -- No --> F[Validate selected Parent Room Device is online]
 	F --> G[Set activeParentSerial to parent serial]
 	G --> H[Write active Parent Room memory]
-	H --> I[Hide paired-mode UI features]
+	H --> I[Hide Paired UI features]
 	I --> J[Send active Parent Room Device heartbeat]
 ```
 
 ## Unhealthy State and Administrator Communication
 
-Required local prerequisite failures, invalid saved PIN Mode state, and required Paired microphone/volume/DND enforcement failures enter an Unhealthy State. The console logs a stable code, component, context, remediation, and original error without credentials or PIN values. The `cc26_access` and `cc26_hidden` panels are replaced by the gray widgetless `cc26_error` action panel, blocking parent selection. Clicking it shows `Contact a Device Administrator.` for up to 30 seconds with a Dismiss option. When the managed Companion Web Widget is available, solution-owned Infoblock 3 persistently shows `Companion controls are unavailable. Contact a Device Administrator.` Recovery requires correcting the local macro/xAPI issue and restarting the Macro Runtime; no background initialization retry or self-restart is attempted.
+Required local prerequisite failures, invalid saved PIN Mode state, and required Paired microphone/volume/DND enforcement failures enter an Unhealthy State. The console logs a stable code, component, context, remediation, and original error without credentials or PIN values. The `cc26_access` and `cc26_hidden` panels are replaced by the gray widgetless `cc26_error` action panel, blocking Parent Room Device selection. Clicking it shows `Contact a Device Administrator.` for up to 30 seconds with a Dismiss option. When the managed Companion Web Widget is available, solution-owned Infoblock 3 persistently shows `Companion Device controls are unavailable. Contact a Device Administrator.` Recovery requires correcting the local macro/xAPI issue and restarting the Macro Runtime; no background initialization retry or self-restart is attempted.
 
 If saved PIN Mode state is malformed, initialization first replaces it with the configured defaults. If the configured default PIN is also invalid, the built-in recovery PIN `0000` is used. Initialization then raises a hard error and remains stopped so a Device Administrator can inspect the diagnostic before restarting. A failed PIN Mode memory write is retried once after two seconds; a second failure enters the Unhealthy State.
 
@@ -354,7 +354,7 @@ Logs keep stable diagnostic codes and compatibility field names where those valu
 | Paired microphone enforcement | `xapi.Status.Audio.Microphones.Mute.get()` and `xapi.Command.Audio.Microphones.Mute()` | `xapi.Status.Audio.Microphones.Mute.on(...)` |
 | Paired volume enforcement | `xapi.Status.Audio.Volume.get()` and `xapi.Command.Audio.Volume.Set({ Level: 1 })` | `xapi.Status.Audio.Volume.on(...)` |
 | Paired incoming-call isolation | `xapi.Command.Conference.DoNotDisturb.Activate({ Timeout: 5 })` and `.Deactivate()` | Two-minute solution timer renews the five-minute lease while Paired |
-| Standalone volume restoration | `xapi.Config.Audio.DefaultVolume.get()` and `xapi.Command.Audio.Volume.Set({ Level })` | None; current default is read at the release boundary |
+| Standalone volume restoration | `xapi.Config.Audio.DefaultVolume.get()` and `xapi.Command.Audio.Volume.Set({ Level })` | None; current default is read during the Standalone transition |
 | Error action button | `xapi.Command.UserInterface.Extensions.Panel.Save/Remove` | `xapi.Event.UserInterface.Extensions.Panel.Clicked.on(...)`, gated to `cc26_error` |
 | PIN-gated panel access | `xapi.Command.UserInterface.Extensions.Panel.Save(...)`, `xapi.Command.UserInterface.Extensions.Panel.Open(...)`, `xapi.Command.UserInterface.Extensions.Panel.Close()`, `xapi.Command.UserInterface.Extensions.Panel.Remove(...)`, `xapi.Command.UserInterface.Message.TextInput.Display(...)`, `xapi.Command.UserInterface.Message.TextInput.Clear(...)`, and `xapi.Command.UserInterface.Extensions.Widget.SetValue(...)` | `xapi.Event.UserInterface.Extensions.Panel.Clicked.on(...)`, `xapi.Event.UserInterface.Extensions.Widget.Action.on(...)`, `xapi.Event.UserInterface.Message.TextInput.Response.on(...)`, `xapi.Event.UserInterface.Extensions.Event.PageOpened.on(...)`, and `xapi.Event.UserInterface.Extensions.Event.PageClosed.on(...)` |
 | Registration modal enforcement | `xapi.Command.UserInterface.Message.Prompt.Display/Clear` and `TextInput.Display` | `xapi.Event.UserInterface.Message.Prompt.Response/Cleared`, `TextInput.Response/Clear`, and `Extensions.Widget.Action` |
@@ -370,31 +370,31 @@ The current source keeps a small route map in `Custom-Campanion_1_Main_2026`. Th
 
 | Route or Action | Direction | Current Status | Purpose |
 | --- | --- | --- | --- |
-| `ParentReadyRequest` | Companion Device to Parent Room | Implemented | The Companion Device asks the freshly installed Parent Room runtime to confirm it is ready and provides return-path credentials. |
-| `ParentReady` | Parent Room to Companion Device | Implemented | The Parent Room confirms the runtime is active and ready to receive Companion Device-owned configuration. |
-| `ConfigSync` | Companion Device to Parent Room | Implemented | The Companion Device sends the explicit Parent Room-facing config subset, return credentials, and capabilities. Companion Device-local `pinMode` is excluded. |
-| `ConfigAccepted` | Parent Room to Companion Device | Implemented | The Parent Room confirms config was stored in `boardConfigs` and Companion Device identity was stored or updated in `registeredBoards`. |
-| `ConfigDenied` | Parent Room to Companion Device | Implemented | The Parent Room rejects config from a new Companion Device when its three-device registration limit is reached. |
-| `ConfigRequired` | Parent Room to Companion Device | Implemented guard response | The Parent Room receives an unsupported action from an unknown Companion Device serial and asks the Companion Device to send config first. |
-| `RegistrationValidation` | Parent Room to Companion Device | Implemented | Parent Room initialization asks each saved Companion Device to prove whether the Parent Room Registration is still current. |
-| `RegistrationValidated` | Companion Device to Parent Room | Implemented | A Companion Device with an active registration confirms the Parent Room record; a tombstoned Companion Device sends deregistration instead. |
-| `DeregisterRequest` | Companion Device to Parent Room | Implemented, idempotent | The Companion Device asks the Parent Room Device to purge its peripheral and remove this Companion Device's config/registration records. |
-| `DeregistrationAccepted` | Parent Room to Companion Device | Implemented | The Parent Room confirms all three cleanup steps; the matching transaction removes the Companion Device tombstone. |
-| `StandbySync` | Parent Room to Companion Device | Implemented | The Parent Room sends its debounced standby state to registered Companion Devices; each Companion Device acts only when the sending Parent Room serial matches its active Parent Room. |
-| `CallSync` | Parent Room to Companion Device | Webex-only join/disconnect slice | The Parent Room detects new calls and also reads current call state when its runtime initializes, carrying the Webex meeting invite link when available and falling back through current call identities. Companion Device initialization, Parent Room selection, configuration acceptance, local call loss, and a ten-second active-call check request authoritative Parent Room state. A matching existing Companion Device call is adopted; an unrelated or unauthorized Paired Companion Device call is disconnected; an idle Companion Device joins the current Parent Room Webex meeting explicitly as Guest. A failed periodic network check preserves a previously authorized call. Webex join and disconnect xAPI commands remain single-attempt. Call identity comparison trims and lowercases each value, then ignores any prefix through the first `:`. Host and cohost Parent Room roles can admit an exact-name registered waiting Companion Device after exact call-identity validation or, when scheduled-meeting identities differ, validation that both devices are in Webex calls. Admission requests are serialized per participant. Unsupported Zoom, Microsoft Teams, Google Meet, SIP/H.323 bridge, and BYOD calls do not auto-join and use generic `info3` guidance to have the Paired Room join a Webex call. |
-| `ActiveCallDetailsRequest` | Companion Device to Parent Room | Implemented | The Companion Device requests the active Parent Room's freshly read call state for late pairing, initialization, periodic authorization, orphan cleanup, and same-call rejoin decisions. |
-| `MeetingPasswordRequest` | Companion Device to Parent Room | Implemented, transient | A registered Companion Device asks only its active Parent Room Device to resolve a Meeting Password for the current Guest authentication request. |
-| `MeetingPasswordResponse` | Parent Room to Companion Device | Implemented, transient | The Parent Room Device returns the correlated best-effort result of one current-booking lookup. The Companion Device rejects stale, wrong-parent, wrong-request, and inactive-call responses. |
-| `parent.callState` | Parent Room to Companion Device | Defined route | Reserved for Parent Room call-state updates. |
-| `board.joinCall` | Parent Room to Companion Device | Defined route | Reserved compatibility identifier for instructing the Companion Device to join the selected Parent Room call context. |
+| `ParentReadyRequest` | Companion Device to Parent Room Device | Implemented | The Companion Device asks the freshly installed Parent Room runtime to confirm it is ready and provides return-path credentials. |
+| `ParentReady` | Parent Room Device to Companion Device | Implemented | The Parent Room Device confirms the runtime is active and ready to receive Companion Device-owned configuration. |
+| `ConfigSync` | Companion Device to Parent Room Device | Implemented | The Companion Device sends the explicit Parent Room-facing config subset, return credentials, and capabilities. Companion Device-local `pinMode` is excluded. |
+| `ConfigAccepted` | Parent Room Device to Companion Device | Implemented | The Parent Room Device confirms config was stored in `boardConfigs` and Companion Device identity was stored or updated in `registeredBoards`. |
+| `ConfigDenied` | Parent Room Device to Companion Device | Implemented | The Parent Room Device rejects config from a new Companion Device when its three-device registration limit is reached. |
+| `ConfigRequired` | Parent Room Device to Companion Device | Implemented guard response | The Parent Room Device receives an unsupported action from an unknown Companion Device serial and asks the Companion Device to send config first. |
+| `RegistrationValidation` | Parent Room Device to Companion Device | Implemented | Parent Room runtime initialization asks each saved Companion Device to prove whether the Parent Room Registration is still current. |
+| `RegistrationValidated` | Companion Device to Parent Room Device | Implemented | A Companion Device with an active registration confirms the Parent Room Device record; a tombstoned Companion Device sends deregistration instead. |
+| `DeregisterRequest` | Companion Device to Parent Room Device | Implemented, idempotent | The Companion Device asks the Parent Room Device to purge its peripheral and remove this Companion Device's config/registration records. |
+| `DeregistrationAccepted` | Parent Room Device to Companion Device | Implemented | The Parent Room Device confirms all three cleanup steps; the matching transaction removes the Companion Device tombstone. |
+| `StandbySync` | Parent Room Device to Companion Device | Implemented | The Parent Room Device sends its debounced standby state to registered Companion Devices; each Companion Device acts only when the sending Parent Room Device serial matches its active Parent Room Device. |
+| `CallSync` | Parent Room Device to Companion Device | Webex-only join/disconnect slice | The Parent Room Device detects new calls and also reads current call state when its runtime initializes, carrying the Webex meeting invite link when available and falling back through current call identities. Companion Device initialization, Parent Room Device selection, configuration acceptance, local call loss, and a ten-second active-call check request authoritative Parent Room Device state. A matching existing Companion Device call is adopted; an unrelated or unauthorized Paired Companion Device call is disconnected; an idle Companion Device joins the current Parent Room Device Webex meeting explicitly as Guest. A failed periodic network check preserves a previously authorized call. Webex join and disconnect xAPI commands remain single-attempt. Call identity comparison trims and lowercases each value, then ignores any prefix through the first `:`. Host and cohost roles on the Parent Room Device can admit an exact-name registered waiting Companion Device after exact call-identity validation or, when scheduled-meeting identities differ, validation that both devices are in Webex calls. Admission requests are serialized per participant. Unsupported Zoom, Microsoft Teams, Google Meet, SIP/H.323 bridge, and BYOD calls do not auto-join and use generic `info3` guidance to have the Parent Room Device join a Webex call. |
+| `ActiveCallDetailsRequest` | Companion Device to Parent Room Device | Implemented | The Companion Device requests the active Parent Room Device's freshly read call state for Paired transitions, initialization, periodic authorization, orphan cleanup, and same-call rejoin decisions. |
+| `MeetingPasswordRequest` | Companion Device to Parent Room Device | Implemented, transient | A registered Companion Device asks only its active Parent Room Device to resolve a Meeting Password for the current Guest authentication request. |
+| `MeetingPasswordResponse` | Parent Room Device to Companion Device | Implemented, transient | The Parent Room Device returns the correlated best-effort result of one current-booking lookup. The Companion Device rejects stale, wrong-parent, wrong-request, and inactive-call responses. |
+| `parent.callState` | Parent Room Device to Companion Device | Defined route | Reserved for Parent Room Device call-state updates. |
+| `board.joinCall` | Parent Room Device to Companion Device | Defined route | Reserved compatibility identifier for instructing the Companion Device to join the selected Parent Room Device call context. |
 
 ## Limits and Storage
 
 - One Companion Device can keep up to 6 Parent Room Devices in Companion Device memory.
-- One Parent Room Device can register up to 3 Companion Devices in Parent Room memory.
+- One Parent Room Device can register up to 3 Companion Devices in Parent Room Device memory.
 - Re-syncing the same Companion Device serial updates that Companion Device record and its `boardConfigs` entry instead of consuming another slot.
-- Re-registering an existing serial requires explicit overwrite confirmation and does not consume another Companion Device or Parent Room slot.
-- `pendingDeregistrations` entries are not selectable rooms; they retain connection credentials only until Parent cleanup is explicitly acknowledged.
+- Re-registering an existing serial requires explicit overwrite confirmation and does not consume another Companion Device or Parent Room Device slot.
+- `pendingDeregistrations` entries are not selectable Parent Room Devices; they retain connection credentials only until Parent Room Deregistration cleanup is explicitly acknowledged.
 - `Custom-Campanion-Storage.js` is generated database state and should not be edited or committed as source.
 
 ## Notes

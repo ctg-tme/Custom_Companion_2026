@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 21, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.1
+ * Version:                 1.0.2
  *
  * Description:             Companion Device-local PIN Mode state, validation, protected-panel access,
  *                          one-operation authorization, PIN editing, and inactivity-session policy.
@@ -518,7 +518,7 @@ function createPinMode(options) {
 					callbacks.onHardError({
 						Code: 'CC26-PIN-SESSION-CLOSE',
 						Component: 'PinMode',
-						Context: 'Failed to close the protected Companion UI after 60 seconds of inactivity',
+						Context: 'Failed to close the protected Companion Device Select panel after 60 seconds of inactivity',
 						Remediation: 'Diagnose Command.UserInterface.Extensions.Panel.Close and restart the Macro Runtime.',
 						Error: error
 					}).catch(callbackError => dependencies.utils.softError({ Context: 'Failed to enter Unhealthy State after PIN session close failure', Error: callbackError }));
@@ -568,7 +568,7 @@ function createPinMode(options) {
 				await dependencies.companionUi.closeProtectedPanel(dependencies.xapi);
 			} catch (error) {
 				dependencies.utils.softError({
-					Context: 'Failed to close the protected Companion UI while stopping PIN Mode',
+					Context: 'Failed to close the protected Companion Device Select panel while stopping PIN Mode',
 					Error: error
 				});
 			}

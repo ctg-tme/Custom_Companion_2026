@@ -21,10 +21,10 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.2
+ * Version:                 1.0.3
  *
  * Description:             Paired Environment policy controller for the Custom Companion Solution.
- *                          Owns call-feature policy, Companion Web Widget mode, paired microphone
+ *                          Owns call-feature policy, Companion Web Widget mode, Paired microphone
  *                          volume/Do Not Disturb enforcement, and safe Standalone restoration.
  *
  * Documentation:           N/A
@@ -286,7 +286,7 @@ function createPairedEnvironment(options) {
 		const shouldRestoreExistingWebWidget = !!(companionWidgetConfig.restoreStandaloneExisting && activeMode === 'Standalone' && standaloneWebWidget && standaloneWebWidget.url);
 		const url = shouldRestoreExistingWebWidget ? standaloneWebWidget.url : dependencies.companionUi.buildCompanionWebWidgetUrl({
 			mode: activeMode,
-			roomName: context.activeParentName,
+			parentRoomDeviceName: context.activeParentName,
 			themeName: userInterfaceThemeName,
 			urlOverride: webWidgetConfig.urlOverride,
 			runtimeInfo3: context.runtimeInfo3,
@@ -345,7 +345,7 @@ function createPairedEnvironment(options) {
 		try {
 			await dependencies.xapi.Command.UserInterface.Message.Prompt.Display({
 				Title: 'Restore Volume?',
-				Text: 'This Companion Device is now running Standalone while a call is active. Restore the device default volume?',
+				Text: 'This Companion Device is now running Standalone while a call is active. Restore its default volume?',
 				FeedbackId: RESTORE_VOLUME_PROMPT_ID,
 				'Option.1': 'Restore Volume',
 				'Option.2': 'Keep Current',
@@ -387,8 +387,8 @@ function createPairedEnvironment(options) {
 
 		try {
 			await dependencies.xapi.Command.UserInterface.Message.Alert.Display({
-				Title: 'Companion Released',
-				Text: 'Volume was restored to the device default. Microphones remain muted; unmute when ready.',
+				Title: 'Standalone Volume Restored',
+				Text: 'Volume was restored to the Companion Device default. Microphones remain muted; unmute when ready.',
 				Duration: 10
 			});
 		} catch (error) {
