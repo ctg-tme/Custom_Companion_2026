@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.5
+ * Version:                 1.0.6
  *
  * Description:             Board Call Synchronization controller for the Custom Companion Solution.
  *                          Owns board call sync classification, Webex join and disconnect behavior,
@@ -72,7 +72,8 @@ function createBoardCallSync(options) {
 	let parentCallRequestInFlight = false;
 	let joinCommandPendingUntil = 0;
 
-	const UNAUTHORIZED_CALL_NOTICE_TEXT = 'Calling is available through the Parent Room while this board is Paired. Start the call from the Parent Room, or return this board to StandAlone to call directly.';
+	const UNAUTHORIZED_CALL_INFO_TEXT = 'Start calls from the Parent Room.';
+	const UNAUTHORIZED_CALL_ALERT_TEXT = 'Calling is available through the Parent Room while this board is Paired. Start the call from the Parent Room, or return this board to StandAlone to call directly.';
 	const UNAUTHORIZED_CALL_ALERT_TITLE = 'Start Calls from the Parent Room';
 
 	function registerCallCountHandler() {
@@ -314,7 +315,8 @@ function createBoardCallSync(options) {
 				RequestReason: requestReason,
 				DisconnectedBoardCall: hadActiveBoardCall,
 				PairedCallPolicy: hadActiveBoardCall ? 'While Paired, start calls from the Parent Room' : '',
-				UserGuidance: hadActiveBoardCall ? UNAUTHORIZED_CALL_NOTICE_TEXT : '',
+				UserGuidance: hadActiveBoardCall ? UNAUTHORIZED_CALL_INFO_TEXT : '',
+				AlertGuidance: hadActiveBoardCall ? UNAUTHORIZED_CALL_ALERT_TEXT : '',
 				NoticeDurationSeconds: hadActiveBoardCall ? getUnauthorizedCallNoticeDurationSeconds() : 0
 			});
 			return;
@@ -586,7 +588,8 @@ function createBoardCallSync(options) {
 			Message: 'Direct board call disconnected; Paired calls must start from the Parent Room',
 			Reason: reason,
 			PairedCallPolicy: 'While Paired, start calls from the Parent Room',
-			UserGuidance: UNAUTHORIZED_CALL_NOTICE_TEXT,
+			UserGuidance: UNAUTHORIZED_CALL_INFO_TEXT,
+			AlertGuidance: UNAUTHORIZED_CALL_ALERT_TEXT,
 			NoticeDurationSeconds: getUnauthorizedCallNoticeDurationSeconds()
 		});
 	}
@@ -596,14 +599,14 @@ function createBoardCallSync(options) {
 		const noticeToken = ++unauthorizedCallNoticeToken;
 		clearUnauthorizedCallNoticeTimeout();
 		unauthorizedCallNoticeActive = true;
-		await setInfo(UNAUTHORIZED_CALL_NOTICE_TEXT);
+		await setInfo(UNAUTHORIZED_CALL_INFO_TEXT);
 		unauthorizedCallNoticeTimeout = setTimeout(() => {
 			unauthorizedCallNoticeTimeout = null;
 			if (noticeToken !== unauthorizedCallNoticeToken || !unauthorizedCallNoticeActive) {
 				return;
 			}
 			unauthorizedCallNoticeActive = false;
-			if (infoText !== UNAUTHORIZED_CALL_NOTICE_TEXT) {
+			if (infoText !== UNAUTHORIZED_CALL_INFO_TEXT) {
 				return;
 			}
 			setInfo('').catch(error => {
@@ -614,7 +617,7 @@ function createBoardCallSync(options) {
 		try {
 			await dependencies.xapi.Command.UserInterface.Message.Alert.Display({
 				Title: UNAUTHORIZED_CALL_ALERT_TITLE,
-				Text: UNAUTHORIZED_CALL_NOTICE_TEXT,
+				Text: UNAUTHORIZED_CALL_ALERT_TEXT,
 				Duration: getUnauthorizedCallNoticeDurationSeconds()
 			});
 			if (noticeToken !== unauthorizedCallNoticeToken || !unauthorizedCallNoticeActive) {
@@ -627,7 +630,8 @@ function createBoardCallSync(options) {
 		dependencies.log.info({
 			Message: 'Paired calling policy notice displayed',
 			Reason: reason,
-			UserGuidance: UNAUTHORIZED_CALL_NOTICE_TEXT,
+			UserGuidance: UNAUTHORIZED_CALL_INFO_TEXT,
+			AlertGuidance: UNAUTHORIZED_CALL_ALERT_TEXT,
 			NoticeDurationSeconds: getUnauthorizedCallNoticeDurationSeconds()
 		});
 	}
@@ -637,7 +641,7 @@ function createBoardCallSync(options) {
 		unauthorizedCallNoticeToken++;
 		unauthorizedCallNoticeActive = false;
 		clearUnauthorizedCallNoticeTimeout();
-		if (infoText === UNAUTHORIZED_CALL_NOTICE_TEXT) {
+		if (infoText === UNAUTHORIZED_CALL_INFO_TEXT) {
 			await setInfo('');
 		}
 		if (!wasActive) {
