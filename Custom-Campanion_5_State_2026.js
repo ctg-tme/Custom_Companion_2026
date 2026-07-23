@@ -21,9 +21,10 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.5
+ * Version:                 1.0.6
  *
- * Description:             Durable registration/tombstone storage keys, safe MemoryStorage reads, and basic Companion Device mode state.
+ * Description:             Durable registration, tombstone, Paired Environment, and standby storage keys,
+ *                          safe MemoryStorage reads, and basic Companion Device mode state.
  *
  * Documentation:           N/A
  *
@@ -45,6 +46,7 @@ const PENDING_DEREGISTRATIONS_STORAGE_KEY = 'pendingDeregistrations';
 const ACTIVE_PARENT_SERIAL_STORAGE_KEY = 'activeParentSerial';
 const PIN_MODE_STORAGE_KEY = 'pinMode';
 const STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY = 'standaloneUiFeatureConfig';
+const STANDALONE_PAIRED_ENVIRONMENT_CONFIG_STORAGE_KEY = 'standalonePairedEnvironmentConfig';
 const STANDALONE_STANDBY_CONFIG_STORAGE_KEY = 'standaloneStandbyConfig';
 
 async function readMemoryOrDefault(mem, key, defaultValue, utils) {
@@ -150,6 +152,7 @@ const companionState = {
 	ACTIVE_PARENT_SERIAL_STORAGE_KEY,
 	PIN_MODE_STORAGE_KEY,
 	STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY,
+	STANDALONE_PAIRED_ENVIRONMENT_CONFIG_STORAGE_KEY,
 	STANDALONE_STANDBY_CONFIG_STORAGE_KEY,
 	readMemoryOrDefault,
 	readMemoryOrInitialize,

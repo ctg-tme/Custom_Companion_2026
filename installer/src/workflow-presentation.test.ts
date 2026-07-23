@@ -33,6 +33,7 @@ describe('installer workflow presentation', () => {
     expect(source).toContain("'Installation Type'");
     expect(source).toContain('Install Custom Companion 2026 Macros');
     expect(source).toContain('Purge ${GENERATED_STORAGE_MACRO} and Install Custom Companion 2026 Macros');
+    expect(source).toContain('captured Standalone Paired Environment and standby preferences');
     expect(source).toContain("this.installationType === 'clean'");
     expect(source).toContain("this.installationType === 'clean' ? `<div class=\"notice warning\"");
     expect(source).toContain('Generated storage is governed only by the selected installation type');

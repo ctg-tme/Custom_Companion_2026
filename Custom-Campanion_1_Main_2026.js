@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 0.1.2.42
+ * Version:                 0.1.2.43
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -170,6 +170,7 @@ const pairedEnvironmentController = pairedEnvironment.create({
 	xapi: xapi,
 	mem: mem,
 	storageKey: companionState.STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY,
+	environmentStorageKey: companionState.STANDALONE_PAIRED_ENVIRONMENT_CONFIG_STORAGE_KEY,
 	userInterfaceConfig: config.UserInterface,
 	companionUi: companionUi,
 	log: log,
@@ -387,6 +388,7 @@ async function loadMemoryState() {
 	companionDeviceState = createCompanionDeviceState(activeParentSerial);
 	await pinModeController.initialize();
 	pairedEnvironmentController.setStandaloneUiFeatureConfig(await companionState.readMemoryOrDefault(mem, companionState.STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY, {}, utils));
+	pairedEnvironmentController.setStandaloneEnvironmentConfig(await companionState.readMemoryOrDefault(mem, companionState.STANDALONE_PAIRED_ENVIRONMENT_CONFIG_STORAGE_KEY, {}, utils));
 	standbyCoordinationController.setStandaloneConfig(await companionState.readMemoryOrDefault(mem, companionState.STANDALONE_STANDBY_CONFIG_STORAGE_KEY, {}, utils));
 	parentRegistrationController.setState(parentDevices, pendingDeregistrations);
 	await parentRegistrationController.reconcileStoredConflicts();
@@ -661,6 +663,7 @@ async function selectParentByIndex(parentIndex) {
 async function completeVerifiedParentSelection(refreshedParentDevice, parentStatus) {
 	await standbyCoordinationController.clear();
 	await companionDeviceCallSyncController.cancel();
+	await pairedEnvironmentController.captureStandaloneConfig();
 	activeParentSerial = parentStatus.serial;
 	companionDeviceState = createCompanionDeviceState(activeParentSerial);
 	const prefetchedStandbyState = standbyCoordinationController.prefetchSelectedParentSync(refreshedParentDevice);

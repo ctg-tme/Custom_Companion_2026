@@ -20,6 +20,10 @@ _Avoid_: Unpaired mode, disconnected mode
 The operating mode in which the Companion Device is assigned to one active Parent Room Device.
 _Avoid_: Connected mode, linked mode
 
+**Paired Environment Policy**:
+The reversible Companion Device policy that suppresses independent endpoint behavior while Paired without replacing Standalone preferences. A surface is governed only after its exact Standalone value has been captured durably.
+_Avoid_: Paired defaults, unpaired settings
+
 **Companion Device Select**:
 The in-room interface for choosing Standalone or a registered Parent Room Device and for opening the configuration controls for PIN Mode, Parent Room Registration, and Parent Room Deregistration.
 _Avoid_: Select Device, room picker, board select
@@ -69,7 +73,7 @@ The build-time agreement that keeps the Release Manifest, eligible macro set, st
 _Avoid_: Manifest only, installer assumptions
 
 **Clean Installation**:
-The explicit Companion Installer choice that removes `Custom-Campanion-Storage` before installing the selected Custom Companion release. It discards the Companion Device's saved Parent Room Devices, active Parent Room Device selection, PIN Mode state, and captured Standalone UI and standby settings. Generated storage remains outside the Release Manifest and is never removed by a Standard Installation.
+The explicit Companion Installer choice that removes `Custom-Campanion-Storage` before installing the selected Custom Companion release. It discards the Companion Device's saved Parent Room Devices, active Parent Room Device selection, PIN Mode state, and captured Standalone Paired Environment and standby preferences. Generated storage remains outside the Release Manifest and is never removed by a Standard Installation.
 _Avoid_: Legacy purge, factory reset, normal upgrade
 
 **Legacy Project Macro**:
@@ -160,13 +164,13 @@ Local xAPI commands are attempted once and are never retried. A local command fa
 
 Independent local policy commands may be issued together; concurrency does not add retries or remove causal ordering between workflow stages.
 
-A failed required Paired microphone-mute or volume-level enforcement command immediately enters the Unhealthy State. The console identifies the failed enforcement path with a stable diagnostic code, the normal `cc26_access` and `cc26_hidden` panels are replaced by `cc26_error`, and Parent Room Device selection remains blocked until the Macro Runtime restarts. Optional UI feature-policy paths are logged and skipped when unavailable.
+A failed required Paired microphone-mute or volume-level enforcement command immediately enters the Unhealthy State. The console identifies the failed enforcement path with a stable diagnostic code, the normal `cc26_access` and `cc26_hidden` panels are replaced by `cc26_error`, and Parent Room Device selection remains blocked until the Macro Runtime restarts. Optional Paired Environment Policy paths are logged and skipped when unavailable.
 
 If required media enforcement fails during an active call, the Companion Device remains assigned to its current Parent Room Device until that call ends. The native End Call control and `cc26_error` action button are shown; volume, microphone mute, Parent Room Device assignment, and the active call are otherwise left unchanged. When the call ends, the Companion Device transitions to Standalone and attempts the now-safe default-volume restoration once, but remains Unhealthy and blocks Parent Room Device selection until restart.
 
 ## Paired UI Feature Policy
 
-The editable Paired UI feature policy uses explicit RoomOS xAPI paths. It captures each supported value before entering Paired mode and restores that value when returning to Standalone. An unavailable optional path is logged and skipped.
+The UI feature slice of the Paired Environment Policy uses explicit RoomOS xAPI paths. It captures each supported value before entering Paired mode and restores that value when returning to Standalone. An unavailable optional path is logged and skipped.
 
 These controls remain available while Paired:
 
@@ -200,4 +204,4 @@ These known controls are hidden while Paired:
 
 ## Verification
 
-Until the planned RoomOS macro test utility is available, this project does not add a separate automated test harness. Changes are checked with JavaScript syntax validation, diff validation, focused source searches, and documented device acceptance testing. The future utility should cover XML parsing, HTTP response validation and queue policy, Parent Room Device retry and state transitions, Paired UI policy decisions, media enforcement and restoration, Unhealthy transitions, user-message precedence, native control visibility, and call integrity through the deployable source-macro interfaces.
+Until the planned RoomOS macro test utility is available, this project does not add a separate automated test harness. Changes are checked with JavaScript syntax validation, diff validation, focused source searches, and documented device acceptance testing. The future utility should cover XML parsing, HTTP response validation and queue policy, Parent Room Device retry and state transitions, Paired Environment Policy decisions and restoration, media enforcement, Unhealthy transitions, user-message precedence, native control visibility, and call integrity through the deployable source-macro interfaces.

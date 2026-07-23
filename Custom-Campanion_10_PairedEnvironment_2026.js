@@ -21,11 +21,12 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.5
+ * Version:                 1.0.6
  *
  * Description:             Paired Environment policy controller for the Custom Companion Solution.
- *                          Owns call-feature policy, Companion Web Widget mode, Paired microphone
- *                          volume/Do Not Disturb enforcement, and safe Standalone restoration.
+ *                          Owns reversible local configuration policy, Companion Web Widget mode,
+ *                          Paired microphone/volume/Do Not Disturb enforcement, and safe
+ *                          Standalone restoration.
  *
  * Documentation:           N/A
  *
@@ -43,13 +44,18 @@ or implied.
 
 /*
  * Paired Environment xAPI surface:
- * - Subscriptions: Config.UserInterface.Features.* paths listed in PAIRED_UI_FEATURE_POLICY,
- *   Config.UserInterface.Theme.Name, Status.Audio.Microphones.Mute, Status.Audio.Volume.
- * - Initial reads: the same UI feature paths, Config.UserInterface.Theme.Name,
+ * - Subscriptions: Config paths listed in PAIRED_UI_FEATURE_POLICY and
+ *   PAIRED_ENVIRONMENT_CONFIG_POLICY, Config.Video.Input.Connector,
+ *   Config.UserInterface.Theme.Name, Status.Proximity.Services.Availability,
  *   Status.Audio.Microphones.Mute, and Status.Audio.Volume.
+ * - Initial reads: the same configuration paths, Config.Provisioning.Mode,
+ *   Config.Video.Input.Connector, Config.UserInterface.Theme.Name,
+ *   Status.Proximity.Services.Availability, Status.Audio.Microphones.Mute,
+ *   and Status.Audio.Volume.
  * - Conditional read: Config.Audio.DefaultVolume only when safe restoration is requested.
  * - Commands: Command.Audio.Microphones.Mute, Command.Audio.Volume.Set,
  *   Command.Conference.DoNotDisturb.Activate/Deactivate,
+ *   Command.Proximity.Services.Activate/Deactivate,
  *   and Command.UserInterface.Message.Prompt.Display.
  * - Companion alerts and Web Widget panel commands remain encapsulated by
  *   Custom-Campanion_4_UI_2026.
@@ -81,6 +87,14 @@ const PAIRED_UI_FEATURE_POLICY = [
 	{ key: 'scanToPair', path: ['BYOD', 'QRCodePairing'], pairedValue: 'Disabled' }
 ];
 
+const PAIRED_ENVIRONMENT_CONFIG_POLICY = [
+	{ key: 'muteWarning', path: ['UserInterface', 'MuteWarning'], pairedValue: 'Disabled' },
+	{ key: 'webexProximityMode', path: ['Webex', 'Proximity', 'Mode'], pairedValue: 'Off', registration: 'Cloud' },
+	{ key: 'proximityMode', path: ['Proximity', 'Mode'], pairedValue: 'Off', registration: 'OnPremises' },
+	{ key: 'airPlayMode', path: ['Video', 'Input', 'AirPlay', 'Mode'], pairedValue: 'Off' },
+	{ key: 'miracastMode', path: ['Video', 'Input', 'Miracast', 'Mode'], pairedValue: 'Off' }
+];
+
 const RESTORE_VOLUME_PROMPT_ID = 'cc26_restore_volume';
 const STANDALONE_VOLUME_RESTORED_ALERT_OWNER = 'paired-environment:standalone-volume-restored';
 
@@ -89,21 +103,31 @@ function createPairedEnvironment(options) {
 	const callbacks = dependencies.callbacks || {};
 	const policy = dependencies.policy || {};
 	let standaloneUiFeatureConfig = {};
+	let standaloneEnvironmentConfig = normalizeStandaloneEnvironmentConfig({});
 	let userInterfaceThemeName = 'EveningFjord';
 	let isApplyingUiFeatureConfig = false;
+	let isApplyingEnvironmentConfig = false;
 	let isEnforcingMicrophoneMute = false;
 	let isEnforcingVolume = false;
 	let isVolumeRestorePromptActive = false;
 	let dndRefreshTimer = null;
+	const subscribedConnectorIds = {};
 
 	function setStandaloneUiFeatureConfig(value) {
 		standaloneUiFeatureConfig = value || {};
 	}
 
+	function setStandaloneEnvironmentConfig(value) {
+		standaloneEnvironmentConfig = normalizeStandaloneEnvironmentConfig(value);
+	}
+
 	async function initializeUiFeatureMode() {
 		userInterfaceThemeName = await getUserInterfaceThemeName();
-		standaloneUiFeatureConfig = await ensureStandaloneUiFeatureConfig();
+		if (getRuntimeContext().mode === 'Standalone') {
+			await captureStandaloneConfig();
+		}
 		registerStandaloneUiFeatureSubscriptions();
+		await registerStandaloneEnvironmentSubscriptions();
 		registerUserInterfaceThemeSubscription();
 	}
 
@@ -210,6 +234,9 @@ function createPairedEnvironment(options) {
 
 	async function applyUiFeatureMode(mode) {
 		await applyDoNotDisturbMode(mode);
+		if (mode === 'Standalone') {
+			await captureStandaloneConfig({ onlyMissing: true });
+		}
 		isApplyingUiFeatureConfig = true;
 		try {
 			const featureUpdates = [];
@@ -221,14 +248,212 @@ function createPairedEnvironment(options) {
 					value = context.callEndOverride;
 				}
 
+				if (mode === 'Paired' && standaloneUiFeatureConfig[feature.key] === undefined) {
+					dependencies.log.warn({
+						Message: 'Paired UI feature enforcement deferred because no Standalone value is preserved',
+						Feature: feature.key,
+						Path: feature.path.join('.')
+					});
+					continue;
+				}
 				if (value !== undefined && value !== null) {
 					featureUpdates.push(setUiFeatureConfigValue(feature, value));
 				}
 			}
 			await Promise.all(featureUpdates);
+			await applyEnvironmentConfigMode(mode);
 			await applyRuntimeWebWidget(mode);
 		} finally {
 			isApplyingUiFeatureConfig = false;
+		}
+	}
+
+	async function captureStandaloneConfig(options = {}) {
+		if (getRuntimeContext().mode !== 'Standalone') {
+			return false;
+		}
+
+		await captureStandaloneUiFeatureConfig(options);
+		await captureStandaloneEnvironmentConfig(options);
+		return true;
+	}
+
+	async function applyEnvironmentConfigMode(mode) {
+		const registration = await getRegistrationKind();
+		isApplyingEnvironmentConfig = true;
+		try {
+			const configUpdates = [];
+			for (let index = 0; index < PAIRED_ENVIRONMENT_CONFIG_POLICY.length; index++) {
+				const configItem = PAIRED_ENVIRONMENT_CONFIG_POLICY[index];
+				if (!doesConfigPolicyApply(configItem, registration)) {
+					continue;
+				}
+
+				const standaloneValue = standaloneEnvironmentConfig.configurations[configItem.key];
+				if (standaloneValue === undefined) {
+					if (mode === 'Paired') {
+						dependencies.log.warn({
+							Message: 'Paired environment configuration enforcement deferred because no Standalone value is preserved',
+							Configuration: configItem.key,
+							Path: configItem.path.join('.')
+						});
+					}
+					continue;
+				}
+
+				const value = mode === 'Standalone' ? standaloneValue : configItem.pairedValue;
+				configUpdates.push(setEnvironmentConfigValue(configItem, value));
+			}
+			await Promise.all(configUpdates);
+			await applyVideoInputConnectorMode(mode);
+			await applyProximityServicesMode(mode);
+		} finally {
+			isApplyingEnvironmentConfig = false;
+		}
+	}
+
+	async function captureStandaloneEnvironmentConfig(options = {}) {
+		if (getRuntimeContext().mode !== 'Standalone') {
+			return standaloneEnvironmentConfig;
+		}
+
+		const onlyMissing = !!options.onlyMissing;
+		const registration = await getRegistrationKind();
+		let hasUpdates = false;
+
+		for (let index = 0; index < PAIRED_ENVIRONMENT_CONFIG_POLICY.length; index++) {
+			const configItem = PAIRED_ENVIRONMENT_CONFIG_POLICY[index];
+			if (!doesConfigPolicyApply(configItem, registration)) {
+				continue;
+			}
+			if (onlyMissing && hasOwn(standaloneEnvironmentConfig.configurations, configItem.key)) {
+				continue;
+			}
+
+			const currentValue = await getEnvironmentConfigValue(configItem);
+			if (currentValue !== null && standaloneEnvironmentConfig.configurations[configItem.key] !== currentValue) {
+				standaloneEnvironmentConfig.configurations[configItem.key] = currentValue;
+				hasUpdates = true;
+			}
+		}
+
+		const connectors = await getVideoInputConnectors();
+		for (let index = 0; index < connectors.length; index++) {
+			const connector = connectors[index];
+			const connectorId = getConnectorId(connector);
+			const inputSourceType = getConnectorInputSourceType(connector);
+			if (!connectorId || inputSourceType === null || inputSourceType === 'camera' || !hasConnectorPresentationSelection(connector, connectorId)) {
+				continue;
+			}
+			if (onlyMissing && hasOwn(standaloneEnvironmentConfig.connectorPresentationSelection, connectorId)) {
+				continue;
+			}
+
+			const currentValue = getConnectorPresentationSelection(connector);
+			if (currentValue !== null && standaloneEnvironmentConfig.connectorPresentationSelection[connectorId] !== currentValue) {
+				standaloneEnvironmentConfig.connectorPresentationSelection[connectorId] = currentValue;
+				hasUpdates = true;
+			}
+		}
+
+		if (!onlyMissing || standaloneEnvironmentConfig.proximityServicesAvailability === undefined) {
+			const availability = await getProximityServicesAvailability();
+			if (availability !== null && standaloneEnvironmentConfig.proximityServicesAvailability !== availability) {
+				standaloneEnvironmentConfig.proximityServicesAvailability = availability;
+				hasUpdates = true;
+			}
+		}
+
+		if (hasUpdates) {
+			await dependencies.mem.write(dependencies.environmentStorageKey, standaloneEnvironmentConfig);
+			dependencies.log.debug({
+				Message: 'Saved Standalone Paired Environment preferences',
+				ConnectorCount: Object.keys(standaloneEnvironmentConfig.connectorPresentationSelection).length,
+				Registration: registration || 'Unknown'
+			});
+		}
+		return standaloneEnvironmentConfig;
+	}
+
+	async function applyVideoInputConnectorMode(mode) {
+		const connectors = await getVideoInputConnectors();
+		const updates = [];
+		for (let index = 0; index < connectors.length; index++) {
+			const connector = connectors[index];
+			const connectorId = getConnectorId(connector);
+			const inputSourceType = getConnectorInputSourceType(connector);
+			if (!connectorId || inputSourceType === null || inputSourceType === 'camera' || !hasConnectorPresentationSelection(connector, connectorId)) {
+				continue;
+			}
+
+			const standaloneValue = standaloneEnvironmentConfig.connectorPresentationSelection[connectorId];
+			if (standaloneValue === undefined) {
+				if (mode === 'Paired') {
+					dependencies.log.warn({
+						Message: 'Paired connector presentation policy deferred because no Standalone value is preserved',
+						ConnectorId: connectorId
+					});
+				}
+				continue;
+			}
+
+			const value = mode === 'Standalone' ? standaloneValue : 'Manual';
+			const currentValue = getConnectorPresentationSelection(connector);
+			if (String(currentValue).toLowerCase() === String(value).toLowerCase()) {
+				continue;
+			}
+			updates.push(setConnectorPresentationSelection(connectorId, value));
+		}
+		await Promise.all(updates);
+	}
+
+	async function applyProximityServicesMode(mode) {
+		const originalAvailability = standaloneEnvironmentConfig.proximityServicesAvailability;
+		if (originalAvailability === undefined) {
+			if (mode === 'Paired') {
+				dependencies.log.warn({ Message: 'Paired proximity service deactivation deferred because no Standalone availability is preserved' });
+			}
+			return;
+		}
+
+		const services = dependencies.xapi.Command.Proximity && dependencies.xapi.Command.Proximity.Services;
+		if (!services) {
+			dependencies.log.debug({ Message: 'Proximity Services commands unavailable' });
+			return;
+		}
+
+		if (mode === 'Paired') {
+			if (typeof services.Deactivate !== 'function') {
+				dependencies.log.debug({ Message: 'Proximity Services Deactivate command unavailable' });
+				return;
+			}
+			try {
+				await services.Deactivate();
+				dependencies.log.debug({ Message: 'Paired proximity services deactivated' });
+			} catch (error) {
+				dependencies.log.warn({ Message: 'Failed to deactivate proximity services while Paired', Error: error.message || error.code || 'Unknown proximity service error' });
+			}
+			return;
+		}
+
+		if (String(originalAvailability).toLowerCase() !== 'available') {
+			dependencies.log.debug({ Message: 'Standalone proximity services left inactive because they were not originally Available', OriginalAvailability: originalAvailability });
+			return;
+		}
+		const currentAvailability = await getProximityServicesAvailability();
+		if (String(currentAvailability).toLowerCase() === 'available') {
+			dependencies.log.debug({ Message: 'Standalone proximity services already Available' });
+			return;
+		}
+		if (typeof services.Activate !== 'function') {
+			dependencies.log.debug({ Message: 'Proximity Services Activate command unavailable' });
+			return;
+		}
+		try {
+			await services.Activate();
+			dependencies.log.debug({ Message: 'Standalone proximity services reactivated' });
+		} catch (error) {
+			dependencies.log.warn({ Message: 'Failed to reactivate proximity services for Standalone', Error: error.message || error.code || 'Unknown proximity service error' });
 		}
 	}
 
@@ -409,16 +634,21 @@ function createPairedEnvironment(options) {
 		}
 	}
 
-	async function ensureStandaloneUiFeatureConfig() {
+	async function captureStandaloneUiFeatureConfig(options = {}) {
+		if (getRuntimeContext().mode !== 'Standalone') {
+			return standaloneUiFeatureConfig;
+		}
+
+		const onlyMissing = !!options.onlyMissing;
 		let hasUpdates = false;
 
 		for (let index = 0; index < PAIRED_UI_FEATURE_POLICY.length; index++) {
 			const feature = PAIRED_UI_FEATURE_POLICY[index];
-			if (standaloneUiFeatureConfig[feature.key] !== undefined) {
+			if (onlyMissing && standaloneUiFeatureConfig[feature.key] !== undefined) {
 				continue;
 			}
 			const currentValue = await getUiFeatureConfigValue(feature);
-			if (currentValue !== null) {
+			if (currentValue !== null && standaloneUiFeatureConfig[feature.key] !== currentValue) {
 				standaloneUiFeatureConfig[feature.key] = currentValue;
 				hasUpdates = true;
 			}
@@ -476,6 +706,99 @@ function createPairedEnvironment(options) {
 		dependencies.log.debug({ Message: 'Saved Standalone UI feature preference', Feature: feature.key, Value: value });
 	}
 
+	async function registerStandaloneEnvironmentSubscriptions() {
+		for (let index = 0; index < PAIRED_ENVIRONMENT_CONFIG_POLICY.length; index++) {
+			const configItem = PAIRED_ENVIRONMENT_CONFIG_POLICY[index];
+			const node = getXapiConfigNode(configItem.path);
+			if (!node || typeof node.on !== 'function') {
+				dependencies.log.debug({ Message: 'Paired environment config subscription unavailable', Configuration: configItem.key, Path: configItem.path.join('.') });
+				continue;
+			}
+			node.on(() => {
+				handleEnvironmentSubscriptionChange('Configuration', configItem.key).catch(error => {
+					dependencies.utils.softError({ Context: 'Failed to handle Paired environment configuration change', Configuration: configItem.key, Error: error });
+				});
+			});
+		}
+
+		const connectorCollection = getVideoInputConnectorCollection();
+		await registerVideoInputConnectorSubscriptions();
+		if (connectorCollection && typeof connectorCollection.on === 'function') {
+			connectorCollection.on(() => {
+				registerVideoInputConnectorSubscriptions()
+					.then(() => handleEnvironmentSubscriptionChange('VideoInputConnector', ''))
+					.catch(error => {
+						dependencies.utils.softError({ Context: 'Failed to handle Video Input Connector configuration change', Error: error });
+					});
+			});
+		} else {
+			dependencies.log.debug({ Message: 'Video Input Connector configuration subscription unavailable' });
+		}
+
+		const provisioningMode = getXapiConfigNode(['Provisioning', 'Mode']);
+		if (provisioningMode && typeof provisioningMode.on === 'function') {
+			provisioningMode.on(() => {
+				handleEnvironmentSubscriptionChange('ProvisioningMode', '').catch(error => {
+					dependencies.utils.softError({ Context: 'Failed to handle Provisioning Mode change', Error: error });
+				});
+			});
+		}
+
+		const availability = getProximityServicesAvailabilityNode();
+		if (availability && typeof availability.on === 'function') {
+			availability.on(() => {
+				handleEnvironmentSubscriptionChange('ProximityServicesAvailability', '').catch(error => {
+					dependencies.utils.softError({ Context: 'Failed to handle Proximity Services Availability change', Error: error });
+				});
+			});
+		} else {
+			dependencies.log.debug({ Message: 'Proximity Services Availability subscription unavailable' });
+		}
+	}
+
+	async function registerVideoInputConnectorSubscriptions() {
+		const connectors = await getVideoInputConnectors();
+		for (let index = 0; index < connectors.length; index++) {
+			const connectorId = getConnectorId(connectors[index]);
+			if (!connectorId || subscribedConnectorIds[connectorId]) {
+				continue;
+			}
+
+			const connectorNode = getVideoInputConnectorNode(connectorId);
+			const inputSourceType = connectorNode && connectorNode.InputSourceType;
+			const presentationSelection = connectorNode && connectorNode.PresentationSelection;
+			if (inputSourceType && typeof inputSourceType.on === 'function') {
+				inputSourceType.on(() => {
+					handleEnvironmentSubscriptionChange('ConnectorInputSourceType', connectorId).catch(error => {
+						dependencies.utils.softError({ Context: 'Failed to handle Connector InputSourceType change', ConnectorId: connectorId, Error: error });
+					});
+				});
+			}
+			if (presentationSelection && typeof presentationSelection.on === 'function') {
+				presentationSelection.on(() => {
+					handleEnvironmentSubscriptionChange('ConnectorPresentationSelection', connectorId).catch(error => {
+						dependencies.utils.softError({ Context: 'Failed to handle Connector PresentationSelection change', ConnectorId: connectorId, Error: error });
+					});
+				});
+			}
+			subscribedConnectorIds[connectorId] = true;
+		}
+	}
+
+	async function handleEnvironmentSubscriptionChange(source, key) {
+		if (isApplyingEnvironmentConfig) {
+			return;
+		}
+
+		const mode = getRuntimeContext().mode;
+		if (mode === 'Standalone') {
+			await captureStandaloneEnvironmentConfig();
+			return;
+		}
+		await applyEnvironmentConfigMode(mode);
+		dependencies.log.debug({ Message: 'Reapplied Paired environment policy after configuration change', Source: source, Configuration: key || '' });
+	}
+
 	async function getUserInterfaceThemeName() {
 		try {
 			return await dependencies.xapi.Config.UserInterface.Theme.Name.get();
@@ -530,6 +853,186 @@ function createPairedEnvironment(options) {
 		} catch (error) {
 			dependencies.log.warn({ Message: 'UI feature config set failed', Feature: feature.key, Path: feature.path.join('.'), Value: value, Error: error.message || error.code || 'Unknown set error' });
 		}
+	}
+
+	async function getRegistrationKind() {
+		const node = getXapiConfigNode(['Provisioning', 'Mode']);
+		if (!node || typeof node.get !== 'function') {
+			dependencies.log.debug({ Message: 'Provisioning Mode config get unavailable; proximity mode policy skipped' });
+			return null;
+		}
+		try {
+			const value = normalizeConfigEventValue(await node.get());
+			return String(value).toLowerCase() === 'webex' ? 'Cloud' : 'OnPremises';
+		} catch (error) {
+			dependencies.log.warn({ Message: 'Failed to read Provisioning Mode; proximity mode policy skipped', Error: error.message || error.code || 'Unknown provisioning mode error' });
+			return null;
+		}
+	}
+
+	function doesConfigPolicyApply(configItem, registration) {
+		return !configItem.registration || configItem.registration === registration;
+	}
+
+	async function getEnvironmentConfigValue(configItem) {
+		const node = getXapiConfigNode(configItem.path);
+		if (!node || typeof node.get !== 'function') {
+			dependencies.log.debug({ Message: 'Paired environment config get unavailable', Configuration: configItem.key, Path: configItem.path.join('.') });
+			return null;
+		}
+		try {
+			return normalizeConfigEventValue(await node.get());
+		} catch (error) {
+			dependencies.log.debug({ Message: 'Paired environment config get failed', Configuration: configItem.key, Path: configItem.path.join('.'), Error: error.message || error.code || 'Unknown get error' });
+			return null;
+		}
+	}
+
+	async function setEnvironmentConfigValue(configItem, value) {
+		const node = getXapiConfigNode(configItem.path);
+		if (!node || typeof node.get !== 'function' || typeof node.set !== 'function') {
+			dependencies.log.debug({ Message: 'Paired environment config set unavailable', Configuration: configItem.key, Path: configItem.path.join('.') });
+			return;
+		}
+		try {
+			const currentValue = normalizeConfigEventValue(await node.get());
+			if (String(currentValue).toLowerCase() === String(value).toLowerCase()) {
+				return;
+			}
+			await node.set(value);
+		} catch (error) {
+			dependencies.log.warn({ Message: 'Paired environment config set failed', Configuration: configItem.key, Path: configItem.path.join('.'), Value: value, Error: error.message || error.code || 'Unknown set error' });
+		}
+	}
+
+	function getVideoInputConnectorCollection() {
+		const video = dependencies.xapi.Config.Video;
+		return video && video.Input ? video.Input.Connector : null;
+	}
+
+	async function getVideoInputConnectors() {
+		const collection = getVideoInputConnectorCollection();
+		if (!collection || typeof collection.get !== 'function') {
+			dependencies.log.debug({ Message: 'Video Input Connector collection get unavailable' });
+			return [];
+		}
+		try {
+			return normalizeConnectorCollection(await collection.get());
+		} catch (error) {
+			dependencies.log.warn({ Message: 'Failed to read Video Input Connector configuration collection', Error: error.message || error.code || 'Unknown connector get error' });
+			return [];
+		}
+	}
+
+	function normalizeConnectorCollection(value) {
+		const normalizedValue = getXapiValue(value);
+		if (Array.isArray(normalizedValue)) {
+			return normalizedValue.filter(connector => connector && typeof connector === 'object');
+		}
+		if (!normalizedValue || typeof normalizedValue !== 'object') {
+			return [];
+		}
+		if (Array.isArray(normalizedValue.Connector)) {
+			return normalizedValue.Connector.filter(connector => connector && typeof connector === 'object');
+		}
+		if (getConnectorId(normalizedValue)) {
+			return [normalizedValue];
+		}
+
+		const connectors = [];
+		const keys = Object.keys(normalizedValue);
+		for (let index = 0; index < keys.length; index++) {
+			const key = keys[index];
+			const connector = normalizedValue[key];
+			if (!connector || typeof connector !== 'object') {
+				continue;
+			}
+			if (!getConnectorId(connector) && /^[0-9]+$/.test(key)) {
+				connector.id = key;
+			}
+			if (getConnectorId(connector)) {
+				connectors.push(connector);
+			}
+		}
+		return connectors;
+	}
+
+	function getConnectorId(connector) {
+		const value = connector && (connector.id !== undefined ? connector.id : connector.Id !== undefined ? connector.Id : connector.ID);
+		const connectorId = String(getXapiValue(value) || '').trim();
+		return /^[1-9][0-9]*$/.test(connectorId) ? connectorId : '';
+	}
+
+	function getConnectorInputSourceType(connector) {
+		if (!connector || connector.InputSourceType === undefined) {
+			return null;
+		}
+		return String(getXapiValue(connector.InputSourceType)).toLowerCase();
+	}
+
+	function getConnectorPresentationSelection(connector) {
+		if (!connector || connector.PresentationSelection === undefined) {
+			return null;
+		}
+		return normalizeConfigEventValue(connector.PresentationSelection);
+	}
+
+	function hasConnectorPresentationSelection(connector, connectorId) {
+		const connectorNode = getVideoInputConnectorNode(connectorId);
+		return connector && connector.PresentationSelection !== undefined && connectorNode && connectorNode.PresentationSelection && typeof connectorNode.PresentationSelection.set === 'function';
+	}
+
+	function getVideoInputConnectorNode(connectorId) {
+		const collection = getVideoInputConnectorCollection();
+		const numericId = Number(connectorId);
+		return collection && Number.isInteger(numericId) && numericId > 0 ? collection[numericId] : null;
+	}
+
+	async function setConnectorPresentationSelection(connectorId, value) {
+		const connectorNode = getVideoInputConnectorNode(connectorId);
+		const presentationSelection = connectorNode && connectorNode.PresentationSelection;
+		if (!presentationSelection || typeof presentationSelection.set !== 'function') {
+			dependencies.log.debug({ Message: 'Connector PresentationSelection set unavailable', ConnectorId: connectorId });
+			return;
+		}
+		try {
+			await presentationSelection.set(value);
+			dependencies.log.debug({ Message: 'Video Input Connector PresentationSelection applied', ConnectorId: connectorId, Value: value });
+		} catch (error) {
+			dependencies.log.warn({ Message: 'Connector PresentationSelection set failed', ConnectorId: connectorId, Value: value, Error: error.message || error.code || 'Unknown connector set error' });
+		}
+	}
+
+	function getProximityServicesAvailabilityNode() {
+		const proximity = dependencies.xapi.Status.Proximity;
+		return proximity && proximity.Services ? proximity.Services.Availability : null;
+	}
+
+	async function getProximityServicesAvailability() {
+		const node = getProximityServicesAvailabilityNode();
+		if (!node || typeof node.get !== 'function') {
+			dependencies.log.debug({ Message: 'Proximity Services Availability get unavailable' });
+			return null;
+		}
+		try {
+			return normalizeConfigEventValue(await node.get());
+		} catch (error) {
+			dependencies.log.debug({ Message: 'Proximity Services Availability get failed', Error: error.message || error.code || 'Unknown availability get error' });
+			return null;
+		}
+	}
+
+	function normalizeStandaloneEnvironmentConfig(value) {
+		const source = value && typeof value === 'object' ? value : {};
+		return {
+			configurations: source.configurations && typeof source.configurations === 'object' ? source.configurations : {},
+			connectorPresentationSelection: source.connectorPresentationSelection && typeof source.connectorPresentationSelection === 'object' ? source.connectorPresentationSelection : {},
+			proximityServicesAvailability: source.proximityServicesAvailability
+		};
+	}
+
+	function hasOwn(value, key) {
+		return !!value && Object.prototype.hasOwnProperty.call(value, key);
 	}
 
 	function getXapiConfigNode(path) {
@@ -591,6 +1094,8 @@ function createPairedEnvironment(options) {
 
 	return {
 		setStandaloneUiFeatureConfig,
+		setStandaloneEnvironmentConfig,
+		captureStandaloneConfig,
 		initializeUiFeatureMode,
 		registerMediaHandlers,
 		enforceInitialMediaState,

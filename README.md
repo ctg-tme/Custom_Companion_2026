@@ -8,7 +8,7 @@ Custom Companion 2026 is a Cisco RoomOS macro solution for Board Pro Series endp
 - Provide PIN-gated Companion Device Select access for Parent Room Registration and Parent Room Deregistration, listing registered Parent Room Devices, selecting an online Parent Room Device, returning the Companion Device to Standalone, and managing PIN Mode from the Config page.
 - Initialize and use RoomOS HTTPClient for device-to-device communication.
 - Use Message API and putxml-based routing to sanitize and handle custom communication between the Companion Device and Parent Room Devices.
-- Apply an explicit Paired UI policy that keeps Video Mute, Participants, and Whiteboard available while hiding the other known call/share controls; native Raise Hand remains subject to device acceptance testing.
+- Apply a reversible Paired Environment Policy that governs known call/share controls, independent discovery and sharing surfaces, and non-camera presentation inputs without overwriting Standalone preferences; native Raise Hand remains subject to device acceptance testing.
 - When a Parent Room Device joins a supported Webex call, instruct the Companion Device to join the same call context.
 - Keep microphones muted, volume at level 1, and a renewable Do Not Disturb lease active while Paired, while leaving Video Mute available as a user control.
 
@@ -16,7 +16,7 @@ Custom Companion 2026 is a Cisco RoomOS macro solution for Board Pro Series endp
 
 - Companion Device: the movable Board Pro Series device running `Custom-Campanion_1_Main_2026`.
 - Parent Room Device: the fixed room codec that receives the installed `Custom-Campanion_Room_2026` macro.
-- Memory storage: generated state owned by `Memory-Storage-Functions-V2`; this stores Companion Device Parent Room Device records, Pending Deregistration tombstones, Companion Device PIN Mode state, and Parent Room Registration records.
+- Memory storage: generated state owned by `Memory-Storage-Functions-V2`; this stores Companion Device Parent Room Device records, Pending Deregistration tombstones, Companion Device PIN Mode state, captured Standalone Paired Environment and standby preferences, and Parent Room Registration records.
 - Transport: RoomOS HTTPClient posts putxml payloads to remote codecs, usually to invoke `Message.Send`, `Peripherals.Connect`, `Peripherals.HeartBeat`, or macro save/activate commands. Parent Room Device cleanup uses local `Peripherals.Purge`.
 
 ## Source Macro Architecture
@@ -34,7 +34,7 @@ The deployable source remains unbundled and uses 15 numbered macros. On the Comp
 | `Custom-Campanion_7_RoomReference_2026` | Inactive Parent Room entry source; installed and activated on a Parent Room Device as `Custom-Campanion_Room_2026`. |
 | `Custom-Campanion_8_Services_2026` | Parent package provisioning and runtime Companion Device identity discovery. |
 | `Custom-Campanion_9_ParentConnectivity_2026` | Parent identity refresh, retries, heartbeat, recovery, and Call Preservation. |
-| `Custom-Campanion_10_PairedEnvironment_2026` | Paired UI policy, WebWidget mode, microphone/volume/DND enforcement, and safe Standalone restoration. |
+| `Custom-Campanion_10_PairedEnvironment_2026` | Reversible Paired Environment Policy, WebWidget mode, microphone/volume/DND enforcement, and safe Standalone restoration. |
 | `Custom-Campanion_11_BoardCallSync_2026` | Companion Device-side Webex call synchronization, Guest authentication, disconnect, rejoin, retries, and call messaging. |
 | `Custom-Campanion_12_ParentCallCoordination_2026` | Parent Room-side call/BYOD detection, participant admission, current-booking Meeting Password lookup, and call-detail responses. |
 | `Custom-Campanion_13_StandbyCoordination_2026` | Standalone standby preferences, parent standby sync, delayed application, prompts, and bypass. |
@@ -47,7 +47,7 @@ No build or bundling step is required for the runtime macros. The Companion Inst
 
 The static browser installer in `installer/` deploys a selected release or the current Main Fork (Beta) snapshot to a Companion Device through JSXAPI. The root `manifest.json` is the Release Manifest and remains authoritative for installable project macros, minimum RoomOS, supported product platforms, and external dependencies. The installer never targets a Parent Room Device; the installed Companion Device runtime retains Parent Room provisioning ownership.
 
-After Companion Device configuration and before Review, the installer requires the Device Administrator to choose a Standard Installation or Clean Installation. Standard Installation preserves `Custom-Campanion-Storage`. Clean Installation deactivates the existing project macros, removes only `Custom-Campanion-Storage` when present, and then installs the selected release. This permanently resets the Companion Device's saved Parent Room Devices, Pending Deregistration tombstones, active Parent Room Device selection, PIN Mode state, and captured Standalone UI and standby settings. Generated storage remains outside the Release Manifest and is never treated as a Legacy Project Macro.
+After Companion Device configuration and before Review, the installer requires the Device Administrator to choose a Standard Installation or Clean Installation. Standard Installation preserves `Custom-Campanion-Storage`. Clean Installation deactivates the existing project macros, removes only `Custom-Campanion-Storage` when present, and then installs the selected release. This permanently resets the Companion Device's saved Parent Room Devices, Pending Deregistration tombstones, active Parent Room Device selection, PIN Mode state, and captured Standalone Paired Environment and standby preferences. Generated storage remains outside the Release Manifest and is never treated as a Legacy Project Macro.
 
 Before packaging, `npm run verify:release` checks that the Release Manifest exactly covers the eligible root macros, the runtime project version is synchronized across Main, Config, `config.version`, and RoomReference, every macro passes JavaScript syntax validation, relative macro imports resolve to Release Manifest resources, and Main still emits the initialization messages used by installer verification. Installer tests and builds run the same Release Contract verification before generating the pinned source snapshot.
 
@@ -66,7 +66,7 @@ flowchart TD
 	D -- Failure --> X
 	D --> E[Read stored Parent Room Devices, Companion Device mode, and PIN Mode state]
 	E -- Invalid PIN state --> X
-	E --> F[Register message, UI, call-count, microphone-mute, and volume subscriptions]
+	E --> F[Register message, Paired Environment, call-count, microphone-mute, and volume subscriptions]
 	F --> G[Perform initial call, UI, standby, and media reads]
 	G --> H[Refresh parent identities with HTTP GET]
 	H --> I[Apply Standalone or Paired policy]
@@ -298,7 +298,7 @@ flowchart TD
 	K --> L[Commit Parent Room Registration]
 ```
 
-## UI Feature Mode
+## Paired Environment Policy
 
 The Companion Device switches between Standalone and Paired behavior based on the active Parent Room Device selection.
 
@@ -306,7 +306,15 @@ The Companion Device switches between Standalone and Paired behavior based on th
 
 Standalone standby preferences are saved in Companion Device memory for `Standby Control`, `Standby Halfwake Mode`, and `Time OfficeHours Enabled`. In Paired mode, the Companion Device forces those values to `Off`, `Manual`, and `False` so it does not enter standby independently. When a Parent Room Device is selected, the Companion Device clears any earlier standby sync or bypass state and begins reading that serial-verified Parent Room Device's current `Status.Standby.State` while the required local Paired policy is applied. The fetched state is discarded if the selection or mode changes, and the prompt is not shown if required Paired safety enters the Unhealthy State. After safety succeeds, the Companion Device shows one stable 30-second prompt before applying `Off`, `Standby`, or `Halfwake`. An idle `ActiveCallDetails` response or `Disconnect` message does not cancel this decision window; Network, BYOD, admission, or active `ActiveCallDetails` state does. Standby updates received during the decision window replace the pending state without moving the original deadline. Externally dismissing or displacing the prompt ends only its visible lifecycle: the prompt is not redisplayed, and the latest valid Parent Room Device state is still applied at the original deadline. Parent Room Devices also subscribe to `Status.Standby.State` and send debounced `StandbySync` messages to registered Companion Devices; after the initial decision window, the Companion Device follows those active-Parent Room Device standby commands immediately without showing a prompt. The Companion Device ignores `EnteringStandby`. A user can start 5-minute or 30-minute bypass windows; while bypass is active, Parent Room Device standby commands are ignored and the Web Widget `info3` shows `Standby sync bypass until HH:MM AM/PM`. Explicit Dismiss hides the prompt while retaining the pending action. Runtime `info3` precedence is Unhealthy State, Parent Connectivity/Call Preservation, call synchronization, then standby. The WebWidget adapter limits `info3` to 90 characters and, when needed, trims at a word boundary with an ellipsis so dynamic status text cannot run beneath the fixed footer.
 
-The editable Paired UI policy is in `Custom-Campanion_10_PairedEnvironment_2026`. It captures supported Standalone values and restores them when returning to Standalone. Independent widget feedback, feature configuration, and standby configuration commands are issued concurrently within their own policy groups while cross-domain safety ordering remains explicit. Video Mute, Participant List, and Whiteboard Start are set to `Auto`; the other known call controls plus Share Start are set to `Hidden`. Call End is `Hidden` during normal Paired operation and temporarily `Auto` during Call Preservation or an active-call Unhealthy State. Unsupported optional feature paths are logged and skipped. Because RoomOS does not expose a dedicated Raise Hand visibility configuration, device acceptance must confirm Raise Hand remains available with MidCallControls hidden.
+The reversible Paired Environment Policy is owned by `Custom-Campanion_10_PairedEnvironment_2026`. Immediately before a verified Parent Room Device selection changes the runtime from Standalone to Paired, the controller reads every supported governed configuration and stores the exact Standalone values in Companion Device memory. Configuration subscriptions update those preferences only while the Companion Device is actually Standalone. Returning to Standalone restores only exact saved values. An optional path or connector that is unsupported, absent, or missing a durable Standalone value is logged and left unchanged; this is especially important when a release first starts on a device that was already Paired.
+
+The UI feature slice sets Video Mute, Participant List, and Whiteboard Start to `Auto`; the other known call controls plus Share Start are set to `Hidden`, and `BYOD.QRCodePairing` is set to `Disabled`. Call End is `Hidden` during normal Paired operation and temporarily `Auto` during Call Preservation or an active-call Unhealthy State. Unsupported optional feature paths are logged and skipped. Because RoomOS does not expose a dedicated Raise Hand visibility configuration, device acceptance must confirm Raise Hand remains available with MidCallControls hidden.
+
+The remaining Paired configuration slice sets `UserInterface.MuteWarning = Disabled`, `Video.Input.AirPlay.Mode = Off`, and `Video.Input.Miracast.Mode = Off`. `Config.Provisioning.Mode` selects exactly one proximity alternative: `Webex.Proximity.Mode = Off` when its value is `Webex`, otherwise `Proximity.Mode = Off`; the controller never blindly sets both. AirPlay and Miracast `PresentationSelection` remain unchanged because those sharing modes are disabled completely.
+
+The controller reads the complete `Config.Video.Input.Connector` collection and normalizes it into connector records using each RoomOS `id`. It treats only an exact case-insensitive `InputSourceType = camera` as a camera. Every other supported connector retains a separate saved `PresentationSelection` value keyed by connector ID and is set to `Manual` while Paired. Camera connectors are never changed, unavailable `PresentationSelection` paths are skipped, absent saved connectors are ignored during restoration, and a newly discovered connector is not changed while Paired until its own value has been observed in Standalone.
+
+When a governed Standalone snapshot exists, entering Paired also invokes `Command.Proximity.Services.Deactivate()` once. Returning to Standalone restores the selected proximity configuration before invoking `Command.Proximity.Services.Activate()` only when the pre-Paired `Status.Proximity.Services.Availability` was exactly `Available`; an original `Disabled` or `Deactivated` state remains inactive. The policy intentionally leaves `UserInterface.Whiteboard.ShareInCall`, `UserInterface.LiveAnnotation.Enabled`, `Conference.JoinLeaveNotifications`, `Webex.Meetings.MeetingChatNotifications.Mode`, `Audio.Ultrasound.MaxVolume`, people-presence, occupancy, and motion-wake configurations unchanged.
 
 While Paired, the Companion Device performs initial reads and subscribes to `Status.Audio.Microphones.Mute` and `Status.Audio.Volume`. An observed unmute invokes `Command.Audio.Microphones.Mute` once; a volume other than 1 invokes `Command.Audio.Volume.Set` once with `Level: 1` and no `Device` parameter. The Companion Device also invokes `Command.Conference.DoNotDisturb.Activate({ Timeout: 5 })` and renews that solution-owned lease every two minutes so incoming calls are rejected. Entering Standalone clears the renewal timer and invokes `Command.Conference.DoNotDisturb.Deactivate()`; a DND state that predated Paired mode is intentionally not restored. These local commands are not retried. Leaving Paired keeps the microphone state muted. If no call is active, the Companion Device immediately reads `Config.Audio.DefaultVolume`, restores that value, and reminds the user to unmute. If a call is active, the Companion Device enters Standalone immediately and asks whether to restore volume; decline, dismissal, or prompt failure leaves the level unchanged.
 
@@ -319,12 +327,13 @@ flowchart TD
 	A[User selects Standalone or a Parent Room Device] --> B{Selected Standalone?}
 	B -- Yes --> C[Set activeParentSerial to Standalone]
 	C --> D[Write active Parent Room memory]
-	D --> E[Restore stored Standalone UI feature values]
+	D --> E[Restore exact stored Standalone Paired Environment values]
 	B -- No --> F[Validate selected Parent Room Device is online]
-	F --> G[Set activeParentSerial to parent serial]
-	G --> H[Write active Parent Room memory]
-	H --> I[Hide Paired UI features]
-	I --> J[Send active Parent Room Device heartbeat]
+	F --> G[Capture exact Standalone Paired Environment values]
+	G --> H[Set activeParentSerial to parent serial]
+	H --> I[Write active Parent Room memory]
+	I --> J[Apply Paired Environment Policy]
+	J --> K[Send active Parent Room Device heartbeat]
 ```
 
 ## Unhealthy State and Administrator Communication
@@ -356,6 +365,9 @@ Logs keep stable diagnostic codes and compatibility field names where those valu
 | Paired microphone enforcement | `xapi.Status.Audio.Microphones.Mute.get()` and `xapi.Command.Audio.Microphones.Mute()` | `xapi.Status.Audio.Microphones.Mute.on(...)` |
 | Paired volume enforcement | `xapi.Status.Audio.Volume.get()` and `xapi.Command.Audio.Volume.Set({ Level: 1 })` | `xapi.Status.Audio.Volume.on(...)` |
 | Paired incoming-call isolation | `xapi.Command.Conference.DoNotDisturb.Activate({ Timeout: 5 })` and `.Deactivate()` | Two-minute solution timer renews the five-minute lease while Paired |
+| Paired reversible configurations | `xapi.Config.Provisioning.Mode.get()` plus exact gets/sets for the governed UI, proximity, AirPlay, and Miracast paths | Each supported governed config path; values are learned only while Standalone |
+| Paired connector presentation policy | `xapi.Config.Video.Input.Connector.get()` and supported `Connector[id].PresentationSelection.set(...)` calls | `xapi.Config.Video.Input.Connector.on(...)` plus supported per-connector `InputSourceType` and `PresentationSelection` subscriptions |
+| Paired proximity service isolation | `xapi.Status.Proximity.Services.Availability.get()` and `xapi.Command.Proximity.Services.Deactivate()/Activate()` | `xapi.Status.Proximity.Services.Availability.on(...)`; Standalone activation requires the saved value `Available` |
 | Standalone volume restoration | `xapi.Config.Audio.DefaultVolume.get()` and `xapi.Command.Audio.Volume.Set({ Level })` | None; current default is read during the Standalone transition |
 | Error action button | `xapi.Command.UserInterface.Extensions.Panel.Save/Remove` | `xapi.Event.UserInterface.Extensions.Panel.Clicked.on(...)`, gated to `cc26_error` |
 | PIN-gated panel access | `xapi.Command.UserInterface.Extensions.Panel.Save(...)`, `xapi.Command.UserInterface.Extensions.Panel.Open(...)`, `xapi.Command.UserInterface.Extensions.Panel.Close()`, `xapi.Command.UserInterface.Extensions.Panel.Remove(...)`, `xapi.Command.UserInterface.Message.TextInput.Display(...)`, `xapi.Command.UserInterface.Message.TextInput.Clear(...)`, and `xapi.Command.UserInterface.Extensions.Widget.SetValue(...)` | `xapi.Event.UserInterface.Extensions.Panel.Clicked.on(...)`, `xapi.Event.UserInterface.Extensions.Widget.Action.on(...)`, `xapi.Event.UserInterface.Message.TextInput.Response.on(...)`, `xapi.Event.UserInterface.Extensions.Event.PageOpened.on(...)`, and `xapi.Event.UserInterface.Extensions.Event.PageClosed.on(...)` |
