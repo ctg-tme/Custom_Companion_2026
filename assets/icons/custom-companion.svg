@@ -1,37 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
-  <title id="title">Custom Companion</title>
-  <desc id="description">A fixed room display and a smaller wheeled companion display exchange a two-way connection.</desc>
+  <title id="title">Custom Companion compact</title>
+  <desc id="description">A mobile companion display overlaps a larger parent room display.</desc>
   <metadata>
-    Original Custom Companion artwork adapted for visual parity with native RoomOS
-    home-screen glyphs. The monochrome mark uses bold rounded geometry, remains
-    legible at endpoint scale, and exceeds the 5% transparent safe-area requirement.
+    Original compact Custom Companion artwork designed for the constrained RoomOS
+    home-screen icon region. The filled overlapping-device silhouette uses rounded
+    Momentum-inspired geometry and exceeds the 5% transparent safe-area requirement.
   </metadata>
 
   <!-- Optical sizing matches the visual footprint of native RoomOS glyphs. -->
-  <g id="roomos-glyph" transform="translate(46.08 46.08) scale(.82)">
-  <!-- Two-way coordination bridge -->
-  <g id="connection" fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round" stroke-width="44">
-    <path d="M296 143h64c30 0 54 24 54 54v48"/>
-    <path d="M286 375h-51c-30 0-54-24-54-54v-4"/>
-  </g>
-  <g id="direction-markers" fill="#FFFFFF">
-    <path d="m383 240 31 40 31-40a9 9 0 0 0-7-15h-48a9 9 0 0 0-7 15"/>
-    <path d="m150 322 31-40 31 40a9 9 0 0 1-7 15h-48a9 9 0 0 1-7-15"/>
-  </g>
+  <g id="roomos-glyph" fill="#FFFFFF" transform="translate(46.08 46.08) scale(.82)">
+    <!-- Parent Room Device: a strong filled frame rather than a thin outline. -->
+    <path id="parent-room-device" fill-rule="evenodd" d="
+      M78 84h216a42 42 0 0 1 42 42v126a42 42 0 0 1-42 42H78a42 42 0 0 1-42-42V126a42 42 0 0 1 42-42
+      M96 128h180a14 14 0 0 1 14 14v84a14 14 0 0 1-14 14H96a14 14 0 0 1-14-14v-84a14 14 0 0 1 14-14
+    "/>
+    <path d="M152 286h68v60h-68z"/>
+    <rect x="112" y="334" width="146" height="32" rx="16"/>
 
-  <!-- Fixed Parent Room Device -->
-  <g id="parent-room-device" fill="#FFFFFF">
-    <rect x="41" y="79" width="240" height="150" rx="28" fill="none" stroke="#FFFFFF" stroke-width="44"/>
-    <path d="M137 229h48v51h-48z"/>
-    <rect x="105" y="268" width="112" height="24" rx="12"/>
-  </g>
-
-  <!-- Movable Companion Device -->
-  <g id="companion-device" fill="#FFFFFF">
-    <rect x="301" y="305" width="170" height="105" rx="22" fill="none" stroke="#FFFFFF" stroke-width="44"/>
-    <path d="M321 418h130" fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-width="26"/>
-    <circle cx="326" cy="459" r="23"/>
-    <circle cx="446" cy="459" r="23"/>
-  </g>
+    <!-- Companion Device: overlapping placement communicates pairing without tiny arrows. -->
+    <path id="companion-device" fill-rule="evenodd" d="
+      M298 248h144a34 34 0 0 1 34 34v78a34 34 0 0 1-34 34H298a34 34 0 0 1-34-34v-78a34 34 0 0 1 34-34
+      M316 285h108a12 12 0 0 1 12 12v48a12 12 0 0 1-12 12H316a12 12 0 0 1-12-12v-48a12 12 0 0 1 12-12
+    "/>
+    <circle cx="310" cy="430" r="24"/>
+    <circle cx="430" cy="430" r="24"/>
   </g>
 </svg>
