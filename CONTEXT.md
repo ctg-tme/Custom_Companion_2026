@@ -77,7 +77,7 @@ A temporary Paired condition in which the companion board preserves an active ca
 _Avoid_: StandAlone, disconnected call
 
 **Paired Call Limit**:
-The invariant that a companion board participates in at most one active-parent-authorized call while Paired. A board call without current Parent authorization is reconciled once and disconnected if no active Parent call authorizes it. Parent runtime initialization, Parent selection, board initialization, and periodic checks replay authoritative Parent call state so late pairing and runtime restarts converge. A failed periodic network check does not end a known authorized call; Call Preservation State still owns parent-unavailable behavior. StandAlone retains native RoomOS call behavior.
+The invariant that a companion board participates in at most one active-parent-authorized call while Paired. A direct board call without current Parent authorization is disconnected and explained as a Paired restriction. Parent runtime initialization, Parent selection, board initialization, and periodic checks replay authoritative Parent call state so late pairing and runtime restarts converge. A failed periodic network check does not end a known authorized call; Call Preservation State still owns parent-unavailable behavior. StandAlone retains native RoomOS call behavior.
 _Avoid_: Global call limit, StandAlone call restriction
 
 **Paired Do Not Disturb Lease**:

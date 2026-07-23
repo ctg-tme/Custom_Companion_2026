@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 22, 2026
- * Version:                 0.1.2.31
+ * Revised:                 July 23, 2026
+ * Version:                 0.1.2.32
  *
  * Description:             Companion board entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -220,6 +220,7 @@ const boardCallSyncController = boardCallSync.create({
 	utils: utils,
 	policy: {
 		unauthorizedCallGraceMs: 5000,
+		unauthorizedCallNoticeMs: 15000,
 		parentCallCheckIntervalMs: 10000,
 		joinCommandSettleMs: 10000
 	},

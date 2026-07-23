@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 20, 2026
- * Revised:                 July 22, 2026
- * Version:                 1.0.3
+ * Revised:                 July 23, 2026
+ * Version:                 1.0.4
  *
  * Description:             Board Call Synchronization controller for the Custom Companion Solution.
  *                          Owns board call sync classification, Webex join and disconnect behavior,
@@ -47,7 +47,8 @@ or implied.
  * - Subscription and initial read: Status.SystemUnit.State.NumberOfActiveCalls.
  * - Conditional read: Status.Call when a parent sends a disconnect sync.
  * - Commands: Command.Webex.Join, Command.Call.Disconnect,
- *   and Command.UserInterface.Message.Alert.Display.
+ *   Command.UserInterface.Message.Alert.Display, and
+ *   Command.UserInterface.Message.Alert.Clear.
  * - Network command: DeviceComms sendMessageCommand to ActiveCallDetailsRequest after initialization,
  *   Parent selection, an unverified local call, a local call drop, and each active-call monitor interval.
  * Only Webex automatic joins are implemented. The inert non-Webex reference paths below remain
@@ -64,9 +65,15 @@ function createBoardCallSync(options) {
 	let isRejoinInProgress = false;
 	let activeBoardCallCount = 0;
 	let unauthorizedCallCheckTimeout = null;
+	let unauthorizedCallNoticeTimeout = null;
+	let unauthorizedCallNoticeToken = 0;
+	let unauthorizedCallNoticeActive = false;
 	let parentCallCheckInterval = null;
 	let parentCallRequestInFlight = false;
 	let joinCommandPendingUntil = 0;
+
+	const UNAUTHORIZED_CALL_NOTICE_TEXT = 'Calls must be started from the Paired Room. Return this board to StandAlone to place a call directly.';
+	const UNAUTHORIZED_CALL_ALERT_TITLE = 'Calling Unavailable While Paired';
 
 	function registerCallCountHandler() {
 		dependencies.xapi.Status.SystemUnit.State.NumberOfActiveCalls.on(callCount => {
@@ -131,12 +138,15 @@ function createBoardCallSync(options) {
 			clearUnauthorizedCallCheck();
 			stopParentCallMonitoring();
 			await disconnectAllCalls();
-			await setInfo('');
+			if (!unauthorizedCallNoticeActive) {
+				await setInfo('');
+			}
 			dependencies.log.info({ Message: 'Parent call disconnect sync received', Payload: payload });
 			return;
 		}
 
 		if (payload.CallKind === 'BYOD') {
+			await clearUnauthorizedCallNotice('ParentBYODCallStarted');
 			lastWebexPayload = null;
 			joinCommandPendingUntil = 0;
 			clearUnauthorizedCallCheck();
@@ -154,12 +164,14 @@ function createBoardCallSync(options) {
 		}
 
 		if (payload.CallKind === 'AdmissionRequired') {
+			await clearUnauthorizedCallNotice('ParentWebexCallStarted');
 			await setInfo('A host or cohost needs to admit this board to the Webex call.');
 			dependencies.log.info({ Message: 'Parent cannot auto-admit companion board because it is not host or cohost', Payload: payload });
 			return;
 		}
 
 		if (payload.CallKind === 'AdmissionAdmitted') {
+			await clearUnauthorizedCallNotice('ParentWebexCallStarted');
 			await setInfo('');
 			dependencies.log.info({ Message: 'Companion board admitted by parent host', Payload: payload });
 			return;
@@ -171,6 +183,7 @@ function createBoardCallSync(options) {
 		}
 
 		const isWebexCall = isWebexCallPayload(payload);
+		await clearUnauthorizedCallNotice(isWebexCall ? 'ParentWebexCallStarted' : 'ParentUnsupportedCallStarted');
 		dependencies.log.debug({ Message: 'Call sync payload classified', IsWebexCall: isWebexCall, RemoteNumber: payload.RemoteNumber || '', JoinTarget: payload.JoinTarget || '', MeetingPlatform: payload.MeetingPlatform || '', Protocol: payload.Protocol || '', ParentProtocol: payload.ParentCall && payload.ParentCall.Protocol || '' });
 		if (!isWebexCall) {
 			syncToken++;
@@ -292,12 +305,22 @@ function createBoardCallSync(options) {
 			stopParentCallMonitoring();
 			if (hadActiveBoardCall) {
 				await disconnectAllCalls();
+				await showUnauthorizedCallNotice(requestReason);
+			} else if (!unauthorizedCallNoticeActive) {
+				await setInfo('');
 			}
-			await setInfo('');
-			dependencies.log.info({ Message: 'Parent call-state reconciliation found no active parent call', RequestReason: requestReason, DisconnectedBoardCall: hadActiveBoardCall });
+			dependencies.log.info({
+				Message: hadActiveBoardCall ? 'Direct board call disconnected because calling is unavailable while Paired' : 'Parent call-state reconciliation found no active parent call',
+				RequestReason: requestReason,
+				DisconnectedBoardCall: hadActiveBoardCall,
+				PairedCallPolicy: hadActiveBoardCall ? 'Calls must be started from the Paired Room' : '',
+				UserGuidance: hadActiveBoardCall ? UNAUTHORIZED_CALL_NOTICE_TEXT : '',
+				NoticeDurationSeconds: hadActiveBoardCall ? getUnauthorizedCallNoticeDurationSeconds() : 0
+			});
 			return;
 		}
 
+		await clearUnauthorizedCallNotice('ActiveParentCallReconciled');
 		const reconciledPayload = buildCallSyncPayload(payload);
 		if (!isWebexCallPayload(reconciledPayload)) {
 			await handlePayload(reconciledPayload);
@@ -558,8 +581,94 @@ function createBoardCallSync(options) {
 
 		syncToken++;
 		await disconnectAllCalls();
-		await setInfo('');
-		dependencies.log.warn({ Message: 'Disconnected Paired board call without active-parent authorization', Reason: reason });
+		await showUnauthorizedCallNotice(reason);
+		dependencies.log.warn({
+			Message: 'Direct board call disconnected because calling is unavailable while Paired',
+			Reason: reason,
+			PairedCallPolicy: 'Calls must be started from the Paired Room',
+			UserGuidance: UNAUTHORIZED_CALL_NOTICE_TEXT,
+			NoticeDurationSeconds: getUnauthorizedCallNoticeDurationSeconds()
+		});
+	}
+
+	async function showUnauthorizedCallNotice(reason) {
+		const noticeDurationMs = getUnauthorizedCallNoticeDurationMs();
+		const noticeToken = ++unauthorizedCallNoticeToken;
+		clearUnauthorizedCallNoticeTimeout();
+		unauthorizedCallNoticeActive = true;
+		await setInfo(UNAUTHORIZED_CALL_NOTICE_TEXT);
+		unauthorizedCallNoticeTimeout = setTimeout(() => {
+			unauthorizedCallNoticeTimeout = null;
+			if (noticeToken !== unauthorizedCallNoticeToken || !unauthorizedCallNoticeActive) {
+				return;
+			}
+			unauthorizedCallNoticeActive = false;
+			if (infoText !== UNAUTHORIZED_CALL_NOTICE_TEXT) {
+				return;
+			}
+			setInfo('').catch(error => {
+				dependencies.utils.softError({ Context: 'Failed to clear the Paired calling policy Infoblock notice', Error: error });
+			});
+		}, noticeDurationMs);
+
+		try {
+			await dependencies.xapi.Command.UserInterface.Message.Alert.Display({
+				Title: UNAUTHORIZED_CALL_ALERT_TITLE,
+				Text: UNAUTHORIZED_CALL_NOTICE_TEXT,
+				Duration: getUnauthorizedCallNoticeDurationSeconds()
+			});
+			if (noticeToken !== unauthorizedCallNoticeToken || !unauthorizedCallNoticeActive) {
+				await clearUnauthorizedCallAlert('NoticeSupersededDuringDisplay');
+			}
+		} catch (error) {
+			dependencies.log.warn({ Message: 'Failed to display Paired calling policy alert', Reason: reason, Error: error.message || error.code || 'Unknown alert display error' });
+		}
+
+		dependencies.log.info({
+			Message: 'Paired calling policy notice displayed',
+			Reason: reason,
+			UserGuidance: UNAUTHORIZED_CALL_NOTICE_TEXT,
+			NoticeDurationSeconds: getUnauthorizedCallNoticeDurationSeconds()
+		});
+	}
+
+	async function clearUnauthorizedCallNotice(reason) {
+		const wasActive = unauthorizedCallNoticeActive;
+		unauthorizedCallNoticeToken++;
+		unauthorizedCallNoticeActive = false;
+		clearUnauthorizedCallNoticeTimeout();
+		if (infoText === UNAUTHORIZED_CALL_NOTICE_TEXT) {
+			await setInfo('');
+		}
+		if (!wasActive) {
+			return;
+		}
+		await clearUnauthorizedCallAlert(reason);
+		dependencies.log.debug({ Message: 'Paired calling policy notice cleared early', Reason: reason });
+	}
+
+	async function clearUnauthorizedCallAlert(reason) {
+		try {
+			await dependencies.xapi.Command.UserInterface.Message.Alert.Clear();
+		} catch (error) {
+			dependencies.log.warn({ Message: 'Failed to clear Paired calling policy alert', Reason: reason, Error: error.message || error.code || 'Unknown alert clear error' });
+		}
+	}
+
+	function clearUnauthorizedCallNoticeTimeout() {
+		if (unauthorizedCallNoticeTimeout) {
+			clearTimeout(unauthorizedCallNoticeTimeout);
+			unauthorizedCallNoticeTimeout = null;
+		}
+	}
+
+	function getUnauthorizedCallNoticeDurationMs() {
+		const durationMs = Number(policy.unauthorizedCallNoticeMs);
+		return Number.isFinite(durationMs) ? Math.max(1000, durationMs) : 15000;
+	}
+
+	function getUnauthorizedCallNoticeDurationSeconds() {
+		return Math.ceil(getUnauthorizedCallNoticeDurationMs() / 1000);
 	}
 
 	function startParentCallMonitoring() {
@@ -593,6 +702,9 @@ function createBoardCallSync(options) {
 	}
 
 	function cancel() {
+		clearUnauthorizedCallNotice('CallSyncCanceled').catch(error => {
+			dependencies.utils.softError({ Context: 'Failed to clear the Paired calling policy notice while canceling call sync', Error: error });
+		});
 		syncToken++;
 		lastWebexPayload = null;
 		isRejoinInProgress = false;

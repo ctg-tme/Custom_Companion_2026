@@ -306,7 +306,7 @@ The editable Paired UI policy is in `Custom-Campanion_10_PairedEnvironment_2026`
 
 While Paired, the board performs initial reads and subscribes to `Status.Audio.Microphones.Mute` and `Status.Audio.Volume`. An observed unmute invokes `Command.Audio.Microphones.Mute` once; a volume other than 1 invokes `Command.Audio.Volume.Set` once with `Level: 1` and no `Device` parameter. The board also invokes `Command.Conference.DoNotDisturb.Activate({ Timeout: 5 })` and renews that solution-owned lease every two minutes so incoming calls are rejected. Entering StandAlone clears the renewal timer and invokes `Command.Conference.DoNotDisturb.Deactivate()`; a DND state that predated Paired mode is intentionally not restored. These local commands are not retried. Leaving Paired keeps the microphone state muted. If no call is active, the board immediately reads `Config.Audio.DefaultVolume`, restores that value, and reminds the user to unmute. If a call is active, the board enters StandAlone immediately and asks whether to restore volume; decline, dismissal, or prompt failure leaves the level unchanged.
 
-The Paired board participates in at most one call. DND blocks ordinary incoming calls, and a new parent join request is ignored whenever `Status.SystemUnit.State.NumberOfActiveCalls` shows an existing call. StandAlone retains native RoomOS call behavior. Parent disconnect and rejoin behavior for the current synchronized call remains unchanged.
+The Paired board participates in at most one call. DND blocks ordinary incoming calls, and a new parent join request is ignored whenever `Status.SystemUnit.State.NumberOfActiveCalls` shows an existing call. If an In-Room User starts a call directly from the Paired board without current Parent authorization, reconciliation disconnects it and displays `Calls must be started from the Paired Room. Return this board to StandAlone to place a call directly.` in both Infoblock 3 and a RoomOS alert for 15 seconds. An authorized Parent call or a transition away from Paired dismisses both notices early, and the macro log records the Paired calling policy, user guidance, and notice duration. StandAlone retains native RoomOS call behavior. Parent disconnect and rejoin behavior for the current synchronized call remains unchanged.
 
 ```mermaid
 flowchart TD
@@ -334,6 +334,7 @@ If required media enforcement fails during an active call, the board remains ass
 | Purpose | Initial read or command | Subscription |
 | --- | --- | --- |
 | Local call safety | `xapi.Status.SystemUnit.State.NumberOfActiveCalls.get()` | `xapi.Status.SystemUnit.State.NumberOfActiveCalls.on(...)` |
+| Paired calling policy notice | `xapi.Command.UserInterface.Message.Alert.Display({ Duration: 15, ... })` and `.Alert.Clear()` | None; the Board Call Synchronization controller owns the matching Infoblock 3 timer |
 | Paired microphone enforcement | `xapi.Status.Audio.Microphones.Mute.get()` and `xapi.Command.Audio.Microphones.Mute()` | `xapi.Status.Audio.Microphones.Mute.on(...)` |
 | Paired volume enforcement | `xapi.Status.Audio.Volume.get()` and `xapi.Command.Audio.Volume.Set({ Level: 1 })` | `xapi.Status.Audio.Volume.on(...)` |
 | Paired incoming-call isolation | `xapi.Command.Conference.DoNotDisturb.Activate({ Timeout: 5 })` and `.Deactivate()` | Two-minute solution timer renews the five-minute lease while Paired |
