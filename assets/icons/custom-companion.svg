@@ -2,60 +2,36 @@
   <title id="title">Custom Companion</title>
   <desc id="description">A fixed room display and a smaller wheeled companion display exchange a two-way connection.</desc>
   <metadata>
-    Original Custom Companion artwork based on the selected generated concept.
-    Rounded geometry and color choices are inspired by Momentum Design icons.
-    The canvas is transparent, and all artwork stays inside a 5% safe area.
+    Original Custom Companion artwork adapted for visual parity with native RoomOS
+    home-screen glyphs. The monochrome mark uses bold rounded geometry, remains
+    legible at endpoint scale, and exceeds the 5% transparent safe-area requirement.
   </metadata>
 
-  <defs>
-    <linearGradient id="device-blue" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#3492EB"/>
-      <stop offset=".56" stop-color="#1170CF"/>
-      <stop offset="1" stop-color="#0353A8"/>
-    </linearGradient>
-    <linearGradient id="connection-blue" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#8AC9FF"/>
-      <stop offset=".55" stop-color="#64B4FA"/>
-      <stop offset="1" stop-color="#3492EB"/>
-    </linearGradient>
-    <linearGradient id="screen-white" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FFFFFF"/>
-      <stop offset="1" stop-color="#F7F9FB"/>
-    </linearGradient>
-  </defs>
-
+  <!-- Optical sizing matches the visual footprint of native RoomOS glyphs. -->
+  <g id="roomos-glyph" transform="translate(56.32 56.32) scale(.78)">
   <!-- Two-way coordination bridge -->
-  <g id="connection" fill="none" stroke="url(#connection-blue)" stroke-linecap="round" stroke-linejoin="round" stroke-width="24">
-    <path d="M300 147h70c27 0 48 21 48 48v49"/>
-    <path d="M310 388h-66c-27 0-48-21-48-48v-18"/>
+  <g id="connection" fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round" stroke-width="30">
+    <path d="M296 143h64c30 0 54 24 54 54v48"/>
+    <path d="M286 375h-51c-30 0-54-24-54-54v-4"/>
   </g>
-  <g id="direction-markers" fill="url(#connection-blue)">
-    <path d="m391 239 27 35 27-35a8 8 0 0 0-6-13h-42a8 8 0 0 0-6 13"/>
-    <path d="m169 327 27-35 27 35a8 8 0 0 1-6 13h-42a8 8 0 0 1-6-13"/>
+  <g id="direction-markers" fill="#FFFFFF">
+    <path d="m383 240 31 40 31-40a9 9 0 0 0-7-15h-48a9 9 0 0 0-7 15"/>
+    <path d="m150 322 31-40 31 40a9 9 0 0 1-7 15h-48a9 9 0 0 1-7-15"/>
   </g>
 
   <!-- Fixed Parent Room Device -->
-  <g id="parent-room-device">
-    <rect x="26" y="70" width="286" height="182" rx="32" fill="url(#device-blue)"/>
-    <rect x="49" y="100" width="240" height="124" rx="7" fill="url(#screen-white)"/>
-    <circle cx="169" cy="85" r="5" fill="#FFFFFF"/>
-    <path d="M146 247h46v42h-46z" fill="url(#device-blue)"/>
-    <rect x="114" y="286" width="110" height="22" rx="11" fill="url(#device-blue)"/>
+  <g id="parent-room-device" fill="#FFFFFF">
+    <rect x="41" y="79" width="240" height="150" rx="28" fill="none" stroke="#FFFFFF" stroke-width="30"/>
+    <path d="M137 229h48v51h-48z"/>
+    <rect x="105" y="268" width="112" height="24" rx="12"/>
   </g>
 
   <!-- Movable Companion Device -->
-  <g id="companion-device">
-    <path d="M298 316a33 33 0 0 1 33-33h122a33 33 0 0 1 33 33v66a33 33 0 0 1-33 33H331a33 33 0 0 1-33-33z" fill="url(#device-blue)"/>
-    <rect x="320" y="307" width="144" height="82" rx="7" fill="url(#screen-white)"/>
-    <circle cx="392" cy="297" r="5" fill="#FFFFFF"/>
-    <path d="M330 416h124" fill="none" stroke="url(#device-blue)" stroke-linecap="round" stroke-width="14"/>
-    <g id="companion-wheels">
-      <circle cx="334" cy="450" r="28" fill="#FFFFFF"/>
-      <circle cx="334" cy="450" r="22" fill="url(#device-blue)"/>
-      <circle cx="334" cy="450" r="7" fill="#FFFFFF"/>
-      <circle cx="450" cy="450" r="28" fill="#FFFFFF"/>
-      <circle cx="450" cy="450" r="22" fill="url(#device-blue)"/>
-      <circle cx="450" cy="450" r="7" fill="#FFFFFF"/>
-    </g>
+  <g id="companion-device" fill="#FFFFFF">
+    <rect x="301" y="305" width="170" height="105" rx="22" fill="none" stroke="#FFFFFF" stroke-width="30"/>
+    <path d="M321 418h130" fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-width="18"/>
+    <circle cx="326" cy="459" r="21"/>
+    <circle cx="446" cy="459" r="21"/>
+  </g>
   </g>
 </svg>
