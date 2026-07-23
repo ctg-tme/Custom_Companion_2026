@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 0.1.2.41
+ * Version:                 0.1.2.42
  *
  * Description:             Parent Room registration, validation, deregistration, and peripheral-cleanup entry macro used as the install source.
  *                          The numbered source remains inactive on the Companion Device; Parent Room installation renames
@@ -178,9 +178,11 @@ function queueStandbySync(state) {
 }
 
 async function sendStandbySync(state) {
+	const syncRequests = [];
 	for (let index = 0; index < registeredCompanionDevices.length; index++) {
-		await sendRegistrationResponse('StandbySync', { MessageId: '' }, registeredCompanionDevices[index], { State: state }, true);
+		syncRequests.push(sendRegistrationResponse('StandbySync', { MessageId: '' }, registeredCompanionDevices[index], { State: state }, true));
 	}
+	await Promise.all(syncRequests);
 
 	log.debug({ Message: 'Parent Room Device standby sync sent', State: state, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 }
@@ -395,7 +397,12 @@ function createTransactionId(prefix, serial) {
 }
 
 async function sendRegistrationResponse(action, inboundMessage, companionDeviceRecord, payload, isAccepted) {
-	const parentSource = await getParentSource();
+	const parentIdentity = await Promise.all([
+		getParentSource(),
+		getParentSerial()
+	]);
+	const parentSource = parentIdentity[0];
+	const parentSerial = parentIdentity[1];
 	const companionDevice = {
 		host: companionDeviceRecord.Host,
 		username: companionDeviceRecord.Username,
@@ -405,15 +412,17 @@ async function sendRegistrationResponse(action, inboundMessage, companionDeviceR
 	try {
 		await deviceComms.sendMessageCommand(xapi, companionDevice, action, payload, {
 			app: 'Companion Board 2026',
-			serial: await getParentSerial(),
+			serial: parentSerial,
 			source: parentSource
 		}, HTTP_CLIENT_CONFIG);
 	} catch (error) {
-		await xapi.Command.UserInterface.Message.Prompt.Display({
-			Title: 'Companion Device Registration Error',
-			Text: `${isAccepted ? 'Accepted' : 'Denied'} ${companionDeviceRecord.Name}, but response failed. Check Companion Device credentials.`,
-			Duration: 10
-		});
+		if (action === 'ConfigAccepted' || action === 'ConfigDenied') {
+			await xapi.Command.UserInterface.Message.Prompt.Display({
+				Title: 'Companion Device Registration Error',
+				Text: `${isAccepted ? 'Accepted' : 'Denied'} ${companionDeviceRecord.Name}, but response failed. Check Companion Device credentials.`,
+				Duration: 10
+			});
+		}
 		log.warn({ Message: 'Failed to send registration response to Companion Device', Action: action, Serial: companionDeviceRecord.Serial, Error: error.code || error.message || 'Unknown response error', ErrorContext: error.Context || {} });
 	}
 }

@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.4
+ * Version:                 1.0.5
  *
  * Description:             Paired Environment policy controller for the Custom Companion Solution.
  *                          Owns call-feature policy, Companion Web Widget mode, Paired microphone
@@ -212,6 +212,7 @@ function createPairedEnvironment(options) {
 		await applyDoNotDisturbMode(mode);
 		isApplyingUiFeatureConfig = true;
 		try {
+			const featureUpdates = [];
 			for (let index = 0; index < PAIRED_UI_FEATURE_POLICY.length; index++) {
 				const feature = PAIRED_UI_FEATURE_POLICY[index];
 				let value = mode === 'Standalone' ? standaloneUiFeatureConfig[feature.key] : feature.pairedValue;
@@ -221,9 +222,10 @@ function createPairedEnvironment(options) {
 				}
 
 				if (value !== undefined && value !== null) {
-					await setUiFeatureConfigValue(feature, value);
+					featureUpdates.push(setUiFeatureConfigValue(feature, value));
 				}
 			}
+			await Promise.all(featureUpdates);
 			await applyRuntimeWebWidget(mode);
 		} finally {
 			isApplyingUiFeatureConfig = false;
@@ -310,6 +312,9 @@ function createPairedEnvironment(options) {
 	}
 
 	async function clearRestorePrompt() {
+		if (!isVolumeRestorePromptActive) {
+			return;
+		}
 		isVolumeRestorePromptActive = false;
 		await dependencies.companionUi.clearPrompt(dependencies.xapi, RESTORE_VOLUME_PROMPT_ID);
 	}

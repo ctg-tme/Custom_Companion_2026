@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 0.1.2.41
+ * Version:                 0.1.2.42
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -663,16 +663,17 @@ async function completeVerifiedParentSelection(refreshedParentDevice, parentStat
 	await companionDeviceCallSyncController.cancel();
 	activeParentSerial = parentStatus.serial;
 	companionDeviceState = createCompanionDeviceState(activeParentSerial);
+	const prefetchedStandbyState = standbyCoordinationController.prefetchSelectedParentSync(refreshedParentDevice);
 	await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
 	await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
-	await parentConnectivityController.clearInfo();
+	await parentConnectivityController.clearInfo(false);
 	await applyUiFeatureMode(companionDeviceState.mode);
 	await standbyCoordinationController.applyMode(companionDeviceState.mode);
 	await pairedEnvironmentController.enforceInitialMediaState();
 	if (isUnhealthy) {
 		return false;
 	}
-	await standbyCoordinationController.scheduleSelectedParentSync(refreshedParentDevice);
+	await standbyCoordinationController.scheduleSelectedParentSync(refreshedParentDevice, prefetchedStandbyState);
 	await companionDeviceCallSyncController.requestActiveParentCallState('ParentSelection');
 	return true;
 }

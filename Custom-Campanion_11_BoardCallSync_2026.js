@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.13
+ * Version:                 1.0.14
  *
  * Description:             Companion Device Call Synchronization controller for the Custom Companion solution.
  *                          Owns Companion Device call sync classification, Webex join and disconnect behavior,
@@ -493,7 +493,6 @@ function createCompanionDeviceCallSync(options) {
 			clearUnauthorizedCallCheck();
 			stopParentCallMonitoring();
 			await clearMeetingPasswordNotice('ParentBYODCallStarted');
-			await disconnectAllCalls();
 			const unsupportedPayload = { MeetingPlatform: 'BYOD' };
 			await setInfo(getUnsupportedCallInfoText(unsupportedPayload));
 			await dependencies.companionUi.showOwnedAlert(dependencies.xapi, {
@@ -502,6 +501,7 @@ function createCompanionDeviceCallSync(options) {
 				text: getUnsupportedCallAlertText(unsupportedPayload),
 				duration: 15
 			});
+			await disconnectAllCalls();
 			dependencies.log.debug({ Message: 'BYOD call sync received; Companion Device join not supported', Payload: payload });
 			return;
 		}
@@ -537,8 +537,8 @@ function createCompanionDeviceCallSync(options) {
 			clearUnauthorizedCallCheck();
 			stopParentCallMonitoring();
 			await clearMeetingPasswordNotice('ParentUnsupportedCallStarted');
-			await disconnectAllCalls();
 			await setInfo(getUnsupportedCallInfoText(payload));
+			await disconnectAllCalls();
 			dependencies.log.debug({ Message: 'Non-Webex call sync received; Companion Device join is out of scope', Payload: payload });
 			return;
 		}
@@ -656,8 +656,8 @@ function createCompanionDeviceCallSync(options) {
 			stopParentCallMonitoring();
 			await clearMeetingPasswordNotice('ParentCallNotActive');
 			if (hadActiveCompanionDeviceCall) {
-				await disconnectAllCalls();
 				await showUnauthorizedCallNotice(requestReason);
+				await disconnectAllCalls();
 			} else if (!unauthorizedCallNoticeActive) {
 				await setInfo('');
 			}
@@ -938,8 +938,8 @@ function createCompanionDeviceCallSync(options) {
 		}
 
 		syncToken++;
-		await disconnectAllCalls();
 		await showUnauthorizedCallNotice(reason);
+		await disconnectAllCalls();
 		dependencies.log.warn({
 			Message: 'Direct Companion Device call disconnected; Paired calls must start from the Parent Room Device',
 			Reason: reason,

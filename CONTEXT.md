@@ -150,11 +150,15 @@ The shared HTTP queue has an internal global capacity of 50 pending requests. Wh
 
 The shared transport does not retry requests. Retry ownership remains explicit in the calling workflow: parent reachability uses its defined retry policy, periodic heartbeats retry on their next cycle, and state-changing `/putxml` commands are not replayed after an ambiguous failure.
 
+Independent state fan-out to registered Companion Devices starts together and remains bounded by the Parent Room Device's three-Companion Device registration limit and the transport's three active requests. Registration, persistence, retry, and other causally dependent workflow steps remain ordered.
+
 HTTPClient requests explicitly ask RoomOS for `PlainText` response bodies so response validation can inspect XML. The QuickJS parser accepts the RoomOS response subset—declarations, comments, elements, self-closing elements, attributes, repeated siblings, text, standard and numeric entities, and CDATA—and rejects malformed XML, document-type declarations, and custom entities.
 
 ## Local xAPI Commands
 
 Local xAPI commands are attempted once and are never retried. A local command failure indicates an API path, command, capability, or platform problem that must be diagnosed; repeated attempts must not obscure that fault. Retry policies apply only to network communication where explicitly defined.
+
+Independent local policy commands may be issued together; concurrency does not add retries or remove causal ordering between workflow stages.
 
 A failed required Paired microphone-mute or volume-level enforcement command immediately enters the Unhealthy State. The console identifies the failed enforcement path with a stable diagnostic code, the normal `cc26_access` and `cc26_hidden` panels are replaced by `cc26_error`, and Parent Room Device selection remains blocked until the Macro Runtime restarts. Optional UI feature-policy paths are logged and skipped when unavailable.
 

@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.5
+ * Version:                 1.0.6
  *
  * Description:             Parent Call Coordination controller for the Custom Companion Solution.
  *                          Owns parent call detection, BYOD detection, participant admission,
@@ -338,9 +338,7 @@ function createParentCallCoordination(options) {
 			return { waitingCount: waitingMatches.length, canAdmit: true };
 		}
 
-		for (let index = 0; index < waitingMatches.length; index++) {
-			await admitCompanionParticipant(callId, waitingMatches[index]);
-		}
+		await Promise.all(waitingMatches.map(waitingMatch => admitCompanionParticipant(callId, waitingMatch)));
 
 		return { waitingCount: waitingMatches.length, canAdmit: true };
 	}
@@ -419,21 +417,25 @@ function createParentCallCoordination(options) {
 	}
 
 	async function sendAdmissionRequired(waitingMatches, hostCheck) {
+		const noticeRequests = [];
 		for (let index = 0; index < waitingMatches.length; index++) {
 			const match = waitingMatches[index];
 			if (admissionNoticeSerials[match.companionDevice.Serial]) {
 				continue;
 			}
 
-			await sendRegistrationResponse('CallSync', { MessageId: '' }, match.companionDevice, {
-				CallKind: 'AdmissionRequired',
-				Reason: 'ParentNotHostOrCohost',
-				DisplayName: getValue(match.participant.DisplayName) || match.companionDevice.Name,
-				ParentIsHost: hostCheck.isHost,
-				ParentIsCohost: hostCheck.isCohost
-			}, true);
-			admissionNoticeSerials[match.companionDevice.Serial] = true;
+			noticeRequests.push((async () => {
+				await sendRegistrationResponse('CallSync', { MessageId: '' }, match.companionDevice, {
+					CallKind: 'AdmissionRequired',
+					Reason: 'ParentNotHostOrCohost',
+					DisplayName: getValue(match.participant.DisplayName) || match.companionDevice.Name,
+					ParentIsHost: hostCheck.isHost,
+					ParentIsCohost: hostCheck.isCohost
+				}, true);
+				admissionNoticeSerials[match.companionDevice.Serial] = true;
+			})());
 		}
+		await Promise.all(noticeRequests);
 	}
 
 	async function admitCompanionParticipant(callId, waitingMatch) {
@@ -651,13 +653,11 @@ function createParentCallCoordination(options) {
 	}
 
 	async function sendByodSync(source, state) {
-		for (let index = 0; index < registeredCompanionDevices.length; index++) {
-			await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredCompanionDevices[index], {
-				CallKind: 'BYOD',
-				ByodSource: source,
-				ByodState: state
-			}, true);
-		}
+		await broadcastCallSync({
+			CallKind: 'BYOD',
+			ByodSource: source,
+			ByodState: state
+		});
 
 		log.debug({ Message: 'Parent Room Device BYOD call sync sent', Source: source, State: state, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 	}
@@ -670,16 +670,14 @@ function createParentCallCoordination(options) {
 	}
 
 	async function sendNetworkCallSync(remoteNumber, callDetails, reason) {
-		for (let index = 0; index < registeredCompanionDevices.length; index++) {
-			await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredCompanionDevices[index], {
-				CallKind: 'Network',
-				RemoteNumber: remoteNumber || '',
-				JoinTarget: activeParentCallDetails && activeParentCallDetails.JoinTarget || remoteNumber || '',
-				MeetingPlatform: callDetails.meetingPlatform,
-				Protocol: callDetails.protocol,
-				ParentCall: activeParentCallDetails || {}
-			}, true);
-		}
+		await broadcastCallSync({
+			CallKind: 'Network',
+			RemoteNumber: remoteNumber || '',
+			JoinTarget: activeParentCallDetails && activeParentCallDetails.JoinTarget || remoteNumber || '',
+			MeetingPlatform: callDetails.meetingPlatform,
+			Protocol: callDetails.protocol,
+			ParentCall: activeParentCallDetails || {}
+		});
 
 		log.debug({ Message: 'Parent Room Device call sync sent', Reason: reason, RemoteNumber: remoteNumber || '', JoinTarget: activeParentCallDetails && activeParentCallDetails.JoinTarget || '', MeetingPlatform: callDetails.meetingPlatform, Protocol: callDetails.protocol, ParentCall: activeParentCallDetails, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 	}
@@ -713,15 +711,15 @@ function createParentCallCoordination(options) {
 		}
 
 		callStateReconciliationPromise = (async () => {
-			const calls = await getCurrentCallStatus();
+			const reconciliationReads = await Promise.all([
+				getCurrentCallStatus(),
+				getCurrentActiveCallCount(reason)
+			]);
+			const calls = reconciliationReads[0];
 			let activeCallCount = calls.length;
-			try {
-				const statusCount = Number(normalizeEventValue(await xapi.Status.SystemUnit.State.NumberOfActiveCalls.get()));
-				if (Number.isFinite(statusCount)) {
-					activeCallCount = statusCount;
-				}
-			} catch (error) {
-				log.debug({ Message: 'Failed to read Parent Room Device active call count during reconciliation; using Status.Call count', Reason: reason, CallStatusCount: calls.length, Error: error.message || error.code || 'Unknown active call count error' });
+			const statusCount = reconciliationReads[1];
+			if (statusCount !== null) {
+				activeCallCount = statusCount;
 			}
 			parentActiveCallCount = activeCallCount;
 
@@ -771,6 +769,16 @@ function createParentCallCoordination(options) {
 		}
 	}
 
+	async function getCurrentActiveCallCount(reason) {
+		try {
+			const statusCount = Number(normalizeEventValue(await xapi.Status.SystemUnit.State.NumberOfActiveCalls.get()));
+			return Number.isFinite(statusCount) ? statusCount : null;
+		} catch (error) {
+			log.debug({ Message: 'Failed to read Parent Room Device active call count during reconciliation; using Status.Call count', Reason: reason, Error: error.message || error.code || 'Unknown active call count error' });
+			return null;
+		}
+	}
+
 	function findMatchingCallStatus(calls, remoteNumber, call) {
 		const expectedCallId = normalizeCallIdentity(getValue(call.CallId));
 		const expectedRemoteUri = normalizeCallIdentity(getValue(call.RemoteURI));
@@ -803,21 +811,32 @@ function createParentCallCoordination(options) {
 	}
 
 	async function sendCallDisconnectSync(reason) {
-		for (let index = 0; index < registeredCompanionDevices.length; index++) {
-			await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredCompanionDevices[index], {
-				CallKind: 'Disconnect',
-				Reason: reason || 'ParentCallCountZero'
-			}, true);
-		}
+		await broadcastCallSync({
+			CallKind: 'Disconnect',
+			Reason: reason || 'ParentCallCountZero'
+		});
 
 		log.debug({ Message: 'Parent Room Device call disconnect sync sent', RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 	}
 
+	async function broadcastCallSync(payload) {
+		const syncRequests = [];
+		for (let index = 0; index < registeredCompanionDevices.length; index++) {
+			syncRequests.push(sendRegistrationResponse('CallSync', { MessageId: '' }, registeredCompanionDevices[index], payload, true));
+		}
+		await Promise.all(syncRequests);
+	}
+
 	async function getParentCallDetails(call) {
+		const detailValues = await Promise.all([
+			getMeetingPlatform(call || {}),
+			getCallProtocol(call || {}),
+			getMeetingInviteLink()
+		]);
 		return {
-			meetingPlatform: await getMeetingPlatform(call || {}),
-			protocol: await getCallProtocol(call || {}),
-			meetingInviteLink: await getMeetingInviteLink()
+			meetingPlatform: detailValues[0],
+			protocol: detailValues[1],
+			meetingInviteLink: detailValues[2]
 		};
 	}
 

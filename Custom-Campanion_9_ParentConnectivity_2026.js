@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.2
+ * Version:                 1.0.3
  *
  * Description:             Parent Connectivity controller for the Custom Companion Solution.
  *                          Owns parent identity refresh, serial-verified retries, monitoring,
@@ -124,12 +124,13 @@ function createParentConnectivity(options) {
 	async function select(parentDevice) {
 		await cancel(true);
 		const currentToken = connectionToken;
+		const previousAvailabilitySignature = getAvailabilitySignature();
 		const result = await runConnectionAttempts(parentDevice, currentToken, policy.selectionRetryCount, true);
 		if (result.canceled) {
 			return result;
 		}
 
-		if (callbacks.onAvailabilityChanged) {
+		if (previousAvailabilitySignature !== getAvailabilitySignature() && callbacks.onAvailabilityChanged) {
 			await callbacks.onAvailabilityChanged(getSnapshot());
 		}
 
@@ -241,8 +242,12 @@ function createParentConnectivity(options) {
 		return infoText;
 	}
 
-	async function clearInfo() {
-		await setInfo('');
+	async function clearInfo(notifyChange = true) {
+		clearInfoTimer();
+		infoText = '';
+		if (notifyChange && callbacks.onInfoChanged) {
+			await callbacks.onInfoChanged(infoText);
+		}
 	}
 
 	function isCallPreservationActive() {
@@ -282,11 +287,12 @@ function createParentConnectivity(options) {
 	}
 
 	async function recoverActiveParent(parentDevice, currentToken) {
+		const previousAvailabilitySignature = getAvailabilitySignature();
 		const result = await runConnectionAttempts(parentDevice, currentToken, policy.selectionRetryCount, true);
 		if (result.canceled) {
 			return;
 		}
-		if (callbacks.onAvailabilityChanged) {
+		if (previousAvailabilitySignature !== getAvailabilitySignature() && callbacks.onAvailabilityChanged) {
 			await callbacks.onAvailabilityChanged(getSnapshot());
 		}
 
@@ -385,12 +391,21 @@ function createParentConnectivity(options) {
 				return buildAttemptResult(latestStatus, true, attempt);
 			}
 
+			const identityRequest = dependencies.deviceComms.parentInitializationRequest(dependencies.xapi, parentDevice, dependencies.httpClientConfig)
+				.then(
+					refreshedDevice => ({ refreshedDevice: refreshedDevice, error: null }),
+					error => ({ refreshedDevice: null, error: error })
+				);
 			if (showAttemptInfo) {
 				await setInfo(`Connecting to ${getParentDisplayName(parentDevice)} — attempt ${attempt} of ${retryCount}`);
 			}
 
 			try {
-				const refreshedDevice = await dependencies.deviceComms.parentInitializationRequest(dependencies.xapi, parentDevice, dependencies.httpClientConfig);
+				const identityResult = await identityRequest;
+				if (identityResult.error) {
+					throw identityResult.error;
+				}
+				const refreshedDevice = identityResult.refreshedDevice;
 				if (parentDevice.serial && refreshedDevice.serial !== parentDevice.serial) {
 					const mismatchError = new Error('Parent Room Device identity serial did not match the selected Parent Room Device');
 					mismatchError.code = 'CC26-PARENT-IDENTITY-MISMATCH';
@@ -499,7 +514,7 @@ function createParentConnectivity(options) {
 	}
 
 	function getAvailabilitySignature() {
-		return parentDeviceStatus.map(status => `${status.host}:${status.online ? 'online' : 'offline'}`).join('|');
+		return parentDeviceStatus.map(status => `${status.host}:${status.serial}:${status.name}:${status.online ? 'online' : 'offline'}`).join('|');
 	}
 
 	function getRuntimeContext() {

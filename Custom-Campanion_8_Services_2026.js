@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 10, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.28
+ * Version:                 1.0.29
  *
  * Description:             Companion Device provisioning payloads, peripheral identity, and runtime device-identity services.
  *
@@ -117,10 +117,16 @@ async function connectPeripheralToOnlineParents(options) {
 
 async function getRuntimeCompanionDeviceInformation(XAPIObject, configuredCompanionDeviceInformation, log) {
 	const companionDeviceInformation = configuredCompanionDeviceInformation || {};
-	const productPlatform = await getProductPlatform(XAPIObject, log);
-	const serial = await getCompanionDeviceSerialNumber(XAPIObject, log);
-	const macAddress = await getActiveNetworkMacAddress(XAPIObject, log);
-	const name = await getCompanionDeviceName(XAPIObject, log);
+	const identityValues = await Promise.all([
+		getProductPlatform(XAPIObject, log),
+		getCompanionDeviceSerialNumber(XAPIObject, log),
+		getActiveNetworkMacAddress(XAPIObject, log),
+		getCompanionDeviceName(XAPIObject, log)
+	]);
+	const productPlatform = identityValues[0];
+	const serial = identityValues[1];
+	const macAddress = identityValues[2];
+	const name = identityValues[3];
 
 	return {
 		serial: serial,

@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.24
+ * Version:                 1.0.25
  *
  * Description:             Companion access/hidden panels, PIN/registration/status prompts,
  *                          shared alert ownership, and WebWidget adapter.
@@ -232,18 +232,26 @@ function buildParentWidgetXml(parentDevice, parentStatus, index) {
 }
 
 async function savePanel(XAPIObject, parentDevices, parentDeviceStatus, activeParentSerial, pinModeEnabled) {
-	await removePanel(XAPIObject, ERROR_PANEL_ID);
-	await removePanel(XAPIObject, LEGACY_PANEL_ID);
-	await XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: ACCESS_PANEL_ID }, buildAccessPanelXml());
-	await XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: PANEL_ID }, buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial));
-	await setSelectedParent(XAPIObject, parentDevices, activeParentSerial);
-	await setPinModeFeedback(XAPIObject, pinModeEnabled);
+	await Promise.all([
+		removePanel(XAPIObject, ERROR_PANEL_ID),
+		removePanel(XAPIObject, LEGACY_PANEL_ID)
+	]);
+	await Promise.all([
+		XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: ACCESS_PANEL_ID }, buildAccessPanelXml()),
+		XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: PANEL_ID }, buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial))
+	]);
+	await Promise.all([
+		setSelectedParent(XAPIObject, parentDevices, activeParentSerial),
+		setPinModeFeedback(XAPIObject, pinModeEnabled)
+	]);
 }
 
 async function saveErrorPanel(XAPIObject) {
-	await removePanel(XAPIObject, LEGACY_PANEL_ID);
-	await removePanel(XAPIObject, ACCESS_PANEL_ID);
-	await removePanel(XAPIObject, PANEL_ID);
+	await Promise.all([
+		removePanel(XAPIObject, LEGACY_PANEL_ID),
+		removePanel(XAPIObject, ACCESS_PANEL_ID),
+		removePanel(XAPIObject, PANEL_ID)
+	]);
 	await XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: ERROR_PANEL_ID }, buildErrorPanelXml());
 }
 
@@ -419,18 +427,24 @@ async function showErrorPrompt(XAPIObject) {
 }
 
 async function setSelectedParent(XAPIObject, parentDevices, activeParentSerial) {
-	await setWidgetValue(XAPIObject, STANDALONE_MODE_WIDGET_ID, activeParentSerial === 'Standalone' ? 'active' : 'inactive');
+	const widgetUpdates = [
+		setWidgetValue(XAPIObject, STANDALONE_MODE_WIDGET_ID, activeParentSerial === 'Standalone' ? 'active' : 'inactive')
+	];
 
 	for (let index = 0; index < parentDevices.length; index++) {
 		const widgetId = `${PARENT_ROOM_DEVICE_SELECTION_PAGE_ID}~ParentRoomDeviceSelect~${index}`;
 		const isActive = parentDevices[index].serial === activeParentSerial;
-		await setWidgetValue(XAPIObject, widgetId, isActive ? 'active' : 'inactive');
+		widgetUpdates.push(setWidgetValue(XAPIObject, widgetId, isActive ? 'active' : 'inactive'));
 	}
+
+	await Promise.all(widgetUpdates);
 }
 
 async function setPinModeFeedback(XAPIObject, enabled) {
-	await setWidgetValue(XAPIObject, PIN_OFF_WIDGET_ID, enabled ? 'inactive' : 'active');
-	await setWidgetValue(XAPIObject, PIN_ON_WIDGET_ID, enabled ? 'active' : 'inactive');
+	await Promise.all([
+		setWidgetValue(XAPIObject, PIN_OFF_WIDGET_ID, enabled ? 'inactive' : 'active'),
+		setWidgetValue(XAPIObject, PIN_ON_WIDGET_ID, enabled ? 'active' : 'inactive')
+	]);
 }
 
 async function setWidgetValue(XAPIObject, widgetId, value) {

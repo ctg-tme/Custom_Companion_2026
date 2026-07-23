@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.2
+ * Version:                 1.0.3
  *
  * Description:             Standby Coordination controller for the Custom Companion Solution.
  *                          Owns Standalone standby preference restoration, delayed parent sync,
@@ -127,13 +127,15 @@ function createStandbyCoordination(options) {
 	async function applyMode(mode) {
 		isApplyingConfig = true;
 		try {
+			const configUpdates = [];
 			for (let index = 0; index < STANDBY_CONFIGS.length; index++) {
 				const standbyConfig = STANDBY_CONFIGS[index];
 				const value = mode === 'Standalone' ? standaloneConfig[standbyConfig.key] : standbyConfig.pairedValue;
 				if (value !== undefined && value !== null) {
-					await setConfigValue(standbyConfig, value);
+					configUpdates.push(setConfigValue(standbyConfig, value));
 				}
 			}
+			await Promise.all(configUpdates);
 		} finally {
 			isApplyingConfig = false;
 		}
@@ -154,14 +156,37 @@ function createStandbyCoordination(options) {
 		await applyImmediateSync(state);
 	}
 
-	async function scheduleSelectedParentSync(parentDevice) {
+	async function prefetchSelectedParentSync(parentDevice) {
 		try {
 			const state = await dependencies.deviceComms.parentStandbyStateRequest(dependencies.xapi, parentDevice, dependencies.httpClientConfig);
-			await scheduleSync(state);
 			dependencies.log.info({ Message: 'Selected Parent Room Device standby state fetched', Host: parentDevice.host, State: state });
+			return state;
 		} catch (error) {
 			dependencies.log.warn({ Message: 'Failed to fetch selected Parent Room Device standby state', Host: parentDevice.host, Error: error.code || error.message || 'Unknown Parent Room Device standby state error', ErrorContext: error.Context || {} });
+			return null;
 		}
+	}
+
+	async function scheduleSelectedParentSync(parentDevice, prefetchedState) {
+		const state = prefetchedState === undefined
+			? await prefetchSelectedParentSync(parentDevice)
+			: await prefetchedState;
+		if (state === null) {
+			return;
+		}
+
+		const context = getRuntimeContext();
+		if (context.mode !== 'Paired' || context.activeParentSerial !== parentDevice.serial) {
+			dependencies.log.debug({
+				Message: 'Discarded prefetched standby state because the selected Parent Room Device changed',
+				Host: parentDevice.host,
+				ParentSerial: parentDevice.serial,
+				ActiveParentSerial: context.activeParentSerial,
+				Mode: context.mode
+			});
+			return;
+		}
+		await scheduleSync(state);
 	}
 
 	async function applyImmediateSync(state) {
@@ -405,6 +430,7 @@ function createStandbyCoordination(options) {
 		initializeConfig,
 		applyMode,
 		handleMessage,
+		prefetchSelectedParentSync,
 		scheduleSelectedParentSync,
 		handlePromptResponse,
 		handlePromptCleared,
