@@ -20,10 +20,10 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 10, 2026
- * Revised:                 July 22, 2026
- * Version:                 1.0.4
+ * Revised:                 July 23, 2026
+ * Version:                 1.0.5
  *
- * Description:             Durable registration/tombstone storage keys, safe MemoryStorage reads, and basic board mode state.
+ * Description:             Durable registration/tombstone storage keys, safe MemoryStorage reads, and basic Companion Device mode state.
  *
  * Documentation:           N/A
  *
@@ -39,7 +39,7 @@ or implied.
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
 
-const STAND_ALONE_PARENT_SERIAL = 'StandAlone';
+const STANDALONE_PARENT_SERIAL = 'Standalone';
 const PARENT_DEVICES_STORAGE_KEY = 'parentDevices';
 const PENDING_DEREGISTRATIONS_STORAGE_KEY = 'pendingDeregistrations';
 const ACTIVE_PARENT_SERIAL_STORAGE_KEY = 'activeParentSerial';
@@ -86,20 +86,21 @@ async function readMemoryOrInitialize(mem, key, defaultValue, utils) {
 	}
 }
 
-function createBoardState(parentSerial, parentDevices, companionBoardInformation) {
-	const activeParent = getActiveParentBySerial(parentSerial, parentDevices, companionBoardInformation);
+function createCompanionDeviceState(parentSerial, parentDevices, companionDeviceInformation) {
+	parentSerial = normalizeActiveParentSerial(parentSerial);
+	const activeParent = getActiveParentBySerial(parentSerial, parentDevices, companionDeviceInformation);
 
 	return {
 		activeParent: activeParent,
-		mode: parentSerial === STAND_ALONE_PARENT_SERIAL ? 'StandAlone' : 'Paired',
+		mode: parentSerial === STANDALONE_PARENT_SERIAL ? 'Standalone' : 'Paired',
 		lastKnownParentSerial: activeParent.serial,
 		lastUpdated: new Date().toISOString()
 	};
 }
 
-function getActiveParentBySerial(parentSerial, parentDevices, companionBoardInformation) {
-	if (parentSerial === STAND_ALONE_PARENT_SERIAL) {
-		return companionBoardInformation;
+function getActiveParentBySerial(parentSerial, parentDevices, companionDeviceInformation) {
+	if (normalizeActiveParentSerial(parentSerial) === STANDALONE_PARENT_SERIAL) {
+		return companionDeviceInformation;
 	}
 
 	return parentDevices.find(device => device.serial === parentSerial) || {
@@ -111,16 +112,24 @@ function getActiveParentBySerial(parentSerial, parentDevices, companionBoardInfo
 	};
 }
 
+function normalizeActiveParentSerial(parentSerial) {
+	const normalizedSerial = String(parentSerial || '').trim();
+	if (!normalizedSerial || normalizedSerial.toLowerCase() === STANDALONE_PARENT_SERIAL.toLowerCase()) {
+		return STANDALONE_PARENT_SERIAL;
+	}
+	return normalizedSerial;
+}
+
 function findParentDeviceByHost(parentDevices, host) {
 	return parentDevices.find(device => device.host === host) || null;
 }
 
-function findActiveParentDevice(boardState, parentDevices) {
-	if (boardState.mode === 'StandAlone') {
+function findActiveParentDevice(companionDeviceState, parentDevices) {
+	if (companionDeviceState.mode === 'Standalone') {
 		return null;
 	}
 
-	return parentDevices.find(device => device.serial === boardState.activeParent.serial || device.host === boardState.activeParent.host) || null;
+	return parentDevices.find(device => device.serial === companionDeviceState.activeParent.serial || device.host === companionDeviceState.activeParent.host) || null;
 }
 
 function warnIfCredentialsAreStored(parentDevices, log) {
@@ -128,14 +137,14 @@ function warnIfCredentialsAreStored(parentDevices, log) {
 
 	if (credentialCount > 0) {
 		log.warn({
-			Context: 'Stored parent device credentials are present in MemoryStorage. This is required for autonomous device-to-device communication, but macro/storage access can expose these credentials.',
+			Context: 'Stored Parent Room Device credentials are present in MemoryStorage. This is required for autonomous device-to-device communication, but macro/storage access can expose these credentials.',
 			CredentialSetCount: credentialCount
 		});
 	}
 }
 
 const companionState = {
-	STAND_ALONE_PARENT_SERIAL,
+	STANDALONE_PARENT_SERIAL,
 	PARENT_DEVICES_STORAGE_KEY,
 	PENDING_DEREGISTRATIONS_STORAGE_KEY,
 	ACTIVE_PARENT_SERIAL_STORAGE_KEY,
@@ -144,7 +153,8 @@ const companionState = {
 	STANDALONE_STANDBY_CONFIG_STORAGE_KEY,
 	readMemoryOrDefault,
 	readMemoryOrInitialize,
-	createBoardState,
+	createCompanionDeviceState,
+	normalizeActiveParentSerial,
 	findParentDeviceByHost,
 	findActiveParentDevice,
 	warnIfCredentialsAreStored

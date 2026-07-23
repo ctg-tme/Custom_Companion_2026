@@ -4,24 +4,32 @@ This context defines the canonical language for people interacting with or maint
 
 ## Language
 
-**StandAlone**:
-The operating mode in which the companion board is not assigned to a parent room device and functions independently.
+**Companion Device**:
+The movable RoomOS device that runs the Custom Companion entry macro and can operate independently or coordinate with one selected Parent Room Device.
+_Avoid_: Companion board, board
+
+**Parent Room Device**:
+The fixed RoomOS device registered with a Companion Device and eligible to become its active Parent Room.
+_Avoid_: Parent codec, parent device
+
+**Standalone**:
+The operating mode in which the Companion Device is not assigned to a Parent Room Device and functions independently.
 _Avoid_: Unpaired mode, disconnected mode
 
 **Paired**:
-The operating mode in which the companion board is assigned to one active parent room device.
+The operating mode in which the Companion Device is assigned to one active Parent Room Device.
 _Avoid_: Connected mode, linked mode
 
 **Parent Room Registration**:
-The durable relationship established after a companion board verifies the expected Parent identity and both devices recognize one another, making that room available for later selection. Registration does not select the room or change the board's operating mode, and it is unavailable only while the board is both Paired and participating in an active call.
+The durable relationship established after a Companion Device verifies the expected Parent Room Device identity and both devices recognize one another, making that room available for later selection. Registration does not select the room or change the Companion Device's operating mode, and it is unavailable only while the Companion Device is both Paired and participating in an active call.
 _Avoid_: Pairing, active pairing, room setup
 
 **Parent Room Deregistration**:
-The confirmed removal of one companion board's durable relationship from both the board and parent room device. It does not affect registrations held by other companion boards.
-_Avoid_: Delete room macros, uninstall parent, unpair all boards
+The confirmed removal of one Companion Device's durable relationship from both the Companion Device and Parent Room Device. It does not affect registrations held by other Companion Devices.
+_Avoid_: Delete room macros, uninstall parent, unpair all Companion Devices
 
 **Pending Deregistration**:
-The state of a Parent Room Registration that the companion board has retired locally but the parent room device has not confirmed removing. It is not a successful Parent Room Deregistration, and the room cannot be selected or become active.
+The state of a Parent Room Registration that the Companion Device has retired locally but the Parent Room Device has not confirmed removing. It is not a successful Parent Room Deregistration, and the room cannot be selected or become active.
 _Avoid_: Registered room, deleted room, Paired room
 
 **Device Administrator**:
@@ -29,23 +37,23 @@ A person with administrative access to the RoomOS device WebUI and Macro Editor 
 _Avoid_: In-Room User, room operator
 
 **Companion Installer**:
-A browser-based deployment tool used by a Device Administrator to configure and install the solution onto a companion board. A parent room device is never its installation target, and parent configuration belongs to the board UI.
+A browser-based deployment tool used by a Device Administrator to configure and install the solution onto a Companion Device. A Parent Room Device is never its installation target, and Parent Room configuration belongs to the Companion Device UI.
 _Avoid_: Parent installer, room installer
 
 **Installer Credentials**:
-The administrator account used only by the Companion Installer to connect to and deploy onto a companion board.
-_Avoid_: Board callback credentials, runtime credentials
+The administrator account used only by the Companion Installer to connect to and deploy onto a Companion Device.
+_Avoid_: Companion Device Callback Credentials, runtime credentials
 
-**Board Callback Credentials**:
-An existing local companion-board account distributed to registered parents so they can send runtime messages back to the board. It may be the same account as Installer Credentials, but keeping it distinct makes device audit activity attributable to its purpose.
+**Companion Device Callback Credentials**:
+An existing local Companion Device account distributed to registered Parent Room Devices so they can send runtime messages back to the Companion Device. It may be the same account as Installer Credentials, but keeping it distinct makes device audit activity attributable to its purpose.
 _Avoid_: Installer credentials, administrator credentials
 
-**Board Identity Confirmation**:
-The pre-installation proof that the connected companion board's serial number matches the serial number supplied by the Device Administrator. The observed serial is never disclosed by the Companion Installer.
+**Companion Device Identity Confirmation**:
+The pre-installation proof that the connected Companion Device's serial number matches the serial number supplied by the Device Administrator. The observed serial is never disclosed by the Companion Installer.
 _Avoid_: Device discovery, serial lookup
 
-**Board Installation Ready**:
-The Companion Installer outcome reached when the installed board entry macro emits its initialization-complete message. It confirms that the Board runtime initialized, not that any parent room is configured or ready.
+**Companion Device Installation Ready**:
+The Companion Installer outcome reached when the installed Companion Device entry macro emits its initialization-complete message. It confirms that the Companion Device runtime initialized, not that any Parent Room is configured or ready.
 _Avoid_: ParentReady, files uploaded
 
 **Release Manifest**:
@@ -53,11 +61,11 @@ The installation contract published with a Custom Companion release. It identifi
 _Avoid_: package manifest, file listing
 
 **Release Contract**:
-The build-time agreement that keeps the Release Manifest, eligible macro set, stable installer anchors, synchronized runtime project version, relative macro imports, JavaScript syntax, and Board initialization messages consistent before an installation snapshot can be packaged.
+The build-time agreement that keeps the Release Manifest, eligible macro set, stable installer anchors, synchronized runtime project version, relative macro imports, JavaScript syntax, and Companion Device initialization messages consistent before an installation snapshot can be packaged.
 _Avoid_: Manifest only, installer assumptions
 
 **Clean Installation**:
-The explicit Companion Installer choice that removes `Custom-Campanion-Storage` before installing the selected Custom Companion release. It discards the companion board's saved parent devices, active parent selection, PIN Mode state, and captured StandAlone UI and standby settings. Generated storage remains outside the Release Manifest and is never removed by a Standard Installation.
+The explicit Companion Installer choice that removes `Custom-Campanion-Storage` before installing the selected Custom Companion release. It discards the Companion Device's saved Parent Room Devices, active Parent Room selection, PIN Mode state, and captured Standalone UI and standby settings. Generated storage remains outside the Release Manifest and is never removed by a Standard Installation.
 _Avoid_: Legacy purge, factory reset, normal upgrade
 
 **Legacy Project Macro**:
@@ -65,31 +73,31 @@ An installed `Custom-Campanion_*_2026` macro that is absent from the selected Re
 _Avoid_: Unknown macro, storage macro
 
 **In-Room User**:
-A person using the room touch interface who may operate the companion board but is not expected to perform device administration or technical remediation.
+A person using the room touch interface who may operate the Companion Device but is not expected to perform device administration or technical remediation.
 _Avoid_: Device Administrator, system administrator
 
 **Unhealthy State**:
-A solution-wide condition in which a required local prerequisite is unavailable and companion selection cannot operate reliably. Initialization prerequisite failures, invalid saved PIN Mode state, and failures of required Paired microphone, volume, or incoming-call isolation enforcement enter this state. An individual parent device being unavailable and an unsupported optional UI feature-policy path are not an Unhealthy State.
+A solution-wide condition in which a required local prerequisite is unavailable and companion selection cannot operate reliably. Initialization prerequisite failures, invalid saved PIN Mode state, and failures of required Paired microphone, volume, or incoming-call isolation enforcement enter this state. An individual Parent Room Device being unavailable and an unsupported optional UI feature-policy path are not an Unhealthy State.
 _Avoid_: Parent offline, room unavailable
 
 **Call Preservation State**:
-A temporary Paired condition in which the companion board preserves an active call while communication with its parent room device is unavailable. Communication is considered restored only after the selected parent returns a valid identity response whose serial number matches the selected parent serial; normal heartbeat and call-state synchronization then resume through their existing paths.
-_Avoid_: StandAlone, disconnected call
+A temporary Paired condition in which the Companion Device preserves an active call while communication with its Parent Room Device is unavailable. Communication is considered restored only after the selected Parent Room Device returns a valid identity response whose serial number matches the selected Parent Room serial; normal heartbeat and call-state synchronization then resume through their existing paths.
+_Avoid_: Standalone, disconnected call
 
 **Paired Call Limit**:
-The invariant that a companion board participates in at most one active-parent-authorized call while Paired. Calling remains available through the Parent Room while Paired; a direct board call without current Parent authorization is disconnected and explained as requiring the call to start from the Parent Room. Parent runtime initialization, Parent selection, board initialization, and periodic checks replay authoritative Parent call state so late pairing and runtime restarts converge. A failed periodic network check does not end a known authorized call; Call Preservation State still owns parent-unavailable behavior. StandAlone retains native RoomOS call behavior.
-_Avoid_: Global call limit, StandAlone call restriction
+The invariant that a Companion Device participates in at most one active-Parent Room-authorized call while Paired. Calling remains available through the Parent Room while Paired; a direct Companion Device call without current Parent Room authorization is disconnected and explained as requiring the call to start from the Parent Room. Parent Room runtime initialization, Parent Room selection, Companion Device initialization, and periodic checks replay authoritative Parent Room call state so late pairing and runtime restarts converge. A failed periodic network check does not end a known authorized call; Call Preservation State still owns Parent Room-unavailable behavior. Standalone retains native RoomOS call behavior.
+_Avoid_: Global call limit, Standalone call restriction
 
 **Meeting Password**:
-The transient password used to join a protected Webex meeting as Guest. When RoomOS requests Guest authentication, a Paired board may ask only its active Parent to resolve this value from exactly one current booking that matches the active Parent call. A Meeting Password is never solution configuration, PIN Mode state, stored memory, or log context; an unavailable or ambiguous result requires manual entry on the board.
+The transient password used to join a protected Webex meeting as Guest. When RoomOS requests Guest authentication, a Paired Companion Device may ask only its active Parent Room Device to resolve this value from exactly one current booking that matches the active Parent Room call. A Meeting Password is never solution configuration, PIN Mode state, stored memory, or log context; an unavailable or ambiguous result requires manual entry on the Companion Device.
 _Avoid_: PIN Mode PIN, Host PIN, callback password, stored meeting credential
 
 **Paired Do Not Disturb Lease**:
-The solution-owned condition maintained while Paired that prevents incoming calls to the companion board. It is always released when the board enters StandAlone and does not restrict parent-requested outbound calls.
+The solution-owned condition maintained while Paired that prevents incoming calls to the Companion Device. It is always released when the Companion Device enters Standalone and does not restrict Parent Room-requested outbound calls.
 _Avoid_: Infinite DND loop, permanent Do Not Disturb, restored DND state
 
 **Parent Connectivity**:
-The live relationship through which a companion board verifies the identity and availability of its selected parent room device and maintains communication with it.
+The live relationship through which a Companion Device verifies the identity and availability of its selected Parent Room Device and maintains communication with it.
 _Avoid_: Pairing state, parent status check
 
 **Deferred Surface**:
@@ -114,11 +122,11 @@ The companion WebWidget `info3` field is solution-owned runtime status space and
 
 During the Unhealthy State, `info3` persistently tells the In-Room User that Companion controls are unavailable and to contact a Device Administrator. Failure to update an unavailable Web Widget is logged but does not create another hard error.
 
-During Call Preservation, `info3` remains visible with `{room} is temporarily unavailable. Your call will continue.` until the selected parent is resynchronized or the call ends. The 60-second expiry applies only to the final StandAlone connection-failure message.
+During Call Preservation, `info3` remains visible with `{room} is temporarily unavailable. Your call will continue.` until the selected Parent Room Device is resynchronized or the call ends. The 60-second expiry applies only to the final Standalone connection-failure message.
 
-When an active Parent call is not a joinable Webex meeting, call synchronization does not dial it and `info3` reads `[Platform] isn't supported. Start a Webex call from the Parent Room.`, with `[Platform]` replaced by the detected platform or `non-Webex`.
+When an active Parent Room call is not a joinable Webex meeting, call synchronization does not dial it and `info3` reads `[Platform] isn't supported. Start a Webex call from the Parent Room.`, with `[Platform]` replaced by the detected platform or `non-Webex`.
 
-When a protected Webex meeting requires Guest authentication and no matching Meeting Password is available from the active Parent's current booking, `info3` and a duration-0 RoomOS alert read `Enter the meeting password manually on this board.` The notice clears when authentication completes, the Parent call ends, or the board leaves Paired mode.
+When a protected Webex meeting requires Guest authentication and no matching Meeting Password is available from the active Parent Room Device's current booking, `info3` and a duration-0 RoomOS alert read `Enter the meeting password manually on this Companion Device.` The notice clears when authentication completes, the Parent Room call ends, or the Companion Device leaves Paired mode.
 
 ## Transport
 
@@ -138,11 +146,11 @@ Local xAPI commands are attempted once and are never retried. A local command fa
 
 A failed required paired microphone-mute or volume-level enforcement command immediately enters the Unhealthy State. The console identifies the failed enforcement path with a stable diagnostic code, the normal `cc26_access` and `cc26_hidden` panels are replaced by `cc26_error`, and parent selection remains blocked until the Macro Runtime restarts. Optional UI feature-policy paths are logged and skipped when unavailable.
 
-If required media enforcement fails during an active call, the companion board remains assigned to its current parent until that call ends. The native End Call control and `cc26_error` action button are shown; volume, microphone mute, parent assignment, and the active call are otherwise left unchanged. When the call ends, the board releases to StandAlone and attempts the now-safe default-volume restoration once, but remains Unhealthy and blocks parent selection until restart.
+If required media enforcement fails during an active call, the Companion Device remains assigned to its current Parent Room until that call ends. The native End Call control and `cc26_error` action button are shown; volume, microphone mute, Parent Room assignment, and the active call are otherwise left unchanged. When the call ends, the Companion Device releases to Standalone and attempts the now-safe default-volume restoration once, but remains Unhealthy and blocks Parent Room selection until restart.
 
 ## Paired UI Feature Policy
 
-The editable Paired UI feature policy uses explicit RoomOS xAPI paths. It captures each supported value before entering Paired mode and restores that value when returning to StandAlone. An unavailable optional path is logged and skipped.
+The editable Paired UI feature policy uses explicit RoomOS xAPI paths. It captures each supported value before entering Paired mode and restores that value when returning to Standalone. An unavailable optional path is logged and skipped.
 
 These controls remain available while Paired:
 
@@ -172,8 +180,8 @@ These known controls are hidden while Paired:
 - `UserInterface.Features.Call.Webcam`
 - `UserInterface.Features.Share.Start`
 
-`UserInterface.Features.Call.End` temporarily changes to `Auto` during Call Preservation or an active-call Unhealthy State, returns to `Hidden` after Paired communication recovers, and restores its captured value in StandAlone. RoomOS exposes no individual Raise Hand visibility configuration; hardware acceptance testing must confirm that Raise Hand remains available with `MidCallControls = Hidden` before any custom control is considered. Firmware acceptance testing must also check for newly introduced call controls because unknown paths cannot be governed automatically.
+`UserInterface.Features.Call.End` temporarily changes to `Auto` during Call Preservation or an active-call Unhealthy State, returns to `Hidden` after Paired communication recovers, and restores its captured value in Standalone. RoomOS exposes no individual Raise Hand visibility configuration; hardware acceptance testing must confirm that Raise Hand remains available with `MidCallControls = Hidden` before any custom control is considered. Firmware acceptance testing must also check for newly introduced call controls because unknown paths cannot be governed automatically.
 
 ## Verification
 
-Until the planned RoomOS macro test utility is available, this project does not add a standalone automated test harness. Changes are checked with JavaScript syntax validation, diff validation, focused source searches, and documented device acceptance testing. The future utility should cover XML parsing, HTTP response validation and queue policy, parent retry and state transitions, Paired UI policy decisions, media enforcement and restoration, Unhealthy transitions, user-message precedence, native control visibility, and call integrity through the deployable source-macro interfaces.
+Until the planned RoomOS macro test utility is available, this project does not add a separate automated test harness. Changes are checked with JavaScript syntax validation, diff validation, focused source searches, and documented device acceptance testing. The future utility should cover XML parsing, HTTP response validation and queue policy, Parent Room retry and state transitions, Paired UI policy decisions, media enforcement and restoration, Unhealthy transitions, user-message precedence, native control visibility, and call integrity through the deployable source-macro interfaces.

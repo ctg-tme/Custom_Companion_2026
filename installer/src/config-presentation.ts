@@ -9,6 +9,7 @@ export interface ConfigGroup {
 
 export function humanizeConfigSegment(segment: string | number): string {
   if (typeof segment === 'number') return `Item ${segment + 1}`;
+  if (segment === 'CompanionBoardInformation') return 'Companion Device Information';
   const words = segment
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')

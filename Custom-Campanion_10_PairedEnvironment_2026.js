@@ -20,12 +20,12 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 20, 2026
- * Revised:                 July 22, 2026
- * Version:                 1.0.1
+ * Revised:                 July 23, 2026
+ * Version:                 1.0.2
  *
  * Description:             Paired Environment policy controller for the Custom Companion Solution.
  *                          Owns call-feature policy, Companion Web Widget mode, paired microphone
- *                          volume/Do Not Disturb enforcement, and safe StandAlone restoration.
+ *                          volume/Do Not Disturb enforcement, and safe Standalone restoration.
  *
  * Documentation:           N/A
  *
@@ -173,7 +173,7 @@ function createPairedEnvironment(options) {
 		isEnforcingMicrophoneMute = true;
 		try {
 			await dependencies.xapi.Command.Audio.Microphones.Mute();
-			dependencies.log.info({ Message: 'Paired microphone mute enforced' });
+			dependencies.log.debug({ Message: 'Paired microphone mute enforced' });
 		} catch (error) {
 			await reportRequiredMediaFailure('CC26-MEDIA-MICROPHONE-ENFORCE', 'Failed to enforce Command.Audio.Microphones.Mute while Paired', error);
 		} finally {
@@ -198,7 +198,7 @@ function createPairedEnvironment(options) {
 		isEnforcingVolume = true;
 		try {
 			await dependencies.xapi.Command.Audio.Volume.Set({ Level: policy.requiredVolumeLevel });
-			dependencies.log.info({ Message: 'Paired audio volume enforced', Level: policy.requiredVolumeLevel });
+			dependencies.log.debug({ Message: 'Paired audio volume enforced', Level: policy.requiredVolumeLevel });
 		} catch (error) {
 			await reportRequiredMediaFailure('CC26-MEDIA-VOLUME-ENFORCE', 'Failed to enforce Command.Audio.Volume.Set while Paired', error);
 		} finally {
@@ -212,7 +212,7 @@ function createPairedEnvironment(options) {
 		try {
 			for (let index = 0; index < PAIRED_UI_FEATURE_POLICY.length; index++) {
 				const feature = PAIRED_UI_FEATURE_POLICY[index];
-				let value = mode === 'StandAlone' ? standaloneUiFeatureConfig[feature.key] : feature.pairedValue;
+				let value = mode === 'Standalone' ? standaloneUiFeatureConfig[feature.key] : feature.pairedValue;
 				const context = getRuntimeContext();
 				if (mode === 'Paired' && feature.key === 'callEnd' && context.callEndOverride) {
 					value = context.callEndOverride;
@@ -237,9 +237,9 @@ function createPairedEnvironment(options) {
 
 		try {
 			await dependencies.xapi.Command.Conference.DoNotDisturb.Deactivate();
-			dependencies.log.info({ Message: 'Paired Do Not Disturb Lease released for StandAlone' });
+			dependencies.log.debug({ Message: 'Paired Do Not Disturb Lease released for Standalone' });
 		} catch (error) {
-			await reportRequiredMediaFailure('CC26-DND-DEACTIVATE', 'Failed to deactivate Command.Conference.DoNotDisturb while entering StandAlone', error);
+			await reportRequiredMediaFailure('CC26-DND-DEACTIVATE', 'Failed to deactivate Command.Conference.DoNotDisturb while entering Standalone', error);
 		}
 	}
 
@@ -251,7 +251,7 @@ function createPairedEnvironment(options) {
 
 		try {
 			await dependencies.xapi.Command.Conference.DoNotDisturb.Activate({ Timeout: policy.dndTimeoutMinutes });
-			dependencies.log.info({ Message: 'Paired Do Not Disturb Lease activated', TimeoutMinutes: policy.dndTimeoutMinutes });
+			dependencies.log.debug({ Message: 'Paired Do Not Disturb Lease activated', TimeoutMinutes: policy.dndTimeoutMinutes });
 		} catch (error) {
 			await reportRequiredMediaFailure('CC26-DND-ACTIVATE', 'Failed to activate Command.Conference.DoNotDisturb while Paired', error);
 			return;
@@ -283,7 +283,7 @@ function createPairedEnvironment(options) {
 		const webWidgetConfig = dependencies.userInterfaceConfig.WebWidget || {};
 		const companionWidgetConfig = webWidgetConfig.CompanionWidget || {};
 		const standaloneWebWidget = getStandaloneWebWidget();
-		const shouldRestoreExistingWebWidget = !!(companionWidgetConfig.restoreStandaloneExisting && activeMode === 'StandAlone' && standaloneWebWidget && standaloneWebWidget.url);
+		const shouldRestoreExistingWebWidget = !!(companionWidgetConfig.restoreStandaloneExisting && activeMode === 'Standalone' && standaloneWebWidget && standaloneWebWidget.url);
 		const url = shouldRestoreExistingWebWidget ? standaloneWebWidget.url : dependencies.companionUi.buildCompanionWebWidgetUrl({
 			mode: activeMode,
 			roomName: context.activeParentName,
@@ -294,14 +294,14 @@ function createPairedEnvironment(options) {
 		});
 
 		try {
-			dependencies.log.info({ Message: 'Companion Web Widget URL computed', Mode: activeMode, RestoreExistingWebWidget: !!shouldRestoreExistingWebWidget, UrlOverrideUsed: !!webWidgetConfig.urlOverride, Url: url });
+			dependencies.log.debug({ Message: 'Companion Web Widget URL computed', Mode: activeMode, RestoreExistingWebWidget: !!shouldRestoreExistingWebWidget, UrlOverrideUsed: !!webWidgetConfig.urlOverride, Url: url });
 			if (shouldRestoreExistingWebWidget) {
 				await dependencies.companionUi.removeCompanionWebWidget(dependencies.xapi);
 				await dependencies.companionUi.saveWebWidget(dependencies.xapi, standaloneWebWidget);
 			} else {
 				await dependencies.companionUi.saveCompanionWebWidget(dependencies.xapi, url);
 			}
-			dependencies.log.info({ Message: 'Companion Web Widget mode applied', Mode: activeMode, RestoredStandaloneWidget: !!shouldRestoreExistingWebWidget, UrlLength: url.length });
+			dependencies.log.debug({ Message: 'Companion Web Widget mode applied', Mode: activeMode, RestoredStandaloneWidget: !!shouldRestoreExistingWebWidget, UrlLength: url.length });
 		} catch (error) {
 			dependencies.log.warn({ Message: 'Failed to apply Companion Web Widget mode', Mode: activeMode, Error: error.message || error.code || 'Unknown Web Widget error' });
 		}
@@ -318,14 +318,14 @@ function createPairedEnvironment(options) {
 		}
 
 		const context = getRuntimeContext();
-		if (!isVolumeRestorePromptActive || context.mode !== 'StandAlone') {
+		if (!isVolumeRestorePromptActive || context.mode !== 'Standalone') {
 			return true;
 		}
 
 		isVolumeRestorePromptActive = false;
 		const option = String(event.OptionId || event.Option || '');
 		if (option !== '1') {
-			dependencies.log.info({ Message: 'StandAlone volume restoration declined or dismissed; volume left unchanged', Option: option || 'Dismissed' });
+			dependencies.log.info({ Message: 'Standalone volume restoration declined or dismissed; volume left unchanged', Option: option || 'Dismissed' });
 			return true;
 		}
 
@@ -345,7 +345,7 @@ function createPairedEnvironment(options) {
 		try {
 			await dependencies.xapi.Command.UserInterface.Message.Prompt.Display({
 				Title: 'Restore Volume?',
-				Text: 'This board is now running Stand Alone while a call is active. Restore the device default volume?',
+				Text: 'This Companion Device is now running Standalone while a call is active. Restore the device default volume?',
 				FeedbackId: RESTORE_VOLUME_PROMPT_ID,
 				'Option.1': 'Restore Volume',
 				'Option.2': 'Keep Current',
@@ -358,7 +358,7 @@ function createPairedEnvironment(options) {
 			dependencies.log.error({
 				Code: 'CC26-VOLUME-RESTORE-PROMPT',
 				Component: 'PairedEnvironment',
-				Context: 'Failed to display the StandAlone volume restoration prompt',
+				Context: 'Failed to display the Standalone volume restoration prompt',
 				Remediation: 'Volume was left unchanged. Diagnose UserInterface.Message.Prompt if the user needs this choice.',
 				Error: error
 			});
@@ -373,12 +373,12 @@ function createPairedEnvironment(options) {
 				throw new Error('Audio DefaultVolume was not numeric');
 			}
 			await dependencies.xapi.Command.Audio.Volume.Set({ Level: defaultVolume });
-			dependencies.log.info({ Message: 'StandAlone default volume restored', Level: defaultVolume, MicrophonesRemainMuted: true });
+			dependencies.log.info({ Message: 'Standalone default volume restored', Level: defaultVolume, MicrophonesRemainMuted: true });
 		} catch (error) {
 			dependencies.log.error({
 				Code: 'CC26-VOLUME-RESTORE',
 				Component: 'PairedEnvironment',
-				Context: 'Failed to restore Audio.DefaultVolume after entering StandAlone',
+				Context: 'Failed to restore Audio.DefaultVolume after entering Standalone',
 				Remediation: 'Volume was left unchanged. Diagnose Config.Audio.DefaultVolume and Command.Audio.Volume.Set.',
 				Error: error
 			});
@@ -420,18 +420,18 @@ function createPairedEnvironment(options) {
 			delete standaloneUiFeatureConfig.webWidget;
 			delete standaloneUiFeatureConfig.webWidgetUrl;
 			hasUpdates = true;
-			dependencies.log.info({ Message: 'Removed stale standalone Web Widget restore memory because restoreStandaloneExisting is disabled' });
+			dependencies.log.info({ Message: 'Removed stale Standalone Web Widget restore memory because restoreStandaloneExisting is disabled' });
 		}
 
 		const context = getRuntimeContext();
-		if (shouldManageWebWidget() && shouldRestoreStandaloneWebWidget() && context.mode === 'StandAlone' && standaloneUiFeatureConfig.webWidgetUrl === undefined) {
+		if (shouldManageWebWidget() && shouldRestoreStandaloneWebWidget() && context.mode === 'Standalone' && standaloneUiFeatureConfig.webWidgetUrl === undefined) {
 			try {
 				const currentWebWidget = await dependencies.companionUi.getCurrentWebWidget(dependencies.xapi);
 				standaloneUiFeatureConfig.webWidget = currentWebWidget && !dependencies.companionUi.isCompanionWebWidget(currentWebWidget) ? currentWebWidget : null;
 				standaloneUiFeatureConfig.webWidgetUrl = standaloneUiFeatureConfig.webWidget ? standaloneUiFeatureConfig.webWidget.url : '';
 				hasUpdates = true;
 			} catch (error) {
-				dependencies.log.warn({ Message: 'Failed to save original standalone Web Widget URL', Error: error.message || error.code || 'Unknown Web Widget status error' });
+				dependencies.log.warn({ Message: 'Failed to save original Standalone Web Widget URL', Error: error.message || error.code || 'Unknown Web Widget status error' });
 			}
 		}
 
@@ -452,7 +452,7 @@ function createPairedEnvironment(options) {
 
 			node.on(value => {
 				handleStandaloneUiFeatureChange(feature, normalizeConfigEventValue(value)).catch(error => {
-					dependencies.utils.softError({ Context: 'Failed to save standalone UI feature config change', Feature: feature.key, Error: error });
+					dependencies.utils.softError({ Context: 'Failed to save Standalone UI feature config change', Feature: feature.key, Error: error });
 				});
 			});
 		}
@@ -460,12 +460,12 @@ function createPairedEnvironment(options) {
 
 	async function handleStandaloneUiFeatureChange(feature, value) {
 		const context = getRuntimeContext();
-		if (isApplyingUiFeatureConfig || context.mode !== 'StandAlone' || value === undefined || value === null) {
+		if (isApplyingUiFeatureConfig || context.mode !== 'Standalone' || value === undefined || value === null) {
 			return;
 		}
 		standaloneUiFeatureConfig[feature.key] = value;
 		await dependencies.mem.write(dependencies.storageKey, standaloneUiFeatureConfig);
-		dependencies.log.info({ Message: 'Saved standalone UI feature preference', Feature: feature.key, Value: value });
+		dependencies.log.debug({ Message: 'Saved Standalone UI feature preference', Feature: feature.key, Value: value });
 	}
 
 	async function getUserInterfaceThemeName() {
@@ -494,7 +494,7 @@ function createPairedEnvironment(options) {
 	async function handleUserInterfaceThemeChange(value) {
 		userInterfaceThemeName = value || 'EveningFjord';
 		await applyRuntimeWebWidget();
-		dependencies.log.info({ Message: 'Applied Companion Web Widget theme update', Theme: userInterfaceThemeName });
+		dependencies.log.debug({ Message: 'Applied Companion Web Widget theme update', Theme: userInterfaceThemeName });
 	}
 
 	async function getUiFeatureConfigValue(feature) {

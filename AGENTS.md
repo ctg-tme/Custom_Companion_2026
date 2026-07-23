@@ -51,9 +51,9 @@ Never invent tests or device results. Git commit and push are standing authorize
 
 The shared RoomOS Socket Workbench uses these exact lab aliases:
 
-- `board-device`: companion board and the only default post-push deployment target.
-- `parent-1-eq`: known parent room device; never an automatic Workbench deployment target.
-- `parent-2-prog2`: known parent room device; never an automatic Workbench deployment target.
+- `board-device`: Companion Device and the only default post-push deployment target.
+- `parent-1-eq`: known Parent Room Device; never an automatic Workbench deployment target.
+- `parent-2-prog2`: known Parent Room Device; never an automatic Workbench deployment target.
 
 After a completed work package changes one or more deployable numbered runtime macros:
 
@@ -61,12 +61,12 @@ After a completed work package changes one or more deployable numbered runtime m
 2. Invoke `$roomos-websocket`, reuse the shared Workbench, and resolve the exact `board-device` alias. This section is standing user authorization to preview and apply this exact post-push deployment to `board-device` only.
 3. Confirm every macro source selected for deployment matches the pushed `HEAD`. Stop if a relevant macro has later uncommitted edits, the target is unavailable or ambiguous, or the planned device contents differ from the pushed source.
 4. Read `Status.SystemUnit.State.NumberOfActiveCalls` on `board-device` through the Workbench before mutation. Do not deploy or restart the Macro Runtime during an active call; stop and report the condition.
-5. Use `manifest.json` as the authoritative project macro set and `installer/release-contract.json` for stable names and initialization messages. Compare the committed resources with the board and install sources that differ or are absent. Keep only `Custom-Campanion_1_Main_2026` active; keep Config, imported modules, parent deployment sources, and external dependencies inactive.
+5. Use `manifest.json` as the authoritative project macro set and `installer/release-contract.json` for stable names and initialization messages. Compare the committed resources with the Companion Device and install sources that differ or are absent. Keep only `Custom-Campanion_1_Main_2026` active; keep Config, imported modules, parent deployment sources, and external dependencies inactive.
 6. Preserve `Custom-Campanion-Storage`, unrelated macros, and retained legacy macros. This standing workflow does not authorize a Clean Installation, storage purge, or direct mutation of either parent alias.
 7. Preview every macro write, activation change, and required Macro Runtime restart before applying it through the Workbench. Subscribe to `Event.Macros.Log` before the final activation or restart, then verify the installed source and activation state with macro reads and compare the observed initialization result against the Release Contract messages.
 8. Report command acceptance separately from observed runtime behavior and remove temporary subscriptions when validation ends. If validation cannot be completed, leave the committed-and-pushed source intact and report the device-side limitation precisely.
 
-Installer-only, documentation-only, and analysis-only work does not trigger this deployment. A board runtime restart may still execute the solution's existing board-owned parent provisioning against registered parent room devices; do not replace or bypass that runtime boundary with direct Workbench deployment to `parent-1-eq` or `parent-2-prog2` without a new explicit request.
+Installer-only, documentation-only, and analysis-only work does not trigger this deployment. A Companion Device runtime restart may still execute the solution's existing Companion Device-owned Parent Room provisioning against registered Parent Room Devices; do not replace or bypass that runtime boundary with direct Workbench deployment to `parent-1-eq` or `parent-2-prog2` without a new explicit request.
 
 ## Agent skills
 

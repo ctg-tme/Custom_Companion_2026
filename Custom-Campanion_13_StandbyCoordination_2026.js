@@ -20,11 +20,11 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 20, 2026
- * Revised:                 July 20, 2026
- * Version:                 1.0.0
+ * Revised:                 July 23, 2026
+ * Version:                 1.0.1
  *
  * Description:             Standby Coordination controller for the Custom Companion Solution.
- *                          Owns StandAlone standby preference restoration, delayed parent sync,
+ *                          Owns Standalone standby preference restoration, delayed parent sync,
  *                          user bypass choices, prompts, timers, and immediate standby commands.
  *
  * Documentation:           N/A
@@ -47,7 +47,7 @@ or implied.
  *   Config.Standby.Halfwake.Mode, and Config.Time.OfficeHours.Enabled.
  * - Commands: Command.Standby.Activate, Command.Standby.Deactivate,
  *   and Command.Standby.Halfwake.
- * - Network read: DeviceComms parentStandbyStateRequest for the selected parent.
+ * - Network read: DeviceComms parentStandbyStateRequest for the selected Parent Room Device.
  * - Standby prompts are encapsulated by Custom-Campanion_4_UI_2026.
  */
 
@@ -107,7 +107,7 @@ function createStandbyCoordination(options) {
 
 			node.on(value => {
 				handleStandaloneConfigChange(standbyConfig, normalizeConfigEventValue(value)).catch(error => {
-					dependencies.utils.softError({ Context: 'Failed to save standalone standby config change', Feature: standbyConfig.key, Error: error });
+					dependencies.utils.softError({ Context: 'Failed to save Standalone standby config change', Feature: standbyConfig.key, Error: error });
 				});
 			});
 		}
@@ -115,13 +115,13 @@ function createStandbyCoordination(options) {
 
 	async function handleStandaloneConfigChange(standbyConfig, value) {
 		const context = getRuntimeContext();
-		if (isApplyingConfig || context.mode !== 'StandAlone' || value === undefined || value === null) {
+		if (isApplyingConfig || context.mode !== 'Standalone' || value === undefined || value === null) {
 			return;
 		}
 
 		standaloneConfig[standbyConfig.key] = value;
 		await dependencies.mem.write(dependencies.storageKey, standaloneConfig);
-		dependencies.log.info({ Message: 'Saved standalone standby preference', Feature: standbyConfig.key, Value: value });
+		dependencies.log.debug({ Message: 'Saved Standalone standby preference', Feature: standbyConfig.key, Value: value });
 	}
 
 	async function applyMode(mode) {
@@ -129,7 +129,7 @@ function createStandbyCoordination(options) {
 		try {
 			for (let index = 0; index < STANDBY_CONFIGS.length; index++) {
 				const standbyConfig = STANDBY_CONFIGS[index];
-				const value = mode === 'StandAlone' ? standaloneConfig[standbyConfig.key] : standbyConfig.pairedValue;
+				const value = mode === 'Standalone' ? standaloneConfig[standbyConfig.key] : standbyConfig.pairedValue;
 				if (value !== undefined && value !== null) {
 					await setConfigValue(standbyConfig, value);
 				}
@@ -142,7 +142,7 @@ function createStandbyCoordination(options) {
 	async function handleMessage(message) {
 		const context = getRuntimeContext();
 		if (message.Serial !== context.activeParentSerial) {
-			dependencies.log.debug({ Message: 'Ignored standby sync from non-active parent', SendingParentSerial: message.Serial, ActiveParentSerial: context.activeParentSerial });
+			dependencies.log.debug({ Message: 'Ignored standby sync from a non-active Parent Room Device', SendingParentSerial: message.Serial, ActiveParentSerial: context.activeParentSerial });
 			return;
 		}
 
@@ -158,19 +158,19 @@ function createStandbyCoordination(options) {
 		try {
 			const state = await dependencies.deviceComms.parentStandbyStateRequest(dependencies.xapi, parentDevice, dependencies.httpClientConfig);
 			await scheduleSync(state);
-			dependencies.log.info({ Message: 'Selected parent standby state fetched', Host: parentDevice.host, State: state });
+			dependencies.log.info({ Message: 'Selected Parent Room Device standby state fetched', Host: parentDevice.host, State: state });
 		} catch (error) {
-			dependencies.log.warn({ Message: 'Failed to fetch selected parent standby state', Host: parentDevice.host, Error: error.code || error.message || 'Unknown parent standby state error', ErrorContext: error.Context || {} });
+			dependencies.log.warn({ Message: 'Failed to fetch selected Parent Room Device standby state', Host: parentDevice.host, Error: error.code || error.message || 'Unknown Parent Room Device standby state error', ErrorContext: error.Context || {} });
 		}
 	}
 
 	async function applyImmediateSync(state) {
 		if (state === 'EnteringStandby') {
-			dependencies.log.debug({ Message: 'Ignored parent standby transition state', State: state });
+			dependencies.log.debug({ Message: 'Ignored Parent Room Device standby transition state', State: state });
 			return;
 		}
 		if (isBypassActive()) {
-			dependencies.log.info({ Message: 'Ignored parent standby sync while bypass is active', State: state, BypassUntil: new Date(bypassUntil).toISOString() });
+			dependencies.log.debug({ Message: 'Ignored Parent Room Device standby sync while bypass is active', State: state, BypassUntil: new Date(bypassUntil).toISOString() });
 			return;
 		}
 		await applySyncState(state);
@@ -178,11 +178,11 @@ function createStandbyCoordination(options) {
 
 	async function scheduleSync(state) {
 		if (state === 'EnteringStandby') {
-			dependencies.log.debug({ Message: 'Ignored parent standby transition state', State: state });
+			dependencies.log.debug({ Message: 'Ignored Parent Room Device standby transition state', State: state });
 			return;
 		}
 		if (isBypassActive()) {
-			dependencies.log.info({ Message: 'Ignored parent standby sync while bypass is active', State: state, BypassUntil: new Date(bypassUntil).toISOString() });
+			dependencies.log.debug({ Message: 'Ignored Parent Room Device standby sync while bypass is active', State: state, BypassUntil: new Date(bypassUntil).toISOString() });
 			return;
 		}
 
@@ -217,10 +217,10 @@ function createStandbyCoordination(options) {
 				await dependencies.xapi.Command.Standby.Halfwake();
 				break;
 			case 'EnteringStandby':
-				dependencies.log.debug({ Message: 'Ignored parent standby transition state', State: state });
+				dependencies.log.debug({ Message: 'Ignored Parent Room Device standby transition state', State: state });
 				break;
 			default:
-				dependencies.log.warn({ Message: 'Unknown parent standby state ignored', State: state });
+				dependencies.log.debug({ Message: 'Unknown Parent Room Device standby state ignored', State: state });
 		}
 	}
 

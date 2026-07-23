@@ -1,4 +1,4 @@
-import type { BoardXapi } from './device';
+import type { CompanionDeviceXapi } from './device';
 import {
   CONFIG_MACRO_FILE,
   GENERATED_STORAGE_MACRO,
@@ -55,7 +55,7 @@ export class InitializationMonitor {
   private readonly stopFeedback: () => void;
 
   constructor(
-    xapi: BoardXapi,
+    xapi: CompanionDeviceXapi,
     onLog: (classification: LogClassification, message: string) => void,
     relevantMacroNames: ReadonlySet<string> = new Set(),
   ) {
@@ -117,7 +117,7 @@ function orderedResources(resources: InstallResource[]): InstallResource[] {
 }
 
 export async function installResources(
-  xapi: BoardXapi,
+  xapi: CompanionDeviceXapi,
   resources: InstallResource[],
   installed: InstalledMacro[],
   options: {

@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.21
+ * Version:                 1.0.22
  *
  * Description:             Companion access/hidden panels, PIN/registration/status prompts, and WebWidget adapter.
  *
@@ -55,7 +55,7 @@ const PIN_EDIT_WIDGET_ID = `${CONFIG_PAGE_ID}~PinEdit`;
 const PIN_INFO_WIDGET_ID = `${CONFIG_PAGE_ID}~PinInfo`;
 const PAIR_NEW_ROOM_WIDGET_ID = `${CONFIG_PAGE_ID}~PairNewDevice`;
 const PAIRING_INFO_WIDGET_ID = `${CONFIG_PAGE_ID}~PairingInfo`;
-const RELEASE_INFO_TEXT = 'Select a room to pair this companion board to that room system. Use Stand Alone to unpair and restore normal local use.';
+const RELEASE_INFO_TEXT = 'Select a room to pair this Companion Device to that room system. Use Standalone to unpair and restore normal local use.';
 const WEB_WIDGET_PANEL_ID = 'cc26WebWidget';
 const WEB_WIDGET_NAME = 'Custom Companion 2026';
 const WEB_WIDGET_REFRESH_INTERVAL = 0;
@@ -68,7 +68,7 @@ const WEB_WIDGET_INFO3_MAX_CHARACTERS = 90;
  *   UserInterface.Message.TextInput.Display/Clear, UserInterface.Message.Prompt.Display/Clear,
  *   and Extensions.WebWidget.Save/Remove.
  * - Read: Status.UserInterface.WebView.
- * Event subscriptions remain explicit in the board entry macro because it owns event routing.
+ * Event subscriptions remain explicit in the Companion Device entry macro because it owns event routing.
  */
 
 function buildErrorPanelXml() {
@@ -120,10 +120,10 @@ function buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial) {
 		<Page>
 			<Name>Select Device</Name>
 			<Row>
-				<Name>Run as Stand Alone Device</Name>
+				<Name>Run as Standalone Device</Name>
 				<Widget>
 					<WidgetId>${RELEASE_DEVICE_WIDGET_ID}</WidgetId>
-					<Name>Run Stand Alone</Name>
+					<Name>Run Standalone</Name>
 					<Type>Button</Type>
 					<Options>size=3</Options>
 				</Widget>
@@ -346,7 +346,7 @@ async function showErrorPrompt(XAPIObject) {
 }
 
 async function setSelectedParent(XAPIObject, parentDevices, activeParentSerial) {
-	await setWidgetValue(XAPIObject, RELEASE_DEVICE_WIDGET_ID, activeParentSerial === 'StandAlone' ? 'active' : 'inactive');
+	await setWidgetValue(XAPIObject, RELEASE_DEVICE_WIDGET_ID, activeParentSerial === 'Standalone' ? 'active' : 'inactive');
 
 	for (let index = 0; index < parentDevices.length; index++) {
 		const widgetId = `${SELECT_DEVICE_PAGE_ID}~ParentSelect~${index}`;
@@ -427,11 +427,11 @@ function isCompanionWebWidget(webWidget) {
 
 function buildCompanionWebWidgetUrl(options) {
 	const webWidgetConfig = options.webWidgetConfig || {};
-	const contextConfig = options.mode === 'StandAlone' ? webWidgetConfig.standalone || {} : webWidgetConfig.paired || {};
+	const contextConfig = options.mode === 'Standalone' ? webWidgetConfig.standalone || {} : webWidgetConfig.paired || {};
 	const params = {
 		theme: options.themeName || 'EveningFjord',
 		heading: 'Custom Companion 2026',
-		info1: options.mode === 'StandAlone' ? 'Operating in Standalone' : `Paired to Room:\n${options.roomName || 'Unknown Room'}`,
+		info1: options.mode === 'Standalone' ? 'Operating in Standalone' : `Paired to Room:\n${options.roomName || 'Unknown Room'}`,
 		info2: contextConfig.info2 || '',
 		info3: limitWebWidgetInfoText(options.runtimeInfo3),
 		iconUrl: contextConfig.iconUrl || ''
@@ -463,7 +463,7 @@ function buildCompanionWebWidgetUrl(options) {
 async function showStandbySyncPrompt(XAPIObject, options) {
 	await XAPIObject.Command.UserInterface.Message.Prompt.Display({
 		Title: 'Room Standby Sync',
-		Text: `The room is currently in ${options.state}. This board will match it in ${options.remainingSeconds} seconds.`,
+		Text: `The room is currently in ${options.state}. This Companion Device will match it in ${options.remainingSeconds} seconds.`,
 		FeedbackId: options.feedbackId,
 		'Option.1': 'Bypass 5 min',
 		'Option.2': 'Bypass 30 min',

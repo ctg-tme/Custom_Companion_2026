@@ -21,10 +21,10 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.10
+ * Version:                 1.0.11
  *
- * Description:             Board Call Synchronization controller for the Custom Companion Solution.
- *                          Owns board call sync classification, Webex join and disconnect behavior,
+ * Description:             Companion Device Call Synchronization controller for the Custom Companion solution.
+ *                          Owns Companion Device call sync classification, Webex join and disconnect behavior,
  *                          Guest authentication, Paired call authorization, parent-state
  *                          reconciliation, rejoin checks, and user-facing call sync information.
  *
@@ -43,10 +43,10 @@ or implied.
  */
 
 /*
- * Board Call Synchronization xAPI surface:
+ * Companion Device Call Synchronization xAPI surface:
  * - Subscriptions and initial reads: Status.SystemUnit.State.NumberOfActiveCalls and
  *   Status.Conference.Call.AuthenticationRequest.
- * - Conditional read: Status.Call when a parent sends a disconnect sync.
+ * - Conditional read: Status.Call when a Parent Room Device sends a disconnect sync.
  * - Commands: Command.Webex.Join, Command.Conference.Call.AuthenticationResponse,
  *   Command.Call.Disconnect,
  *   Command.UserInterface.Message.Alert.Display, and
@@ -58,7 +58,7 @@ or implied.
  * deliberately separated from executable behavior for future investigation.
  */
 
-function createBoardCallSync(options) {
+function createCompanionDeviceCallSync(options) {
 	const dependencies = options || {};
 	const callbacks = dependencies.callbacks || {};
 	const policy = dependencies.policy || {};
@@ -66,7 +66,7 @@ function createBoardCallSync(options) {
 	let syncToken = 0;
 	let lastWebexPayload = null;
 	let isRejoinInProgress = false;
-	let activeBoardCallCount = 0;
+	let activeCompanionDeviceCallCount = 0;
 	let unauthorizedCallCheckTimeout = null;
 	let unauthorizedCallNoticeTimeout = null;
 	let unauthorizedCallNoticeToken = 0;
@@ -80,25 +80,25 @@ function createBoardCallSync(options) {
 	let meetingPasswordNoticeActive = false;
 
 	const UNAUTHORIZED_CALL_INFO_TEXT = 'Start calls from the Parent Room.';
-	const UNAUTHORIZED_CALL_ALERT_TEXT = 'Calling is available through the Parent Room while this board is Paired. Start the call from the Parent Room, or return this board to StandAlone to call directly.';
+	const UNAUTHORIZED_CALL_ALERT_TEXT = 'Calling is available through the Parent Room while this Companion Device is Paired. Start the call from the Parent Room, or return this Companion Device to Standalone to call directly.';
 	const UNAUTHORIZED_CALL_ALERT_TITLE = 'Start Calls from the Parent Room';
-	const MEETING_PASSWORD_INFO_TEXT = 'Enter the meeting password manually on this board.';
+	const MEETING_PASSWORD_INFO_TEXT = 'Enter the meeting password manually on this Companion Device.';
 	const MEETING_PASSWORD_ALERT_TITLE = 'Meeting Password Required';
 
 	function registerCallCountHandler() {
 		dependencies.xapi.Status.SystemUnit.State.NumberOfActiveCalls.on(callCount => {
 			const activeCallCount = Number(getXapiValue(callCount));
-			activeBoardCallCount = Number.isFinite(activeCallCount) ? activeCallCount : 0;
+			activeCompanionDeviceCallCount = Number.isFinite(activeCallCount) ? activeCallCount : 0;
 			if (activeCallCount < 1) {
 				handleCallCountZero().catch(error => {
-					dependencies.utils.softError({ Context: 'Failed to handle companion board call count zero', Error: error });
+					dependencies.utils.softError({ Context: 'Failed to handle Companion Device call count zero', Error: error });
 				});
 				return;
 			}
 			joinCommandPendingUntil = 0;
 
 			handleCallCountPositive('ActiveCallCount').catch(error => {
-				dependencies.utils.softError({ Context: 'Failed to authorize companion board active call', Error: error });
+				dependencies.utils.softError({ Context: 'Failed to authorize active Companion Device call', Error: error });
 			});
 		});
 	}
@@ -114,7 +114,7 @@ function createBoardCallSync(options) {
 
 		statusNode.on(value => {
 			handleAuthenticationRequest(value, 'StatusChange').catch(error => {
-				dependencies.utils.softError({ Context: 'Failed to handle companion board authentication request', Error: error });
+				dependencies.utils.softError({ Context: 'Failed to handle Companion Device authentication request', Error: error });
 			});
 		});
 	}
@@ -125,15 +125,15 @@ function createBoardCallSync(options) {
 			if (!Number.isFinite(activeCallCount)) {
 				throw new Error('Initial active call count was not numeric');
 			}
-			activeBoardCallCount = activeCallCount;
-			dependencies.log.debug({ Message: 'Initial companion board active call count read', ActiveCallCount: activeCallCount });
+			activeCompanionDeviceCallCount = activeCallCount;
+			dependencies.log.debug({ Message: 'Initial Companion Device active call count read', ActiveCallCount: activeCallCount });
 			if (activeCallCount > 0) {
-				await handleCallCountPositive('BoardInitialization');
+				await handleCallCountPositive('CompanionDeviceInitialization');
 			}
 		} catch (error) {
 			dependencies.log.error({
 				Code: 'CC26-CALL-COUNT-READ',
-				Component: 'BoardCallSync',
+				Component: 'CompanionDeviceCallSync',
 				Context: 'Failed to read the initial local active call count',
 				Remediation: 'Diagnose Status.SystemUnit.State.NumberOfActiveCalls before relying on automatic release behavior.',
 				Error: error
@@ -151,7 +151,7 @@ function createBoardCallSync(options) {
 		}
 
 		try {
-			await handleAuthenticationRequest(await statusNode.get(), 'BoardInitialization');
+			await handleAuthenticationRequest(await statusNode.get(), 'CompanionDeviceInitialization');
 		} catch (error) {
 			if (isMissingIndexedStatusError(error)) {
 				authenticationRequest = 'None';
@@ -165,7 +165,7 @@ function createBoardCallSync(options) {
 	async function handleAuthenticationRequest(value, reason) {
 		const request = String(getXapiValue(value) || 'None');
 		authenticationRequest = request;
-		dependencies.log.info({ Message: 'Companion board conference authentication request updated', AuthenticationRequest: request, Reason: reason });
+		dependencies.log.debug({ Message: 'Companion Device conference authentication request updated', AuthenticationRequest: request, Reason: reason });
 
 		if (request === 'None') {
 			pendingMeetingPasswordRequest = null;
@@ -173,9 +173,9 @@ function createBoardCallSync(options) {
 			return;
 		}
 
-		const callId = await getActiveBoardCallId();
+		const callId = await getActiveCompanionDeviceCallId();
 		if (callId === null) {
-			dependencies.log.warn({ Message: 'Conference authentication request ignored because the active board CallId is unavailable', AuthenticationRequest: request, Reason: reason });
+			dependencies.log.warn({ Message: 'Conference authentication request ignored because the active Companion Device CallId is unavailable', AuthenticationRequest: request, Reason: reason });
 			return;
 		}
 
@@ -195,9 +195,9 @@ function createBoardCallSync(options) {
 						});
 						return;
 					}
-					const activeCallId = await getActiveBoardCallId();
+					const activeCallId = await getActiveCompanionDeviceCallId();
 					if (activeCallId === null || Number(activeCallId) !== Number(callId)) {
-						dependencies.log.info({
+						dependencies.log.debug({
 							Message: 'Combined Guest authentication password lookup skipped because the call changed during UI settle',
 							AuthenticationRequest: request,
 							CallId: callId,
@@ -243,7 +243,7 @@ function createBoardCallSync(options) {
 
 		await dependencies.xapi.Command.Conference.Call.AuthenticationResponse(response);
 		dependencies.log.info({
-			Message: 'Companion board conference authentication response accepted',
+			Message: 'Companion Device conference authentication response accepted',
 			CallId: Number(callId),
 			ParticipantRole: 'Guest',
 			MeetingPasswordSupplied: !!meetingPassword
@@ -256,7 +256,7 @@ function createBoardCallSync(options) {
 		if (context.mode !== 'Paired' || !context.activeParentSerial || !activeParentDevice) {
 			pendingMeetingPasswordRequest = null;
 			await showMeetingPasswordNotice('ActiveParentUnavailable');
-			dependencies.log.warn({ Message: 'Meeting Password lookup unavailable because the active Parent Room is unavailable', AuthenticationRequest: request, CallId: callId });
+			dependencies.log.warn({ Message: 'Meeting Password lookup unavailable because the active Parent Room Device is unavailable', AuthenticationRequest: request, CallId: callId });
 			return;
 		}
 
@@ -277,25 +277,25 @@ function createBoardCallSync(options) {
 		};
 
 		try {
-			const boardInformation = callbacks.getRuntimeBoardInformation ? await callbacks.getRuntimeBoardInformation() : {};
+			const companionDeviceInformation = callbacks.getRuntimeCompanionDeviceInformation ? await callbacks.getRuntimeCompanionDeviceInformation() : {};
 			await dependencies.deviceComms.sendMessageCommand(dependencies.xapi, activeParentDevice, dependencies.meetingPasswordRequestRoute, {
 				RequestId: requestId,
 				AuthenticationRequest: request
 			}, {
 				app: 'Companion Board 2026',
-				serial: boardInformation.serial,
+				serial: companionDeviceInformation.serial,
 				source: {
 					Role: 'Board',
-					Name: boardInformation.name,
-					Host: boardInformation.host,
-					MacAddress: boardInformation.macAddress
+					Name: companionDeviceInformation.name,
+					Host: companionDeviceInformation.host,
+					MacAddress: companionDeviceInformation.macAddress
 				}
 			}, dependencies.httpClientConfig);
-			dependencies.log.info({ Message: 'Requested Meeting Password from active Parent Room', AuthenticationRequest: request, CallId: callId, RequestId: requestId });
+			dependencies.log.info({ Message: 'Requested Meeting Password from active Parent Room Device', AuthenticationRequest: request, CallId: callId, RequestId: requestId });
 		} catch (error) {
 			pendingMeetingPasswordRequest = null;
 			await showMeetingPasswordNotice('MeetingPasswordRequestFailed');
-			dependencies.log.warn({ Message: 'Failed to request Meeting Password from active Parent Room', AuthenticationRequest: request, CallId: callId, Error: error.message || error.code || 'Unknown Meeting Password request error' });
+			dependencies.log.warn({ Message: 'Failed to request Meeting Password from active Parent Room Device', AuthenticationRequest: request, CallId: callId, Error: error.message || error.code || 'Unknown Meeting Password request error' });
 		}
 	}
 
@@ -312,10 +312,10 @@ function createBoardCallSync(options) {
 			return;
 		}
 
-		const activeCallId = await getActiveBoardCallId();
+		const activeCallId = await getActiveCompanionDeviceCallId();
 		if (activeCallId === null || Number(activeCallId) !== pendingRequest.callId) {
 			pendingMeetingPasswordRequest = null;
-			dependencies.log.info({ Message: 'Ignored Meeting Password response because the authenticated call is no longer active', RequestId: payload.RequestId || '' });
+			dependencies.log.debug({ Message: 'Ignored Meeting Password response because the authenticated call is no longer active', RequestId: payload.RequestId || '' });
 			return;
 		}
 
@@ -323,7 +323,7 @@ function createBoardCallSync(options) {
 		const meetingPassword = normalizeMeetingPassword(payload.MeetingPassword);
 		if (!payload.PasswordAvailable || !meetingPassword) {
 			await showMeetingPasswordNotice(payload.Reason || 'MeetingPasswordUnavailable');
-			dependencies.log.info({ Message: 'Active Parent Room did not provide a matching Meeting Password', Reason: payload.Reason || 'MeetingPasswordUnavailable', RequestId: payload.RequestId || '' });
+			dependencies.log.info({ Message: 'Active Parent Room Device did not provide a matching Meeting Password', Reason: payload.Reason || 'MeetingPasswordUnavailable', RequestId: payload.RequestId || '' });
 			return;
 		}
 
@@ -336,7 +336,7 @@ function createBoardCallSync(options) {
 		}
 	}
 
-	async function getActiveBoardCallId() {
+	async function getActiveCompanionDeviceCallId() {
 		try {
 			const calls = normalizeCallStatusList(await dependencies.xapi.Status.Call.get());
 			for (let index = 0; index < calls.length; index++) {
@@ -347,7 +347,7 @@ function createBoardCallSync(options) {
 				}
 			}
 		} catch (error) {
-			dependencies.log.warn({ Message: 'Failed to read active board CallId for conference authentication', Error: error.message || error.code || 'Unknown call status error' });
+			dependencies.log.warn({ Message: 'Failed to read active Companion Device CallId for conference authentication', Error: error.message || error.code || 'Unknown call status error' });
 		}
 		return null;
 	}
@@ -423,7 +423,7 @@ function createBoardCallSync(options) {
 	async function handleMessage(message) {
 		const context = getRuntimeContext();
 		if (message.Serial !== context.activeParentSerial) {
-			dependencies.log.debug({ Message: 'Ignored call sync from non-active parent', SendingParentSerial: message.Serial, ActiveParentSerial: context.activeParentSerial });
+			dependencies.log.debug({ Message: 'Ignored call sync from a non-active Parent Room Device', SendingParentSerial: message.Serial, ActiveParentSerial: context.activeParentSerial });
 			return;
 		}
 
@@ -448,7 +448,7 @@ function createBoardCallSync(options) {
 			if (!unauthorizedCallNoticeActive) {
 				await setInfo('');
 			}
-			dependencies.log.info({ Message: 'Parent call disconnect sync received', Payload: payload });
+			dependencies.log.info({ Message: 'Parent Room call disconnect sync received', Payload: payload });
 			return;
 		}
 
@@ -469,21 +469,21 @@ function createBoardCallSync(options) {
 				Text: getUnsupportedCallAlertText(unsupportedPayload),
 				Duration: 15
 			});
-			dependencies.log.info({ Message: 'BYOD call sync received; board join not supported', Payload: payload });
+			dependencies.log.debug({ Message: 'BYOD call sync received; Companion Device join not supported', Payload: payload });
 			return;
 		}
 
 		if (payload.CallKind === 'AdmissionRequired') {
 			await clearUnauthorizedCallNotice('ParentWebexCallStarted');
-			await setInfo('A host or cohost needs to admit this board to the Webex call.');
-			dependencies.log.info({ Message: 'Parent cannot auto-admit companion board because it is not host or cohost', Payload: payload });
+			await setInfo('A host or cohost needs to admit this Companion Device to the Webex call.');
+			dependencies.log.debug({ Message: 'Parent Room cannot auto-admit Companion Device because it is not host or cohost', Payload: payload });
 			return;
 		}
 
 		if (payload.CallKind === 'AdmissionAdmitted') {
 			await clearUnauthorizedCallNotice('ParentWebexCallStarted');
 			await setInfo('');
-			dependencies.log.info({ Message: 'Companion board admitted by parent host', Payload: payload });
+			dependencies.log.info({ Message: 'Companion Device admitted by Parent Room host', Payload: payload });
 			return;
 		}
 
@@ -506,7 +506,7 @@ function createBoardCallSync(options) {
 			await clearMeetingPasswordNotice('ParentUnsupportedCallStarted');
 			await disconnectAllCalls();
 			await setInfo(getUnsupportedCallInfoText(payload));
-			dependencies.log.info({ Message: 'Non-Webex call sync received; board join is out of scope', Payload: payload });
+			dependencies.log.debug({ Message: 'Non-Webex call sync received; Companion Device join is out of scope', Payload: payload });
 			return;
 		}
 		await synchronizeToParentCall(payload, 'CallSync');
@@ -527,13 +527,13 @@ function createBoardCallSync(options) {
 		try {
 			await requestActiveParentCallState(reason);
 		} catch (error) {
-			dependencies.log.warn({ Message: 'Failed to request parent call state for an unverified Paired board call', Reason: reason, Error: error.message || error.code || 'Unknown parent call state request error' });
+			dependencies.log.warn({ Message: 'Failed to request Parent Room call state for an unverified Paired Companion Device call', Reason: reason, Error: error.message || error.code || 'Unknown Parent Room call state request error' });
 		}
 		scheduleUnauthorizedCallCheck(reason);
 	}
 
 	async function handleCallCountZero() {
-		activeBoardCallCount = 0;
+		activeCompanionDeviceCallCount = 0;
 		joinCommandPendingUntil = 0;
 		authenticationRequest = 'None';
 		pendingMeetingPasswordRequest = null;
@@ -550,21 +550,21 @@ function createBoardCallSync(options) {
 
 		const activeParentDevice = callbacks.getActiveParentDevice ? callbacks.getActiveParentDevice() : null;
 		if (!activeParentDevice) {
-			dependencies.log.warn({ Message: 'Board call ended; active parent unavailable for rejoin check' });
+			dependencies.log.warn({ Message: 'Companion Device call ended; active Parent Room Device unavailable for rejoin check' });
 			return;
 		}
 
 		isRejoinInProgress = true;
-		await setInfo('Checking active parent call before rejoining.');
+		await setInfo('Checking the active Parent Room call before rejoining.');
 		try {
-			await sendActiveCallDetailsRequest(activeParentDevice, 'BoardCallEnded');
+			await sendActiveCallDetailsRequest(activeParentDevice, 'CompanionDeviceCallEnded');
 		} catch (error) {
 			isRejoinInProgress = false;
-			dependencies.log.warn({ Message: 'Failed to request parent call details after board call ended', Host: activeParentDevice.host, Error: error.message || error.code || 'Unknown parent call details request error' });
+			dependencies.log.warn({ Message: 'Failed to request Parent Room call details after Companion Device call ended', Host: activeParentDevice.host, Error: error.message || error.code || 'Unknown Parent Room call details request error' });
 			return;
 		}
 
-		dependencies.log.info({ Message: 'Requested active parent call details after board call ended', Host: activeParentDevice.host, Payload: lastWebexPayload });
+		dependencies.log.info({ Message: 'Requested active Parent Room call details after Companion Device call ended', Host: activeParentDevice.host, Payload: lastWebexPayload });
 	}
 
 	async function requestActiveParentCallState(reason) {
@@ -575,18 +575,18 @@ function createBoardCallSync(options) {
 
 		const activeParentDevice = callbacks.getActiveParentDevice ? callbacks.getActiveParentDevice() : null;
 		if (!activeParentDevice) {
-			dependencies.log.warn({ Message: 'Active parent unavailable for call-state reconciliation', Reason: reason });
+			dependencies.log.debug({ Message: 'Active Parent Room Device unavailable for call-state reconciliation', Reason: reason });
 			return false;
 		}
 		if (parentCallRequestInFlight) {
-			dependencies.log.debug({ Message: 'Parent call-state reconciliation already in flight', Reason: reason, Host: activeParentDevice.host });
+			dependencies.log.debug({ Message: 'Parent Room call-state reconciliation already in flight', Reason: reason, Host: activeParentDevice.host });
 			return false;
 		}
 
 		parentCallRequestInFlight = true;
 		try {
 			await sendActiveCallDetailsRequest(activeParentDevice, reason || 'Unspecified');
-			dependencies.log.info({ Message: 'Requested active parent call state', Reason: reason || 'Unspecified', Host: activeParentDevice.host });
+			dependencies.log.debug({ Message: 'Requested active Parent Room call state', Reason: reason || 'Unspecified', Host: activeParentDevice.host });
 			return true;
 		} finally {
 			parentCallRequestInFlight = false;
@@ -594,18 +594,18 @@ function createBoardCallSync(options) {
 	}
 
 	async function sendActiveCallDetailsRequest(parentDevice, reason) {
-		const boardInformation = callbacks.getRuntimeBoardInformation ? await callbacks.getRuntimeBoardInformation() : {};
+		const companionDeviceInformation = callbacks.getRuntimeCompanionDeviceInformation ? await callbacks.getRuntimeCompanionDeviceInformation() : {};
 		await dependencies.deviceComms.sendMessageCommand(dependencies.xapi, parentDevice, dependencies.activeCallDetailsRoute, {
 			Reason: reason || 'Unspecified',
 			LastSyncedCall: lastWebexPayload || {}
 		}, {
 			app: 'Companion Board 2026',
-			serial: boardInformation.serial,
+			serial: companionDeviceInformation.serial,
 			source: {
 				Role: 'Board',
-				Name: boardInformation.name,
-				Host: boardInformation.host,
-				MacAddress: boardInformation.macAddress
+				Name: companionDeviceInformation.name,
+				Host: companionDeviceInformation.host,
+				MacAddress: companionDeviceInformation.macAddress
 			}
 		}, dependencies.httpClientConfig);
 	}
@@ -613,7 +613,7 @@ function createBoardCallSync(options) {
 	async function handleActiveCallDetailsResponse(payload) {
 		const requestReason = payload.Request && payload.Request.Reason || 'Unspecified';
 		if (!payload.ParentHasActiveCall) {
-			const hadActiveBoardCall = await hasActiveBoardCall();
+			const hadActiveCompanionDeviceCall = await hasActiveCompanionDeviceCall();
 			syncToken++;
 			lastWebexPayload = null;
 			isRejoinInProgress = false;
@@ -622,20 +622,21 @@ function createBoardCallSync(options) {
 			clearUnauthorizedCallCheck();
 			stopParentCallMonitoring();
 			await clearMeetingPasswordNotice('ParentCallNotActive');
-			if (hadActiveBoardCall) {
+			if (hadActiveCompanionDeviceCall) {
 				await disconnectAllCalls();
 				await showUnauthorizedCallNotice(requestReason);
 			} else if (!unauthorizedCallNoticeActive) {
 				await setInfo('');
 			}
-			dependencies.log.info({
-				Message: hadActiveBoardCall ? 'Direct board call disconnected; Paired calls must start from the Parent Room' : 'Parent call-state reconciliation found no active parent call',
+			const reconciliationLog = hadActiveCompanionDeviceCall ? dependencies.log.info.bind(dependencies.log) : dependencies.log.debug.bind(dependencies.log);
+			reconciliationLog({
+				Message: hadActiveCompanionDeviceCall ? 'Direct Companion Device call disconnected; Paired calls must start from the Parent Room' : 'Parent Room call-state reconciliation found no active call',
 				RequestReason: requestReason,
-				DisconnectedBoardCall: hadActiveBoardCall,
-				PairedCallPolicy: hadActiveBoardCall ? 'While Paired, start calls from the Parent Room' : '',
-				UserGuidance: hadActiveBoardCall ? UNAUTHORIZED_CALL_INFO_TEXT : '',
-				AlertGuidance: hadActiveBoardCall ? UNAUTHORIZED_CALL_ALERT_TEXT : '',
-				NoticeDurationSeconds: hadActiveBoardCall ? getUnauthorizedCallNoticeDurationSeconds() : 0
+				DisconnectedCompanionDeviceCall: hadActiveCompanionDeviceCall,
+				PairedCallPolicy: hadActiveCompanionDeviceCall ? 'While Paired, start calls from the Parent Room' : '',
+				UserGuidance: hadActiveCompanionDeviceCall ? UNAUTHORIZED_CALL_INFO_TEXT : '',
+				AlertGuidance: hadActiveCompanionDeviceCall ? UNAUTHORIZED_CALL_ALERT_TEXT : '',
+				NoticeDurationSeconds: hadActiveCompanionDeviceCall ? getUnauthorizedCallNoticeDurationSeconds() : 0
 			});
 			return;
 		}
@@ -648,13 +649,13 @@ function createBoardCallSync(options) {
 			return;
 		}
 
-		if (requestReason === 'BoardCallEnded' && lastWebexPayload && !findMatchingParentCall([payload.ParentCall || {}], lastWebexPayload)) {
+		if (requestReason === 'CompanionDeviceCallEnded' && lastWebexPayload && !findMatchingParentCall([payload.ParentCall || {}], lastWebexPayload)) {
 			const skippedPayload = lastWebexPayload;
 			lastWebexPayload = null;
 			isRejoinInProgress = false;
 			joinCommandPendingUntil = 0;
 			await setInfo('');
-			dependencies.log.info({ Message: 'Board call ended and active parent call did not match last synced call; rejoin skipped', ParentHasActiveCall: !!payload.ParentHasActiveCall, ParentCall: payload.ParentCall || {}, Payload: skippedPayload });
+			dependencies.log.info({ Message: 'Companion Device call ended and active Parent Room call did not match last synced call; rejoin skipped', ParentHasActiveCall: !!payload.ParentHasActiveCall, ParentCall: payload.ParentCall || {}, Payload: skippedPayload });
 			return;
 		}
 
@@ -664,14 +665,14 @@ function createBoardCallSync(options) {
 
 	async function synchronizeToParentCall(payload, reason) {
 		const previousPayload = lastWebexPayload;
-		const hasActiveCall = await hasActiveBoardCall();
+		const hasActiveCall = await hasActiveCompanionDeviceCall();
 		const isSamePendingJoin = !hasActiveCall
 			&& Date.now() < joinCommandPendingUntil
 			&& previousPayload
 			&& findMatchingParentCall([payload.ParentCall || {}], previousPayload);
 		const isAlreadyAuthorized = hasActiveCall && (
 			(previousPayload && findMatchingParentCall([payload.ParentCall || {}], previousPayload)) ||
-			await doesActiveBoardCallMatchPayload(payload)
+			await doesActiveCompanionDeviceCallMatchPayload(payload)
 		);
 
 		syncToken++;
@@ -679,26 +680,26 @@ function createBoardCallSync(options) {
 		lastWebexPayload = payload;
 		clearUnauthorizedCallCheck();
 		if (isSamePendingJoin) {
-			dependencies.log.info({ Message: 'Duplicate parent call state accepted while Webex join is settling', Reason: reason, Payload: payload });
+			dependencies.log.debug({ Message: 'Duplicate Parent Room call state accepted while Webex join is settling', Reason: reason, Payload: payload });
 			return;
 		}
 
 		if (isAlreadyAuthorized) {
-			activeBoardCallCount = Math.max(activeBoardCallCount, 1);
+			activeCompanionDeviceCallCount = Math.max(activeCompanionDeviceCallCount, 1);
 			startParentCallMonitoring();
 			await setInfo('');
-			dependencies.log.info({ Message: 'Existing companion board call authorized by active parent state', Reason: reason, Payload: payload });
+			dependencies.log.debug({ Message: 'Existing Companion Device call authorized by active Parent Room state', Reason: reason, Payload: payload });
 			return;
 		}
 
 		if (hasActiveCall) {
 			isRejoinInProgress = true;
 			await disconnectAllCalls();
-			dependencies.log.info({ Message: 'Disconnected board call that did not match the active parent call', Reason: reason, Payload: payload });
+			dependencies.log.info({ Message: 'Disconnected Companion Device call that did not match the active Parent Room call', Reason: reason, Payload: payload });
 		}
 
-		if (reason === 'BoardCallEnded') {
-			await setInfo('Rejoining Webex call from active parent.');
+		if (reason === 'CompanionDeviceCallEnded') {
+			await setInfo('Rejoining the Webex call from the active Parent Room.');
 		}
 		try {
 			await joinParentCallOnce(payload, joinToken);
@@ -709,7 +710,7 @@ function createBoardCallSync(options) {
 
 	async function joinParentCallOnce(payload, joinToken) {
 		if (joinToken !== syncToken) {
-			dependencies.log.info({ Message: 'Companion board parent call join canceled', Payload: payload });
+			dependencies.log.info({ Message: 'Companion Device call join from Parent Room canceled', Payload: payload });
 			return;
 		}
 
@@ -719,14 +720,14 @@ function createBoardCallSync(options) {
 			await clearMeetingPasswordNotice('JoiningParentCall');
 			await joinParentCall(payload);
 			if (joinToken !== syncToken) {
-				dependencies.log.info({ Message: 'Companion board parent call join completed after cancellation', Payload: payload });
+				dependencies.log.info({ Message: 'Companion Device call join from Parent Room completed after cancellation', Payload: payload });
 				return;
 			}
 			const settleMs = Number(policy.joinCommandSettleMs);
 			joinCommandPendingUntil = Date.now() + (Number.isFinite(settleMs) ? Math.max(0, settleMs) : 10000);
 			await setInfo(getCallJoinInfoText(payload));
 			startParentCallMonitoring();
-			dependencies.log.info({ Message: 'Companion board parent call join command accepted', Payload: payload });
+			dependencies.log.info({ Message: 'Companion Device call join from Parent Room accepted', Payload: payload });
 		} catch (error) {
 			lastWebexPayload = null;
 			joinCommandPendingUntil = 0;
@@ -737,7 +738,7 @@ function createBoardCallSync(options) {
 				Text: getCallJoinFailureAlertText(payload),
 				Duration: 20
 			});
-			dependencies.utils.softError({ Context: 'Failed to join parent call', Error: error, Payload: payload });
+			dependencies.utils.softError({ Context: 'Failed to join Parent Room call', Error: error, Payload: payload });
 		}
 	}
 
@@ -797,13 +798,13 @@ function createBoardCallSync(options) {
 		try {
 			calls = normalizeCallStatusList(await dependencies.xapi.Status.Call.get());
 		} catch (error) {
-			dependencies.log.warn({ Message: 'Companion board call status read failed; attempting one aggregate disconnect', Error: error.message || error.code || 'Unknown call status error' });
+			dependencies.log.warn({ Message: 'Companion Device call status read failed; attempting one aggregate disconnect', Error: error.message || error.code || 'Unknown call status error' });
 			await dependencies.xapi.Command.Call.Disconnect();
 			return;
 		}
 
 		if (calls.length < 1) {
-			dependencies.log.info({ Message: 'Companion board has no active calls to disconnect' });
+			dependencies.log.debug({ Message: 'Companion Device has no active calls to disconnect' });
 			return;
 		}
 
@@ -816,29 +817,29 @@ function createBoardCallSync(options) {
 			}
 		}
 
-		dependencies.log.info({ Message: 'Companion board disconnected all calls', CallCount: calls.length });
+		dependencies.log.debug({ Message: 'Companion Device disconnected all calls', CallCount: calls.length });
 	}
 
-	async function hasActiveBoardCall() {
+	async function hasActiveCompanionDeviceCall() {
 		try {
 			const activeCallCount = Number(getXapiValue(await dependencies.xapi.Status.SystemUnit.State.NumberOfActiveCalls.get()));
 			if (!Number.isFinite(activeCallCount)) {
 				throw new Error('Active call count was not numeric');
 			}
-			activeBoardCallCount = activeCallCount;
+			activeCompanionDeviceCallCount = activeCallCount;
 			return activeCallCount > 0;
 		} catch (error) {
-			dependencies.log.warn({ Message: 'Could not verify the Paired Call Limit; new parent call join ignored', Error: error.message || error.code || 'Unknown call count error' });
+			dependencies.log.warn({ Message: 'Could not verify the Paired Call Limit; new Parent Room call join ignored', Error: error.message || error.code || 'Unknown call count error' });
 			return true;
 		}
 	}
 
-	async function doesActiveBoardCallMatchPayload(payload) {
+	async function doesActiveCompanionDeviceCallMatchPayload(payload) {
 		let calls = [];
 		try {
 			calls = normalizeCallStatusList(await dependencies.xapi.Status.Call.get());
 		} catch (error) {
-			dependencies.log.warn({ Message: 'Could not compare active board call with parent call state', Error: error.message || error.code || 'Unknown board call status error' });
+			dependencies.log.warn({ Message: 'Could not compare active Companion Device call with Parent Room call state', Error: error.message || error.code || 'Unknown Companion Device call status error' });
 			return false;
 		}
 
@@ -855,9 +856,9 @@ function createBoardCallSync(options) {
 
 		for (let callIndex = 0; callIndex < calls.length; callIndex++) {
 			const call = calls[callIndex];
-			const boardValues = [call.CallbackNumber, call.RemoteNumber, call.RemoteURI].map(normalizeCallIdentity).filter(value => !!value);
-			for (let valueIndex = 0; valueIndex < boardValues.length; valueIndex++) {
-				if (expectedValues.indexOf(boardValues[valueIndex]) >= 0) {
+			const companionDeviceValues = [call.CallbackNumber, call.RemoteNumber, call.RemoteURI].map(normalizeCallIdentity).filter(value => !!value);
+			for (let valueIndex = 0; valueIndex < companionDeviceValues.length; valueIndex++) {
+				if (expectedValues.indexOf(companionDeviceValues[valueIndex]) >= 0) {
 					return true;
 				}
 			}
@@ -884,7 +885,7 @@ function createBoardCallSync(options) {
 		unauthorizedCallCheckTimeout = setTimeout(() => {
 			unauthorizedCallCheckTimeout = null;
 			enforceUnauthorizedCall(reason).catch(error => {
-				dependencies.utils.softError({ Context: 'Failed to enforce Paired board call authorization', Reason: reason, Error: error });
+				dependencies.utils.softError({ Context: 'Failed to enforce Paired Companion Device call authorization', Reason: reason, Error: error });
 			});
 		}, Number.isFinite(graceMs) ? Math.max(0, graceMs) : 5000);
 	}
@@ -898,7 +899,7 @@ function createBoardCallSync(options) {
 
 	async function enforceUnauthorizedCall(reason) {
 		const context = getRuntimeContext();
-		if (context.mode !== 'Paired' || lastWebexPayload || !await hasActiveBoardCall()) {
+		if (context.mode !== 'Paired' || lastWebexPayload || !await hasActiveCompanionDeviceCall()) {
 			return;
 		}
 
@@ -906,7 +907,7 @@ function createBoardCallSync(options) {
 		await disconnectAllCalls();
 		await showUnauthorizedCallNotice(reason);
 		dependencies.log.warn({
-			Message: 'Direct board call disconnected; Paired calls must start from the Parent Room',
+			Message: 'Direct Companion Device call disconnected; Paired calls must start from the Parent Room',
 			Reason: reason,
 			PairedCallPolicy: 'While Paired, start calls from the Parent Room',
 			UserGuidance: UNAUTHORIZED_CALL_INFO_TEXT,
@@ -948,7 +949,7 @@ function createBoardCallSync(options) {
 			dependencies.log.warn({ Message: 'Failed to display Paired calling policy alert', Reason: reason, Error: error.message || error.code || 'Unknown alert display error' });
 		}
 
-		dependencies.log.info({
+		dependencies.log.debug({
 			Message: 'Paired calling policy notice displayed',
 			Reason: reason,
 			UserGuidance: UNAUTHORIZED_CALL_INFO_TEXT,
@@ -1007,14 +1008,14 @@ function createBoardCallSync(options) {
 
 		parentCallCheckInterval = setInterval(() => {
 			const context = getRuntimeContext();
-			if (context.mode !== 'Paired' || !lastWebexPayload || activeBoardCallCount < 1) {
+			if (context.mode !== 'Paired' || !lastWebexPayload || activeCompanionDeviceCallCount < 1) {
 				return;
 			}
 			requestActiveParentCallState('PeriodicParentCallCheck').catch(error => {
-				dependencies.log.warn({ Message: 'Periodic parent call-state reconciliation failed', Error: error.message || error.code || 'Unknown parent call state request error' });
+				dependencies.log.debug({ Message: 'Periodic Parent Room call-state reconciliation failed', Error: error.message || error.code || 'Unknown Parent Room call state request error' });
 			});
 		}, intervalMs);
-		dependencies.log.info({ Message: 'Parent call-state monitoring started', IntervalMs: intervalMs });
+		dependencies.log.debug({ Message: 'Parent Room call-state monitoring started', IntervalMs: intervalMs });
 	}
 
 	function stopParentCallMonitoring() {
@@ -1023,7 +1024,7 @@ function createBoardCallSync(options) {
 		}
 		clearInterval(parentCallCheckInterval);
 		parentCallCheckInterval = null;
-		dependencies.log.info({ Message: 'Parent call-state monitoring stopped' });
+		dependencies.log.debug({ Message: 'Parent Room call-state monitoring stopped' });
 	}
 
 	function cancel() {
@@ -1039,7 +1040,7 @@ function createBoardCallSync(options) {
 		joinCommandPendingUntil = 0;
 		authenticationRequest = 'None';
 		pendingMeetingPasswordRequest = null;
-		activeBoardCallCount = 0;
+		activeCompanionDeviceCallCount = 0;
 		parentCallRequestInFlight = false;
 		clearUnauthorizedCallCheck();
 		stopParentCallMonitoring();
@@ -1187,7 +1188,7 @@ function createBoardCallSync(options) {
 		if (meetingPlatform.indexOf('webex') >= 0 || (remoteNumber.indexOf('webex') >= 0 && remoteNumber.indexOf('com') >= 0)) {
 			return '';
 		}
-		return 'Joining parent call. Admit this board from the meeting lobby if needed.';
+		return 'Joining Parent Room call. Admit this Companion Device from the meeting lobby if needed.';
 	}
 
 	function getXapiValue(value) {
@@ -1208,8 +1209,8 @@ function createBoardCallSync(options) {
 	};
 }
 
-const boardCallSync = {
-	create: createBoardCallSync
+const companionDeviceCallSync = {
+	create: createCompanionDeviceCallSync
 };
 
-export { boardCallSync };
+export { companionDeviceCallSync };

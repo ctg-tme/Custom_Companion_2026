@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 20, 2026
- * Revised:                 July 20, 2026
- * Version:                 1.0.0
+ * Revised:                 July 23, 2026
+ * Version:                 1.0.1
  *
  * Description:             Parent Connectivity controller for the Custom Companion Solution.
  *                          Owns parent identity refresh, serial-verified retries, monitoring,
@@ -42,7 +42,7 @@ or implied.
  */
 
 /**
- * Creates the stateful Parent Connectivity controller used by the companion board entry macro.
+ * Creates the stateful Parent Connectivity controller used by the Companion Device entry macro.
  * Network retries remain explicit here; local xAPI commands remain owned by their calling modules.
  */
 function createParentConnectivity(options) {
@@ -96,17 +96,17 @@ function createParentConnectivity(options) {
 				}
 
 				refreshedStatus.push(buildOnlineStatus(updatedDevice));
-				statusLog({ Message: 'Parent device identity refreshed', Host: device.host, Serial: refreshedDevice.serial, Name: refreshedDevice.name });
+				statusLog({ Message: 'Parent Room Device identity refreshed', Host: device.host, Serial: refreshedDevice.serial, Name: refreshedDevice.name });
 			} catch (error) {
 				updatedDevices.push(device);
 				refreshedStatus.push(buildOfflineStatus(device, error, device.lastHeartbeat || ''));
-				errorLog({ Message: 'Parent device identity refresh failed', Host: device.host, Error: error.code || error.message || 'Unknown parent refresh error', ErrorContext: error.Context || {} });
+				errorLog({ Message: 'Parent Room Device identity refresh failed', Host: device.host, Error: error.code || error.message || 'Unknown Parent Room Device refresh error', ErrorContext: error.Context || {} });
 			}
 		}
 
 		if (hasParentDeviceUpdates) {
 			await dependencies.mem.write(dependencies.parentDevicesStorageKey, updatedDevices);
-			dependencies.log.info({ Message: 'Persisted refreshed parent device identity fields', UpdatedDeviceCount: updatedDevices.length });
+			dependencies.log.info({ Message: 'Persisted refreshed Parent Room Device identity fields', UpdatedDeviceCount: updatedDevices.length });
 		}
 
 		parentDevices = hasParentDeviceUpdates ? updatedDevices : parentDevices;
@@ -144,7 +144,7 @@ function createParentConnectivity(options) {
 			: true;
 		if (canContinue !== false) {
 			await sendHeartbeat();
-			dependencies.log.info({ Message: 'Companion board paired to parent', Host: refreshedParentDevice.host, Serial: result.parentStatus.serial, Name: result.parentStatus.name });
+			dependencies.log.info({ Message: 'Companion Device Paired to Parent Room', Host: refreshedParentDevice.host, Serial: result.parentStatus.serial, Name: result.parentStatus.name });
 		}
 
 		return result;
@@ -158,7 +158,7 @@ function createParentConnectivity(options) {
 
 		const activeParentDevice = findActiveParentDevice(context);
 		if (!activeParentDevice) {
-			dependencies.log.warn({ Message: 'Active parent record is unavailable', ActiveParentSerial: context.activeParentSerial });
+			dependencies.log.debug({ Message: 'Active Parent Room Device record is unavailable', ActiveParentSerial: context.activeParentSerial });
 			const currentToken = ++connectionToken;
 			await finishUnavailableFallback({ name: context.activeParentName || context.activeParentSerial, host: '' }, currentToken);
 			return;
@@ -180,7 +180,7 @@ function createParentConnectivity(options) {
 		stop();
 		statusInterval = setInterval(() => {
 			runStatusInterval().catch(error => {
-				dependencies.utils.softError({ Context: 'Parent status interval failed', Error: error });
+				dependencies.log.debug({ Message: 'Parent Room Device status interval failed', Error: error.code || error.message || 'Unknown Parent Room Device status interval error', ErrorContext: error.Context || {} });
 			});
 		}, policy.statusIntervalMs);
 	}
@@ -224,16 +224,16 @@ function createParentConnectivity(options) {
 
 		const activeParentStatus = findParentStatus(activeParentDevice);
 		if (!activeParentStatus || !activeParentStatus.online) {
-			dependencies.log.warn({ Message: 'Active parent is offline; skipping peripheral heartbeat', Host: activeParentDevice.host });
+			dependencies.log.debug({ Message: 'Active Parent Room Device is offline; skipping peripheral heartbeat', Host: activeParentDevice.host });
 			return;
 		}
 
 		const peripheralId = callbacks.getPeripheralId ? callbacks.getPeripheralId() : '';
 		try {
 			await dependencies.deviceComms.sendPeripheralHeartbeat(dependencies.xapi, activeParentDevice, peripheralId, policy.heartbeatTimeoutSeconds, dependencies.httpClientConfig);
-			dependencies.log.debug({ Message: 'Companion board peripheral heartbeat sent', Host: activeParentDevice.host, PeripheralID: peripheralId, Timeout: policy.heartbeatTimeoutSeconds });
+			dependencies.log.debug({ Message: 'Companion Device peripheral heartbeat sent', Host: activeParentDevice.host, PeripheralID: peripheralId, Timeout: policy.heartbeatTimeoutSeconds });
 		} catch (error) {
-			dependencies.log.warn({ Message: 'Companion board peripheral heartbeat failed', Host: activeParentDevice.host, Error: error.code || error.message || 'Unknown peripheral heartbeat error', ErrorContext: error.Context || {} });
+			dependencies.log.debug({ Message: 'Companion Device peripheral heartbeat failed', Host: activeParentDevice.host, Error: error.code || error.message || 'Unknown peripheral heartbeat error', ErrorContext: error.Context || {} });
 		}
 	}
 
@@ -271,7 +271,7 @@ function createParentConnectivity(options) {
 		const currentToken = ++connectionToken;
 		const activePromise = recoverActiveParent(parentDevice, currentToken)
 			.catch(error => {
-				dependencies.utils.softError({ Context: 'Active parent recovery failed', Host: parentDevice.host, Error: error });
+				dependencies.log.debug({ Message: 'Active Parent Room Device recovery failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown Parent Room Device recovery error', ErrorContext: error.Context || {} });
 			})
 			.then(() => {
 				if (recoveryPromise === activePromise) {
@@ -295,7 +295,7 @@ function createParentConnectivity(options) {
 			return;
 		}
 
-		if (callbacks.isBoardInActiveCall && await callbacks.isBoardInActiveCall()) {
+		if (callbacks.isCompanionDeviceInActiveCall && await callbacks.isCompanionDeviceInActiveCall()) {
 			await enterCallPreservation(parentDevice, currentToken);
 			return;
 		}
@@ -331,7 +331,7 @@ function createParentConnectivity(options) {
 				return;
 			}
 
-			if (callbacks.isBoardInActiveCall && !await callbacks.isBoardInActiveCall()) {
+			if (callbacks.isCompanionDeviceInActiveCall && !await callbacks.isCompanionDeviceInActiveCall()) {
 				await finishUnavailableFallback(parentDevice, currentToken);
 				return;
 			}
@@ -359,7 +359,7 @@ function createParentConnectivity(options) {
 			await callbacks.onRecovered(parentDevice);
 		}
 		await sendHeartbeat();
-		dependencies.log.info({ Message: 'Active parent communication restored', Host: parentDevice.host, Serial: context.activeParentSerial });
+		dependencies.log.info({ Message: 'Active Parent Room Device communication restored', Host: parentDevice.host, Serial: context.activeParentSerial });
 	}
 
 	async function finishUnavailableFallback(parentDevice, currentToken) {
@@ -370,7 +370,7 @@ function createParentConnectivity(options) {
 
 		callPreservationActive = false;
 		const roomName = getParentDisplayName(parentDevice);
-		await setInfo(`Unable to connect to ${roomName}. Running Stand Alone.`, policy.failureInfoMs);
+		await setInfo(`Unable to connect to ${roomName}. Running Standalone.`, policy.failureInfoMs);
 		if (callbacks.onUnavailableFallback) {
 			await callbacks.onUnavailableFallback(parentDevice);
 		}
@@ -392,7 +392,7 @@ function createParentConnectivity(options) {
 			try {
 				const refreshedDevice = await dependencies.deviceComms.parentInitializationRequest(dependencies.xapi, parentDevice, dependencies.httpClientConfig);
 				if (parentDevice.serial && refreshedDevice.serial !== parentDevice.serial) {
-					const mismatchError = new Error('Parent identity serial did not match the selected parent');
+					const mismatchError = new Error('Parent Room Device identity serial did not match the selected Parent Room Device');
 					mismatchError.code = 'CC26-PARENT-IDENTITY-MISMATCH';
 					throw mismatchError;
 				}
@@ -419,7 +419,7 @@ function createParentConnectivity(options) {
 				latestStatus = buildOfflineStatus(parentDevice, error);
 				parentDeviceStatus = replaceParentStatus(parentDeviceStatus, latestStatus, parentDevice);
 				await notifySnapshotChanged();
-				dependencies.log.debug({ Message: 'Parent connection attempt failed', Host: parentDevice.host, Attempt: attempt, AttemptCount: retryCount, Error: latestStatus.lastError, ErrorContext: error.Context || {} });
+				dependencies.log.debug({ Message: 'Parent Room Device connection attempt failed', Host: parentDevice.host, Attempt: attempt, AttemptCount: retryCount, Error: latestStatus.lastError, ErrorContext: error.Context || {} });
 			}
 
 			if (attempt < retryCount && retryDelayMs > 0) {
@@ -467,7 +467,7 @@ function createParentConnectivity(options) {
 			serial: parentDevice.serial,
 			name: parentDevice.name,
 			online: false,
-			lastError: error.code || error.message || 'Unknown parent refresh error',
+			lastError: error.code || error.message || 'Unknown Parent Room Device refresh error',
 			lastHeartbeat: lastHeartbeat
 		};
 	}
@@ -524,7 +524,7 @@ function createParentConnectivity(options) {
 				infoText = '';
 				if (callbacks.onInfoChanged) {
 					callbacks.onInfoChanged(infoText).catch(error => {
-						dependencies.utils.softError({ Context: 'Failed to clear parent connection information', Error: error });
+						dependencies.utils.softError({ Context: 'Failed to clear Parent Room Device connection information', Error: error });
 					});
 				}
 			}, clearAfterMs);

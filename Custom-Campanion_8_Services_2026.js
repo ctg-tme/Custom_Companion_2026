@@ -20,10 +20,10 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 10, 2026
- * Revised:                 July 22, 2026
- * Version:                 1.0.27
+ * Revised:                 July 23, 2026
+ * Version:                 1.0.28
  *
- * Description:             Board provisioning payloads, peripheral identity, and runtime device-identity services.
+ * Description:             Companion Device provisioning payloads, peripheral identity, and runtime device-identity services.
  *
  * Documentation:           N/A
  *
@@ -56,9 +56,9 @@ async function installParentMacrosOnOnlineParents(options) {
 
 		try {
 			await options.deviceComms.installParentMacros(options.xapi, parentDevice, macroPayloads, options.installConfig, options.httpClientConfig);
-			options.log.info({ Message: 'Parent macro installation completed', Host: parentDevice.host, MacroName: options.installConfig.roomReferenceTargetMacroName });
+			options.log.info({ Message: 'Parent Room Device macro installation completed', Host: parentDevice.host, MacroName: options.installConfig.roomReferenceTargetMacroName });
 		} catch (error) {
-			options.log.warn({ Message: 'Parent macro installation failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown parent macro installation error', ErrorContext: error.Context || {} });
+			options.log.warn({ Message: 'Parent Room Device macro installation failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown Parent Room Device macro installation error', ErrorContext: error.Context || {} });
 		}
 	}
 }
@@ -85,8 +85,8 @@ async function getLocalMacroContent(XAPIObject, macroName) {
 }
 
 async function connectPeripheralToOnlineParents(options) {
-	const companionBoardInformation = await getRuntimeCompanionBoardInformation(options.xapi, options.companionBoardInformation, options.log);
-	const peripheralInfo = buildCompanionPeripheralInfo(companionBoardInformation, options.configVersion, options.peripheralType);
+	const companionDeviceInformation = await getRuntimeCompanionDeviceInformation(options.xapi, options.companionDeviceInformation, options.log);
+	const peripheralInfo = buildCompanionPeripheralInfo(companionDeviceInformation, options.configVersion, options.peripheralType);
 
 	for (let index = 0; index < options.parentDeviceStatus.length; index++) {
 		const status = options.parentDeviceStatus[index];
@@ -103,30 +103,30 @@ async function connectPeripheralToOnlineParents(options) {
 		try {
 			const connectResponse = await options.deviceComms.connectPeripheral(options.xapi, parentDevice, peripheralInfo, options.httpClientConfig);
 			const heartbeatResponse = await options.deviceComms.sendPeripheralHeartbeat(options.xapi, parentDevice, peripheralInfo.ID, options.initialHeartbeatTimeout, options.httpClientConfig);
-			await options.sendParentReadyRequest(parentDevice, companionBoardInformation);
-			options.log.info({ Message: 'Companion board peripheral connect HTTP response', Host: parentDevice.host, Response: sanitizeHttpResponse(connectResponse) });
-			options.log.info({ Message: 'Companion board initial peripheral heartbeat HTTP response', Host: parentDevice.host, Response: sanitizeHttpResponse(heartbeatResponse), Timeout: options.initialHeartbeatTimeout });
-			options.log.info({ Message: 'Companion board peripheral connected to parent', Host: parentDevice.host, PeripheralID: peripheralInfo.ID, Type: peripheralInfo.Type });
+			await options.sendParentReadyRequest(parentDevice, companionDeviceInformation);
+			options.log.debug({ Message: 'Companion Device peripheral connect HTTP response', Host: parentDevice.host, Response: sanitizeHttpResponse(connectResponse) });
+			options.log.debug({ Message: 'Companion Device initial peripheral heartbeat HTTP response', Host: parentDevice.host, Response: sanitizeHttpResponse(heartbeatResponse), Timeout: options.initialHeartbeatTimeout });
+			options.log.info({ Message: 'Companion Device peripheral connected to Parent Room Device', Host: parentDevice.host, PeripheralID: peripheralInfo.ID, Type: peripheralInfo.Type });
 		} catch (error) {
-			options.log.warn({ Message: 'Companion board peripheral connect failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown peripheral connect error', ErrorContext: error.Context || {} });
+			options.log.warn({ Message: 'Companion Device peripheral connect failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown peripheral connect error', ErrorContext: error.Context || {} });
 		}
 	}
 
 	return peripheralInfo.ID;
 }
 
-async function getRuntimeCompanionBoardInformation(XAPIObject, configuredBoardInformation, log) {
-	const boardInformation = configuredBoardInformation || {};
+async function getRuntimeCompanionDeviceInformation(XAPIObject, configuredCompanionDeviceInformation, log) {
+	const companionDeviceInformation = configuredCompanionDeviceInformation || {};
 	const productPlatform = await getProductPlatform(XAPIObject, log);
-	const serial = await getBoardSerialNumber(XAPIObject, log);
+	const serial = await getCompanionDeviceSerialNumber(XAPIObject, log);
 	const macAddress = await getActiveNetworkMacAddress(XAPIObject, log);
-	const name = await getBoardName(XAPIObject, log);
+	const name = await getCompanionDeviceName(XAPIObject, log);
 
 	return {
 		serial: serial,
-		host: boardInformation.host || '',
-		username: boardInformation.username || '',
-		password: boardInformation.password || '',
+		host: companionDeviceInformation.host || '',
+		username: companionDeviceInformation.username || '',
+		password: companionDeviceInformation.password || '',
 		macAddress: macAddress,
 		productPlatform: productPlatform,
 		name: name
@@ -142,20 +142,20 @@ async function getProductPlatform(XAPIObject, log) {
 	}
 }
 
-async function getBoardSerialNumber(XAPIObject, log) {
+async function getCompanionDeviceSerialNumber(XAPIObject, log) {
 	try {
 		return await XAPIObject.Status.SystemUnit.Hardware.Module.SerialNumber.get();
 	} catch (error) {
-		log.warn({ Message: 'Failed to fetch board serial number for peripheral registration', Error: error.message || error.code || 'Unknown serial number error' });
+		log.warn({ Message: 'Failed to fetch Companion Device serial number for peripheral registration', Error: error.message || error.code || 'Unknown serial number error' });
 		return '';
 	}
 }
 
-async function getBoardName(XAPIObject, log) {
+async function getCompanionDeviceName(XAPIObject, log) {
 	try {
 		return await XAPIObject.Status.SystemUnit.BroadcastName.get();
 	} catch (error) {
-		log.warn({ Message: 'Failed to fetch board name for companion registration', Error: error.message || error.code || 'Unknown board name error' });
+		log.warn({ Message: 'Failed to fetch Companion Device name for registration', Error: error.message || error.code || 'Unknown Companion Device name error' });
 		return 'Custom Companion Device 2026';
 	}
 }
@@ -205,20 +205,20 @@ function isWifiConnected(networkEntry) {
 	return networkEntry.Wifi.Status.toLowerCase() !== 'disconnected';
 }
 
-function buildCompanionPeripheralInfo(companionBoardInformation, configVersion, peripheralType) {
+function buildCompanionPeripheralInfo(companionDeviceInformation, configVersion, peripheralType) {
 	return {
-		ID: getCompanionPeripheralId(companionBoardInformation),
-		Name: companionBoardInformation.name,
-		NetworkAddress: companionBoardInformation.host,
-		SerialNumber: companionBoardInformation.serial,
-		HardwareInfo: companionBoardInformation.productPlatform,
+		ID: getCompanionPeripheralId(companionDeviceInformation),
+		Name: companionDeviceInformation.name,
+		NetworkAddress: companionDeviceInformation.host,
+		SerialNumber: companionDeviceInformation.serial,
+		HardwareInfo: companionDeviceInformation.productPlatform,
 		SoftwareInfo: configVersion,
 		Type: peripheralType
 	};
 }
 
-function getCompanionPeripheralId(companionBoardInformation) {
-	return companionBoardInformation.macAddress || companionBoardInformation.serial || companionBoardInformation.host || companionBoardInformation.name;
+function getCompanionPeripheralId(companionDeviceInformation) {
+	return companionDeviceInformation.macAddress || companionDeviceInformation.serial || companionDeviceInformation.host || companionDeviceInformation.name;
 }
 
 function sanitizeHttpResponse(response) {
@@ -233,13 +233,13 @@ function sanitizeHttpResponse(response) {
 	};
 }
 
-const boardServices = {
+const companionDeviceServices = {
 	installParentMacrosOnOnlineParents,
 	getParentInstallMacroPayloads,
 	connectPeripheralToOnlineParents,
-	getRuntimeCompanionBoardInformation,
+	getRuntimeCompanionDeviceInformation,
 	buildCompanionPeripheralInfo,
 	getCompanionPeripheralId
 };
 
-export { boardServices };
+export { companionDeviceServices };

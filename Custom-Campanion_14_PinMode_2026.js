@@ -20,10 +20,10 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 21, 2026
- * Revised:                 July 22, 2026
+ * Revised:                 July 23, 2026
  * Version:                 1.0.1
  *
- * Description:             Board-local PIN Mode state, validation, protected-panel access,
+ * Description:             Companion Device-local PIN Mode state, validation, protected-panel access,
  *                          one-operation authorization, PIN editing, and inactivity-session policy.
  *
  * Documentation:           N/A

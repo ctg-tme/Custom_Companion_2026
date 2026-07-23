@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { BoardXapi } from './device';
+import type { CompanionDeviceXapi } from './device';
 import { classifyMacroLog, installResources, legacyMacros } from './install';
 import {
   GENERATED_STORAGE_MACRO,
@@ -35,7 +35,7 @@ describe('installation type', () => {
   it('removes only generated storage before saving resources for a clean installation', async () => {
     const command = vi.fn().mockResolvedValue(undefined);
     const progress: string[] = [];
-    const xapi = { command } as unknown as BoardXapi;
+    const xapi = { command } as unknown as CompanionDeviceXapi;
 
     await installResources(
       xapi,
@@ -62,7 +62,7 @@ describe('installation type', () => {
 
   it('preserves generated storage during a standard installation', async () => {
     const command = vi.fn().mockResolvedValue(undefined);
-    const xapi = { command } as unknown as BoardXapi;
+    const xapi = { command } as unknown as CompanionDeviceXapi;
 
     await installResources(
       xapi,
@@ -80,7 +80,7 @@ describe('installation type', () => {
 
   it('continues a clean installation without a remove command when generated storage is absent', async () => {
     const command = vi.fn().mockResolvedValue(undefined);
-    const xapi = { command } as unknown as BoardXapi;
+    const xapi = { command } as unknown as CompanionDeviceXapi;
 
     await installResources(
       xapi,

@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 20, 2026
- * Version:                 1.0.13
+ * Revised:                 July 23, 2026
+ * Version:                 1.0.14
  *
  * Description:             Device-to-device transport, queue policy, Message envelopes, putxml
  *                          builders, response validation, and dependency-free XML parsing.
@@ -70,12 +70,12 @@ async function initializeHttpClient(XAPIObject, httpClientConfig) {
 }
 
 /**
- * Gets identifying data from a parent device and validates that HTTP credentials work.
+ * Gets identifying data from a Parent Room Device and validates that HTTP credentials work.
  * @param {object} XAPIObject The RoomOS xapi object.
- * @param {object} parentDevice Parent device connection details.
+ * @param {object} parentDevice Parent Room Device connection details.
  * @param {number} timeoutSeconds Peripheral heartbeat timeout in seconds.
  * @param {object} httpClientConfig HTTPClient request configuration.
- * @returns {Promise<object>} Parent device identity with serial and BroadcastName.
+ * @returns {Promise<object>} Parent Room Device identity with serial and BroadcastName.
  * @roomosxapi [xCommand HttpClient Get](https://roomos.cisco.com/xapi/Command.HttpClient.Get/)
  */
 async function parentInitializationRequest(XAPIObject, parentDevice, httpClientConfig) {
@@ -140,9 +140,9 @@ async function parentStandbyStateRequest(XAPIObject, parentDevice, httpClientCon
 }
 
 /**
- * Installs the room-reference runtime and its dependencies on a parent device.
+ * Installs the room-reference runtime and its dependencies on a Parent Room Device.
  * @param {object} XAPIObject The RoomOS xapi object.
- * @param {object} parentDevice Parent device connection details.
+ * @param {object} parentDevice Parent Room Device connection details.
  * @param {object} macroPayloads Macro content keyed by target purpose.
  * @param {object} installConfig Macro name configuration.
  * @param {object} httpClientConfig HTTPClient request configuration.
@@ -163,13 +163,13 @@ async function installParentMacros(XAPIObject, parentDevice, macroPayloads, inst
 
 	await sendPutXml(XAPIObject, parentDevice, buildParentMacroInstallXml(macros, config.roomReferenceTargetMacroName || 'Custom-Campanion_Room_2026'), httpClientConfig);
 
-	return { Status: 'OK', Message: 'Parent macros installed', Host: parentDevice.host };
+	return { Status: 'OK', Message: 'Parent Room macros installed', Host: parentDevice.host };
 }
 
 /**
  * Sends a routed Custom Companion message to another RoomOS device.
  * @param {object} XAPIObject The RoomOS xapi object.
- * @param {object} parentDevice Parent device connection details.
+ * @param {object} parentDevice Parent Room Device connection details.
  * @param {string} route Custom Companion route name.
  * @param {object} payload Route payload.
  * @param {object} messageConfig Message service configuration.
@@ -228,10 +228,10 @@ function parseCompanionMessage(text) {
 }
 
 /**
- * Registers the companion board as a peripheral on a parent device.
+ * Registers the Companion Device as a peripheral on a Parent Room Device.
  * @param {object} XAPIObject The RoomOS xapi object.
- * @param {object} parentDevice Parent device connection details.
- * @param {object} peripheralInfo Companion board peripheral registration details.
+ * @param {object} parentDevice Parent Room Device connection details.
+ * @param {object} peripheralInfo Companion Device peripheral registration details.
  * @param {object} httpClientConfig HTTPClient request configuration.
  * @returns {Promise<object>} HTTPClient response.
  * @roomosxapi [xCommand Peripherals Connect](https://roomos.cisco.com/xapi/Command.Peripherals.Connect/)
@@ -244,9 +244,9 @@ async function connectPeripheral(XAPIObject, parentDevice, peripheralInfo, httpC
 }
 
 /**
- * Sends a peripheral heartbeat for the companion board to a parent device.
+ * Sends a peripheral heartbeat for the Companion Device to a Parent Room Device.
  * @param {object} XAPIObject The RoomOS xapi object.
- * @param {object} parentDevice Parent device connection details.
+ * @param {object} parentDevice Parent Room Device connection details.
  * @param {string} peripheralId Unique peripheral ID.
  * @param {object} httpClientConfig HTTPClient request configuration.
  * @returns {Promise<object>} HTTPClient response.
@@ -432,7 +432,7 @@ function getResponseExcerpt(body) {
 
 function validateParentDevice(parentDevice) {
 	if (!parentDevice || !parentDevice.host || !parentDevice.username || !parentDevice.password) {
-		throw buildError('Parent device must include host, username, and password', { Code: 'cc.parent-device.1' });
+		throw buildError('Parent Room Device must include host, username, and password', { Code: 'cc.parent-device.1' });
 	}
 }
 

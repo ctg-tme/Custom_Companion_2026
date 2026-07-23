@@ -82,7 +82,7 @@ export function validateManifest(value: unknown): InstallManifest {
 export function parseRoomOsVersion(value: string): number[] {
   const match = value.match(/\d+(?:\.\d+){3}/);
   if (!match) {
-    throw new Error('The Board returned an unrecognized RoomOS version.');
+    throw new Error('The Companion Device returned an unrecognized RoomOS version.');
   }
   return match[0].split('.').map(Number);
 }

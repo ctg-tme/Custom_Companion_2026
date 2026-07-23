@@ -14,14 +14,14 @@ import {
 } from './config-editor';
 import { groupConfigLeaves, humanizeConfigSegment, type ConfigGroup } from './config-presentation';
 import {
-  connectToBoard,
+  connectToCompanionDevice,
   listInstalledMacros,
-  normalizeBoardHost,
+  normalizeCompanionDeviceHost,
   normalizeSerial,
   validateCallbackCredentials,
-  validateConnectedBoard,
-  type BoardCredentials,
-  type BoardXapi,
+  validateConnectedCompanionDevice,
+  type CompanionDeviceCredentials,
+  type CompanionDeviceXapi,
 } from './device';
 import { isLocalReviewHost } from './dev-review';
 import {
@@ -102,8 +102,8 @@ export class InstallerApp {
   private busy = false;
   private error = '';
   private snapshot?: SourceSnapshot;
-  private board?: BoardXapi;
-  private adminCredentials: BoardCredentials = { host: '', username: '', password: '' };
+  private companionDevice?: CompanionDeviceXapi;
+  private adminCredentials: CompanionDeviceCredentials = { host: '', username: '', password: '' };
   private expectedSerial = '';
   private compatibility?: DeviceCompatibility;
   private installed: InstalledMacro[] = [];
@@ -174,7 +174,7 @@ export class InstallerApp {
         <aside class="rail">
           <a class="brand" href="./" aria-label="Custom Companion installer home">
             <img class="brand-avatar" src="${TEAM_ICON_URL}" alt="Collaboration TME team icon">
-            <span><strong>Custom Companion</strong><small>Board installer</small></span>
+            <span><strong>Custom Companion</strong><small>Companion Device installer</small></span>
           </a>
           <nav aria-label="Installation progress">
             <ol class="step-list">
@@ -244,7 +244,7 @@ export class InstallerApp {
     }
     if (this.step === 2) {
       const label = this.localReviewMode ? 'Connect disabled in local review' : this.busy ? '<span class="spinner inverse"></span>Connecting…' : 'Connect and verify';
-      return `<div class="actions split"><button class="button ghost" id="back-release">Back</button><button class="button primary" id="connect-board" ${this.busy || this.localReviewMode ? 'disabled' : ''}>${label}</button></div>`;
+      return `<div class="actions split"><button class="button ghost" id="back-release">Back</button><button class="button primary" id="connect-companion-device" ${this.busy || this.localReviewMode ? 'disabled' : ''}>${label}</button></div>`;
     }
     if (this.step === 3) {
       const primary = this.localReviewMode
@@ -256,7 +256,7 @@ export class InstallerApp {
       return `<div class="actions split"><button class="button ghost" id="back-config">Back to configuration</button><button class="button primary" id="review-installation" ${this.installationType ? '' : 'disabled'}>Review installation</button></div>`;
     }
     if (this.step === 5) {
-      return `<div class="actions split"><button class="button ghost" id="back-installation-type">Back to installation type</button><button class="button primary danger-button" id="begin-install" ${this.localReviewMode ? 'disabled' : ''}>${this.localReviewMode ? 'Install disabled in local review' : 'Install on Board'}</button></div>`;
+      return `<div class="actions split"><button class="button ghost" id="back-installation-type">Back to installation type</button><button class="button primary danger-button" id="begin-install" ${this.localReviewMode ? 'disabled' : ''}>${this.localReviewMode ? 'Install disabled in local review' : 'Install on Companion Device'}</button></div>`;
     }
     if (this.step === 7) {
       return '<div class="actions centered"><button class="button primary" id="finish-setup">Finish — install another Companion Device</button></div>';
@@ -326,17 +326,17 @@ export class InstallerApp {
 
   private renderConnect(): string {
     return `
-      ${this.pageHeader('Step 3 of 8', 'Connect to the companion Board', 'Sign in with the Companion Device administrator account used only for installation. If certificate trust blocks sign-in, a recovery link appears after the failed attempt.')}
+      ${this.pageHeader('Step 3 of 8', 'Connect to the Companion Device', 'Sign in with the Companion Device administrator account used only for installation. If certificate trust blocks sign-in, a recovery link appears after the failed attempt.')}
       ${this.errorNotice()}
       <section class="panel connect-panel">
         <div class="panel-heading"><span class="heading-icon">${deviceIcon}</span><div><h2>Companion Device connection</h2><p>Enter the device identity and administrator credentials. The serial comparison confirms the intended device before installation.</p></div></div>
         <div class="connection-fields">
-          <label class="field"><span>Companion Board Host address</span><input id="board-host" inputmode="url" placeholder="board.example.com or 10.0.0.120" value="${escapeHtml(this.adminCredentials.host)}" autocomplete="off"></label>
+          <label class="field"><span>Companion Device host address</span><input id="companion-device-host" inputmode="url" placeholder="companion.example.com or 10.0.0.120" value="${escapeHtml(this.adminCredentials.host)}" autocomplete="off"></label>
           <label class="field"><span>Companion Device Serial</span><input id="expected-serial" value="${escapeHtml(this.expectedSerial)}" autocomplete="off" spellcheck="false"><small>The serial is used for Device Verification prior to Installation</small></label>
           <label class="field"><span>Companion Device Username</span><input id="admin-username" value="${escapeHtml(this.adminCredentials.username)}" autocomplete="username"></label>
           <label class="field"><span>Companion Device Password</span><input id="admin-password" type="password" value="${escapeHtml(this.adminCredentials.password)}" autocomplete="current-password"></label>
         </div>
-        ${this.certificatePromptVisible ? `<div class="certificate-recovery"><span>${certificateIcon}</span><div><strong>Certificate trust may be blocking sign-in</strong><p>Open the Companion Board address, accept its self-signed certificate warning, then try connecting again.</p><button class="button secondary" id="trust-certificate" type="button">Open Companion Board certificate page</button></div></div>` : ''}
+        ${this.certificatePromptVisible ? `<div class="certificate-recovery"><span>${certificateIcon}</span><div><strong>Certificate trust may be blocking sign-in</strong><p>Open the Companion Device address, accept its self-signed certificate warning, then try connecting again.</p><button class="button secondary" id="trust-certificate" type="button">Open Companion Device certificate page</button></div></div>` : ''}
       </section>`;
   }
 
@@ -368,8 +368,8 @@ export class InstallerApp {
     }
     const note = leaf.lockedReason === 'version'
       ? 'Source-controlled version — shown for reference and never edited.'
-      : leaf.lockedReason === 'board-host'
-        ? 'Filled from the Board address used during sign-in.'
+      : leaf.lockedReason === 'companion-device-host'
+        ? 'Filled from the Companion Device address used during sign-in.'
         : '';
     return `<label class="config-field"><span>${escapeHtml(label)}${locked ? '<mark>Installer controlled</mark>' : ''}</span>${control}${note ? `<small>${escapeHtml(note)}</small>` : ''}</label>`;
   }
@@ -399,13 +399,13 @@ export class InstallerApp {
 
   private renderConfigure(): string {
     return `
-      ${this.pageHeader('Step 4 of 8', 'Configure the Board runtime', 'Every value is generated from the selected Config macro. Per-install edits remain in memory and never change repository files.')}
+      ${this.pageHeader('Step 4 of 8', 'Configure the Companion Device runtime', 'Every value is generated from the selected Config macro. Per-install edits remain in memory and never change repository files.')}
       ${this.errorNotice()}
       ${this.renderCompatibility()}
       ${this.compatibility?.deskSeriesWarning ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Desk Series is not recommended</strong><p>This platform is available for testing and special use cases.</p></div></div>` : ''}
-      ${this.compatibility?.activeCalls ? `<div class="notice danger"><span>${warningIcon}</span><div><strong>Active call detected</strong><p>Installing and restarting macros during a call may change Board behavior.</p><label class="check-row compact"><input id="active-call-confirm" type="checkbox" ${this.activeCallConfirmed ? 'checked' : ''}><span>I understand and want to continue during the active call.</span></label></div></div>` : ''}
+      ${this.compatibility?.activeCalls ? `<div class="notice danger"><span>${warningIcon}</span><div><strong>Active call detected</strong><p>Installing and restarting macros during a call may change Companion Device behavior.</p><label class="check-row compact"><input id="active-call-confirm" type="checkbox" ${this.activeCallConfirmed ? 'checked' : ''}><span>I understand and want to continue during the active call.</span></label></div></div>` : ''}
       <section class="panel callback-panel">
-        <div class="panel-heading"><span class="heading-icon">${settingsIcon}</span><div><h2>Board callback account</h2><p>This existing local Board account is written into Config for runtime callbacks. <strong>custom-companion</strong> is the suggested username. A distinct account is encouraged for clearer audit logs, though it may be the same as the installer sign-in.</p></div></div>
+        <div class="panel-heading"><span class="heading-icon">${settingsIcon}</span><div><h2>Companion Device callback account</h2><p>This existing local Companion Device account is written into Config for runtime callbacks. <strong>custom-companion</strong> is the suggested username. A distinct account is encouraged for clearer audit logs, though it may be the same as the installer sign-in.</p></div></div>
         <label class="check-row"><input id="reuse-admin" type="checkbox"><span><strong>Use installer sign-in for callback authentication</strong><small>This is allowed, but a distinct account makes audit activity easier to identify.</small></span></label>
       </section>
       <section class="config-editor" aria-label="Dynamic configuration editor">${this.renderConfigGroups()}</section>`;
@@ -421,7 +421,7 @@ export class InstallerApp {
           <span class="installation-type-copy">
             <small>Standard installation</small>
             <strong>Install Custom Companion 2026 Macros</strong>
-            <em>Preserves <code>${GENERATED_STORAGE_MACRO}</code> and its existing board-local Custom Companion state.</em>
+            <em>Preserves <code>${GENERATED_STORAGE_MACRO}</code> and its existing Companion Device-local Custom Companion state.</em>
           </span>
         </label>
         <label class="installation-type-card clean ${this.installationType === 'clean' ? 'selected' : ''}">
@@ -429,7 +429,7 @@ export class InstallerApp {
           <span class="installation-type-copy">
             <small>Clean installation</small>
             <strong>Purge ${GENERATED_STORAGE_MACRO} and Install Custom Companion 2026 Macros</strong>
-            <em>Deletes saved parent devices, Pending Deregistration cleanup records, the active parent selection, PIN Mode state, and captured StandAlone UI and standby settings before installation.</em>
+            <em>Deletes saved Parent Room Devices, Pending Deregistration cleanup records, the active Parent Room selection, PIN Mode state, and captured Standalone UI and standby settings before installation.</em>
           </span>
         </label>
       </section>
@@ -447,11 +447,11 @@ export class InstallerApp {
     const storageInstalled = this.installed.some((macro) => macro.name === GENERATED_STORAGE_MACRO);
     const config = this.configDocument ? redactConfig(withLeafValues(this.configDocument, this.configValues)) : {};
     return `
-      ${this.pageHeader('Step 6 of 8', 'Review before installing', 'All source files have passed preflight. The next action begins forward-only changes on the connected Board.')}
+      ${this.pageHeader('Step 6 of 8', 'Review before installing', 'All source files have passed preflight. The next action begins forward-only changes on the connected Companion Device.')}
       ${this.errorNotice()}
       <section class="summary-grid install-summary">
         <div class="summary-item"><small>Installation source</small><strong>${escapeHtml(source?.label ?? '')}</strong><span title="${escapeHtml(this.snapshot?.commitSha ?? '')}">${escapeHtml((this.snapshot?.commitSha ?? '').slice(0, 12))}</span></div>
-        <div class="summary-item"><small>Target Board</small><strong>${escapeHtml(this.adminCredentials.host)}</strong><span>Serial match confirmed</span></div>
+        <div class="summary-item"><small>Target Companion Device</small><strong>${escapeHtml(this.adminCredentials.host)}</strong><span>Serial match confirmed</span></div>
         <div class="summary-item"><small>Files ready</small><strong>${this.preparedResources.length}</strong><span>${this.snapshot?.manifest.Files.length ?? 0} project · ${this.snapshot?.manifest.ExternalDependencies.length ?? 0} external</span></div>
         <div class="summary-item"><small>Installation type</small><strong>${cleanInstallation ? 'Clean installation' : 'Standard installation'}</strong><span>${cleanInstallation ? (storageInstalled ? `${GENERATED_STORAGE_MACRO} will be removed` : 'No generated storage macro was found') : 'Generated storage will be preserved'}</span></div>
       </section>
@@ -464,29 +464,29 @@ export class InstallerApp {
         <header><div><h2 id="config-preview-title">Full Config object</h2><p>Every generated setting is shown below. Credential values remain masked in this review.</p></div></header>
         <pre><code>const config = ${escapeHtml(JSON.stringify(config, null, 2))};</code></pre>
       </section>
-      <div class="notice danger"><span>${warningIcon}</span><div><strong>No automatic rollback</strong><p>${cleanInstallation ? `${GENERATED_STORAGE_MACRO} and its stored board state will be permanently removed before matching macros are overwritten.` : 'Matching macros will be overwritten while generated board storage is preserved.'} Installation continues forward and reports the macro runtime result.</p></div></div>`;
+      <div class="notice danger"><span>${warningIcon}</span><div><strong>No automatic rollback</strong><p>${cleanInstallation ? `${GENERATED_STORAGE_MACRO} and its stored Companion Device state will be permanently removed before matching macros are overwritten.` : 'Matching macros will be overwritten while generated Companion Device storage is preserved.'} Installation continues forward and reports the macro runtime result.</p></div></div>`;
   }
 
   private renderInstall(): string {
     const outcome = this.installOutcome;
     const ready = outcome?.kind === 'ready' || outcome?.kind === 'ready-with-warnings';
     return `
-      ${this.pageHeader('Step 7 of 8', ready ? 'Board installation ready' : 'Installing and verifying', ready ? 'The Board macros initialized successfully. Parent configuration still belongs in the Board UI.' : 'The installer is listening to Event Macros Log for runtime errors and the initialization-complete message.')}
+      ${this.pageHeader('Step 7 of 8', ready ? 'Companion Device installation ready' : 'Installing and verifying', ready ? 'The Companion Device macros initialized successfully. Parent Room Device configuration still belongs in the Companion Device UI.' : 'The installer is listening to Event Macros Log for runtime errors and the initialization-complete message.')}
       ${this.installError ? `<div class="notice error"><span>${warningIcon}</span><div><strong>Installation stopped</strong><p>${escapeHtml(this.installError)}</p></div></div>` : ''}
       <section class="panel install-status">
         <div class="status-orb ${ready ? 'ready' : outcome?.kind === 'failed' ? 'failed' : ''}">${ready ? checkIcon : outcome?.kind === 'failed' ? warningIcon : '<span class="spinner large"></span>'}</div>
         <h2>${ready ? (outcome?.kind === 'ready-with-warnings' ? 'Installed with warnings' : 'Macros installed and ready') : outcome?.kind === 'timeout' ? 'Initialization not confirmed' : outcome?.kind === 'failed' || this.installError ? 'Initialization failed' : 'Installation in progress'}</h2>
-        <p>${ready ? 'The Custom Companion runtime is active on this Board.' : outcome?.kind === 'timeout' ? 'No success or failure message arrived within two minutes. The log subscription remains active.' : this.installProgress || 'Preparing installation…'}</p>
+        <p>${ready ? 'The Custom Companion runtime is active on this Companion Device.' : outcome?.kind === 'timeout' ? 'No success or failure message arrived within two minutes. The log subscription remains active.' : this.installProgress || 'Preparing installation…'}</p>
         ${outcome?.kind === 'ready-with-warnings' ? `<div class="notice warning inline"><span>${warningIcon}</span><div><strong>${outcome.warnings.length} runtime error${outcome.warnings.length === 1 ? '' : 's'} observed</strong><p>Initialization completed, but review the log entries below.</p></div></div>` : ''}
       </section>
       ${this.macroLogs.length ? `<details class="log-panel" open><summary>Macro event log <span>${this.macroLogs.length}</span></summary><ol>${this.macroLogs.slice(-50).map((entry) => `<li class="${entry.classification}"><span>${escapeHtml(entry.classification)}</span><code>${escapeHtml(entry.message)}</code></li>`).join('')}</ol></details>` : ''}
-      ${ready ? `<div class="modal-backdrop"><div class="success-dialog" role="dialog" aria-modal="true" aria-labelledby="ready-title"><button class="dialog-close" id="close-ready" aria-label="Close and disconnect">Close</button><span class="dialog-icon">${checkIcon}</span><h2 id="ready-title">Macros installed and ready</h2><p>Custom Companion initialized on the Board. Configure parent devices next from the Board UI.</p><button class="button primary" id="acknowledge-ready">Continue</button></div></div>` : ''}`;
+      ${ready ? `<div class="modal-backdrop"><div class="success-dialog" role="dialog" aria-modal="true" aria-labelledby="ready-title"><button class="dialog-close" id="close-ready" aria-label="Close and disconnect">Close</button><span class="dialog-icon">${checkIcon}</span><h2 id="ready-title">Macros installed and ready</h2><p>Custom Companion initialized on the Companion Device. Configure Parent Room Devices next from the Companion Device UI.</p><button class="button primary" id="acknowledge-ready">Continue</button></div></div>` : ''}`;
   }
 
   private renderCompleteSetup(): string {
     const host = this.completionHost || this.adminCredentials.host;
     return `
-      ${this.pageHeader('Step 8 of 8', 'Complete setup on the Companion Device', 'The Custom Companion Macro is installed. Configuration of parent devices remains on the Companion Device.')}
+      ${this.pageHeader('Step 8 of 8', 'Complete setup on the Companion Device', 'The Custom Companion Macro is installed. Parent Room Device configuration remains on the Companion Device.')}
       <section class="panel complete-setup-panel">
         <span class="completion-icon">${checkIcon}</span>
         <div>
@@ -494,8 +494,8 @@ export class InstallerApp {
           <p>The installer has disconnected from the device. Finish the remaining setup directly from the Custom Companion interface on the Companion Device.</p>
           <ol class="completion-steps">
             <li><strong>Open Custom Companion</strong><span>Return to the Companion Device and open its Custom Companion interface.</span></li>
-            <li><strong>Complete parent configuration</strong><span>Add or update the parent room devices from the on-device configuration experience.</span></li>
-            <li><strong>Confirm the device is ready</strong><span>Review the available parent choices and the StandAlone state before placing the device into service.</span></li>
+            <li><strong>Complete Parent Room Device configuration</strong><span>Add or update Parent Room Devices from the on-device configuration experience.</span></li>
+            <li><strong>Confirm the device is ready</strong><span>Review the available parent choices and the Standalone state before placing the device into service.</span></li>
           </ol>
         </div>
       </section>`;
@@ -526,7 +526,7 @@ export class InstallerApp {
     });
     this.byId('back-release')?.addEventListener('click', () => { this.step = 1; this.error = ''; this.render(); });
     this.byId('trust-certificate')?.addEventListener('click', () => this.openCertificate());
-    this.byId('connect-board')?.addEventListener('click', () => void this.connectBoard());
+    this.byId('connect-companion-device')?.addEventListener('click', () => void this.connectCompanionDevice());
     this.byId('reuse-admin')?.addEventListener('change', (event) => this.reuseAdminCredentials((event.target as HTMLInputElement).checked));
     this.byId('config-continue')?.addEventListener('click', () => void this.validateConfiguration());
     this.byId('disconnect-config')?.addEventListener('click', () => this.reset());
@@ -622,7 +622,7 @@ export class InstallerApp {
       this.configDocument = parseConfigDocument(configSource);
     }
 
-    this.adminCredentials = { host: 'review-board.local', username: 'installer-review', password: 'review-only' };
+    this.adminCredentials = { host: 'review-companion-device.local', username: 'installer-review', password: 'review-only' };
     this.expectedSerial = 'LOCAL-REVIEW-SERIAL';
     this.compatibility = {
       roomOsVersion: this.snapshot.manifest.MinimumRoomOSVersion,
@@ -673,7 +673,7 @@ export class InstallerApp {
 
   private captureConnectFields(): void {
     this.adminCredentials = {
-      host: (this.byId('board-host') as HTMLInputElement | null)?.value ?? '',
+      host: (this.byId('companion-device-host') as HTMLInputElement | null)?.value ?? '',
       username: (this.byId('admin-username') as HTMLInputElement | null)?.value ?? '',
       password: (this.byId('admin-password') as HTMLInputElement | null)?.value ?? '',
     };
@@ -681,9 +681,9 @@ export class InstallerApp {
   }
 
   private openCertificate(): void {
-    const hostInput = this.byId('board-host') as HTMLInputElement | null;
+    const hostInput = this.byId('companion-device-host') as HTMLInputElement | null;
     try {
-      const host = normalizeBoardHost(hostInput?.value ?? '');
+      const host = normalizeCompanionDeviceHost(hostInput?.value ?? '');
       window.open(`https://${host}`, '_blank', 'noopener,noreferrer');
       this.error = '';
     } catch (error) {
@@ -693,13 +693,13 @@ export class InstallerApp {
     }
   }
 
-  private async connectBoard(): Promise<void> {
+  private async connectCompanionDevice(): Promise<void> {
     this.captureConnectFields();
     this.error = '';
     try {
-      this.adminCredentials.host = normalizeBoardHost(this.adminCredentials.host);
+      this.adminCredentials.host = normalizeCompanionDeviceHost(this.adminCredentials.host);
       if (!this.adminCredentials.username || !this.adminCredentials.password) throw new Error('Enter the installer username and password.');
-      if (!normalizeSerial(this.expectedSerial)) throw new Error('Enter the expected Board serial number.');
+      if (!normalizeSerial(this.expectedSerial)) throw new Error('Enter the expected Companion Device serial number.');
       if (!this.snapshot || !this.configDocument) throw new Error('Select an installation source first.');
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
@@ -711,14 +711,14 @@ export class InstallerApp {
     this.render();
     let signedIn = false;
     try {
-      this.board = await connectToBoard(this.adminCredentials);
+      this.companionDevice = await connectToCompanionDevice(this.adminCredentials);
       signedIn = true;
       this.certificatePromptVisible = false;
-      this.compatibility = await validateConnectedBoard(this.board, this.snapshot.manifest, this.expectedSerial);
-      if (!this.compatibility.serialMatches) throw new Error('Serial number mismatch. No files were changed, and the serial read from the Board was not displayed.');
+      this.compatibility = await validateConnectedCompanionDevice(this.companionDevice, this.snapshot.manifest, this.expectedSerial);
+      if (!this.compatibility.serialMatches) throw new Error('Serial number mismatch. No files were changed, and the serial read from the Companion Device was not displayed.');
       if (!this.compatibility.roomOsSupported) throw new Error(`RoomOS ${this.compatibility.roomOsVersion} is below the required ${this.snapshot.manifest.MinimumRoomOSVersion}.`);
       if (!this.compatibility.productSupported) throw new Error(`${this.compatibility.productPlatform} is not supported by the selected release.`);
-      this.installed = await listInstalledMacros(this.board);
+      this.installed = await listInstalledMacros(this.companionDevice);
       this.configValues = new Map(this.configDocument.leaves.map((leaf) => [configPathId(leaf.path), leaf.value]));
       this.configValues = setLockedInstallerValues(this.configDocument, this.configValues, this.adminCredentials.host);
       for (const leaf of this.configDocument.leaves) {
@@ -728,8 +728,8 @@ export class InstallerApp {
       }
       this.step = 3;
     } catch (error) {
-      this.board?.close();
-      this.board = undefined;
+      this.companionDevice?.close();
+      this.companionDevice = undefined;
       this.compatibility = undefined;
       if (!signedIn) this.certificatePromptVisible = true;
       this.error = error instanceof Error ? error.message : String(error);
@@ -775,7 +775,7 @@ export class InstallerApp {
       : result;
   }
 
-  private callbackCredentials(values: Map<string, ConfigValue>): BoardCredentials {
+  private callbackCredentials(values: Map<string, ConfigValue>): CompanionDeviceCredentials {
     if (!this.configDocument) throw new Error('The Config macro is unavailable.');
     const get = (path: string) => {
       const leaf = this.configDocument?.leaves.find((item) => formatConfigPath(item.path) === path);
@@ -784,7 +784,7 @@ export class InstallerApp {
     const username = get('CompanionBoardInformation.username');
     const password = get('CompanionBoardInformation.password');
     if (typeof username !== 'string' || !username || typeof password !== 'string' || !password) {
-      throw new Error('Enter the existing Board callback username and password in CompanionBoardInformation.');
+      throw new Error('Enter the existing Companion Device callback username and password in Companion Device Information.');
     }
     return { host: this.adminCredentials.host, username, password };
   }
@@ -814,10 +814,10 @@ export class InstallerApp {
   }
 
   private async beginInstall(): Promise<void> {
-    if (!this.board || !this.installationType) return;
+    if (!this.companionDevice || !this.installationType) return;
     if (this.installationType === 'clean') {
       try {
-        const latestInstalled = await listInstalledMacros(this.board);
+        const latestInstalled = await listInstalledMacros(this.companionDevice);
         const latestStorage = latestInstalled.find((macro) => macro.name === GENERATED_STORAGE_MACRO);
         this.installed = this.installed.filter((macro) => macro.name !== GENERATED_STORAGE_MACRO);
         if (latestStorage) this.installed.push(latestStorage);
@@ -837,7 +837,7 @@ export class InstallerApp {
     this.step = 6;
     this.installProgress = 'Subscribing to the macro event log';
     this.monitor = new InitializationMonitor(
-      this.board,
+      this.companionDevice,
       (classification, message) => {
         this.macroLogs.push({ classification, message: this.sanitizeLog(message) });
         if (this.macroLogs.length > 100) this.macroLogs.shift();
@@ -848,7 +848,7 @@ export class InstallerApp {
     this.render();
     try {
       await installMacroResources(
-        this.board,
+        this.companionDevice,
         this.preparedResources,
         this.installed,
         {
@@ -891,12 +891,12 @@ export class InstallerApp {
   }
 
   private async restartRuntime(): Promise<void> {
-    if (!this.board) return;
+    if (!this.companionDevice) return;
     this.installProgress = 'Restarting the macro runtime';
     this.installOutcome = undefined;
     this.render();
     try {
-      await this.board.command('Macros Runtime Restart');
+      await this.companionDevice.command('Macros Runtime Restart');
       await this.waitForInitialization();
     } catch (error) {
       this.installError = error instanceof Error ? error.message : String(error);
@@ -907,8 +907,8 @@ export class InstallerApp {
   private completeInstallation(): void {
     this.monitor?.close();
     this.monitor = undefined;
-    this.board?.close();
-    this.board = undefined;
+    this.companionDevice?.close();
+    this.companionDevice = undefined;
     this.completionHost = this.adminCredentials.host;
     this.adminCredentials = { host: '', username: '', password: '' };
     this.expectedSerial = '';
@@ -924,8 +924,8 @@ export class InstallerApp {
   private reset(): void {
     this.monitor?.close();
     this.monitor = undefined;
-    this.board?.close();
-    this.board = undefined;
+    this.companionDevice?.close();
+    this.companionDevice = undefined;
     this.step = 0;
     this.error = '';
     this.snapshot = undefined;

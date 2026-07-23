@@ -21,10 +21,10 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 0.1.2.38
+ * Version:                 0.1.2.39
  *
- * Description:             Parent room registration, validation, deregistration, and peripheral-cleanup entry macro used as the install source.
- *                          The numbered source remains inactive on the board; parent installation renames
+ * Description:             Parent Room registration, validation, deregistration, and peripheral-cleanup entry macro used as the install source.
+ *                          The numbered source remains inactive on the Companion Device; Parent Room installation renames
  *                          and activates it as Custom-Campanion_Room_2026.
  *
  * Documentation:           N/A
@@ -50,9 +50,9 @@ import { parentCallCoordination } from './Custom-Campanion_12_ParentCallCoordina
 const log = new utils.Logger('Custom-Campanion_RoomReference');
 
 const STORAGE_MACRO_NAME = 'Custom-Campanion';
-const REGISTERED_BOARDS_STORAGE_KEY = 'registeredBoards';
-const BOARD_CONFIGS_STORAGE_KEY = 'boardConfigs';
-const MAX_REGISTERED_BOARDS = 3;
+const REGISTERED_COMPANION_DEVICES_STORAGE_KEY = 'registeredBoards';
+const COMPANION_DEVICE_CONFIGS_STORAGE_KEY = 'boardConfigs';
+const MAX_REGISTERED_COMPANION_DEVICES = 3;
 const HTTP_CLIENT_CONFIG = {
 	mode: 'On',
 	allowInsecureHTTPS: true,
@@ -62,8 +62,8 @@ const STANDBY_SYNC_DEBOUNCE_MS = 250;
 
 const mem = new MemoryStorage(xapi, { StorageMacroName: STORAGE_MACRO_NAME });
 
-let registeredBoards = [];
-let boardConfigs = {};
+let registeredCompanionDevices = [];
+let companionDeviceConfigs = {};
 let standbySyncTimeout = null;
 let lastStandbyState = '';
 
@@ -74,7 +74,7 @@ const parentCallCoordinationController = parentCallCoordination.create({
 	deviceComms: deviceComms,
 	httpClientConfig: HTTP_CLIENT_CONFIG,
 	sendRegistrationResponse: sendRegistrationResponse,
-	normalizeBoardRecord: normalizeBoardRecord
+	normalizeCompanionDeviceRecord: normalizeCompanionDeviceRecord
 });
 
 async function init() {
@@ -103,14 +103,14 @@ async function init() {
 			});
 		}
 
-		registeredBoards = await readMemoryOrDefault(REGISTERED_BOARDS_STORAGE_KEY, []);
-		boardConfigs = await readMemoryOrDefault(BOARD_CONFIGS_STORAGE_KEY, {});
-		parentCallCoordinationController.setRegisteredBoards(registeredBoards);
+		registeredCompanionDevices = await readMemoryOrDefault(REGISTERED_COMPANION_DEVICES_STORAGE_KEY, []);
+		companionDeviceConfigs = await readMemoryOrDefault(COMPANION_DEVICE_CONFIGS_STORAGE_KEY, {});
+		parentCallCoordinationController.setRegisteredCompanionDevices(registeredCompanionDevices);
 			registerMessageHandler();
 			registerStandbyStateHandler();
 			await parentCallCoordinationController.start();
-			await validateRegisteredBoards();
-		log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredBoardCount: registeredBoards.length });
+			await validateRegisteredCompanionDevices();
+		log.info({ Message: 'Custom Campanion Room Reference initialized', RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 	} catch (error) {
 		const diagnostic = error.Diagnostic || {};
 		log.error({
@@ -178,11 +178,11 @@ function queueStandbySync(state) {
 }
 
 async function sendStandbySync(state) {
-	for (let index = 0; index < registeredBoards.length; index++) {
-		await sendRegistrationResponse('StandbySync', { MessageId: '' }, registeredBoards[index], { State: state }, true);
+	for (let index = 0; index < registeredCompanionDevices.length; index++) {
+		await sendRegistrationResponse('StandbySync', { MessageId: '' }, registeredCompanionDevices[index], { State: state }, true);
 	}
 
-	log.info({ Message: 'Parent standby sync sent', State: state, RegisteredBoardCount: registeredBoards.length });
+	log.debug({ Message: 'Parent Room standby sync sent', State: state, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 }
 
 function normalizeEventValue(value) {
@@ -209,13 +209,13 @@ async function handleCompanionMessage(message) {
 		return;
 	}
 
-	if (!isRegisteredBoard(message.Serial)) {
+	if (!isRegisteredCompanionDevice(message.Serial)) {
 		await sendConfigRequired(message);
 		return;
 	}
 
 	if (message.Action === 'RegistrationValidated') {
-		log.info({ Message: 'Companion board confirmed Parent Room Registration', Serial: message.Serial, TransactionId: getTransactionId(message) });
+		log.info({ Message: 'Companion Device confirmed Parent Room Registration', Serial: message.Serial, TransactionId: getTransactionId(message) });
 		return;
 	}
 
@@ -233,40 +233,40 @@ async function handleCompanionMessage(message) {
 }
 
 async function handleParentReadyRequest(message) {
-	const boardRecord = normalizeBoardRecord(message);
-	await sendRegistrationResponse('ParentReady', message, boardRecord, withTransaction(message, { Status: 'Ready' }), true);
+	const companionDeviceRecord = normalizeCompanionDeviceRecord(message);
+	await sendRegistrationResponse('ParentReady', message, companionDeviceRecord, withTransaction(message, { Status: 'Ready' }), true);
 }
 
 async function handleConfigSync(message) {
-	const boardRecord = normalizeBoardRecord(message);
+	const companionDeviceRecord = normalizeCompanionDeviceRecord(message);
 	const syncedConfig = message.Payload && message.Payload.Config ? message.Payload.Config : {};
-	const existingIndex = registeredBoards.findIndex(board => board.Serial === boardRecord.Serial);
+	const existingIndex = registeredCompanionDevices.findIndex(companionDevice => companionDevice.Serial === companionDeviceRecord.Serial);
 
-	if (existingIndex === -1 && registeredBoards.length >= MAX_REGISTERED_BOARDS) {
-		await sendRegistrationResponse('ConfigDenied', message, boardRecord, withTransaction(message, {
+	if (existingIndex === -1 && registeredCompanionDevices.length >= MAX_REGISTERED_COMPANION_DEVICES) {
+		await sendRegistrationResponse('ConfigDenied', message, companionDeviceRecord, withTransaction(message, {
 			Reason: 'MaxBoardsReached',
-			MaxBoards: MAX_REGISTERED_BOARDS,
-			RegisteredBoardCount: registeredBoards.length
+			MaxBoards: MAX_REGISTERED_COMPANION_DEVICES,
+			RegisteredBoardCount: registeredCompanionDevices.length
 		}), false);
 		return;
 	}
 
 	if (existingIndex >= 0) {
-		registeredBoards[existingIndex] = boardRecord;
+		registeredCompanionDevices[existingIndex] = companionDeviceRecord;
 	} else {
-		registeredBoards.push(boardRecord);
+		registeredCompanionDevices.push(companionDeviceRecord);
 	}
-	parentCallCoordinationController.setRegisteredBoards(registeredBoards);
+	parentCallCoordinationController.setRegisteredCompanionDevices(registeredCompanionDevices);
 
-	boardConfigs[boardRecord.Serial] = syncedConfig;
-	await mem.write(REGISTERED_BOARDS_STORAGE_KEY, registeredBoards);
-	await mem.write(BOARD_CONFIGS_STORAGE_KEY, boardConfigs);
+	companionDeviceConfigs[companionDeviceRecord.Serial] = syncedConfig;
+	await mem.write(REGISTERED_COMPANION_DEVICES_STORAGE_KEY, registeredCompanionDevices);
+	await mem.write(COMPANION_DEVICE_CONFIGS_STORAGE_KEY, companionDeviceConfigs);
 	await applySyncedConfig(syncedConfig);
-	await sendRegistrationResponse('ConfigAccepted', message, boardRecord, withTransaction(message, {
-		MaxBoards: MAX_REGISTERED_BOARDS,
-		RegisteredBoardCount: registeredBoards.length
+	await sendRegistrationResponse('ConfigAccepted', message, companionDeviceRecord, withTransaction(message, {
+		MaxBoards: MAX_REGISTERED_COMPANION_DEVICES,
+		RegisteredBoardCount: registeredCompanionDevices.length
 	}), true);
-	log.info({ Message: 'Companion board configuration synced', Serial: boardRecord.Serial, Name: boardRecord.Name, RegisteredBoardCount: registeredBoards.length });
+	log.info({ Message: 'Companion Device configuration synced', Serial: companionDeviceRecord.Serial, Name: companionDeviceRecord.Name, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 }
 
 async function applySyncedConfig(syncedConfig) {
@@ -279,42 +279,42 @@ async function applySyncedConfig(syncedConfig) {
 	}
 }
 
-async function validateRegisteredBoards() {
-	for (let index = 0; index < registeredBoards.length; index++) {
-		const boardRecord = registeredBoards[index];
-		await sendRegistrationResponse('RegistrationValidation', { MessageId: '' }, boardRecord, {
-			TransactionId: createTransactionId('validation', boardRecord.Serial),
+async function validateRegisteredCompanionDevices() {
+	for (let index = 0; index < registeredCompanionDevices.length; index++) {
+		const companionDeviceRecord = registeredCompanionDevices[index];
+		await sendRegistrationResponse('RegistrationValidation', { MessageId: '' }, companionDeviceRecord, {
+			TransactionId: createTransactionId('validation', companionDeviceRecord.Serial),
 			Status: 'ValidationRequested'
 		}, true);
 	}
 }
 
 async function handleDeregisterRequest(message) {
-	const boardRecord = normalizeBoardRecord(message);
-	const peripheralId = String(message.Payload && message.Payload.PeripheralId || boardRecord.MacAddress || boardRecord.Serial || '');
+	const companionDeviceRecord = normalizeCompanionDeviceRecord(message);
+	const peripheralId = String(message.Payload && message.Payload.PeripheralId || companionDeviceRecord.MacAddress || companionDeviceRecord.Serial || '');
 
-	await purgeBoardPeripheral(peripheralId);
-	registeredBoards = registeredBoards.filter(board => board.Serial !== boardRecord.Serial);
-	delete boardConfigs[boardRecord.Serial];
-	await mem.write(BOARD_CONFIGS_STORAGE_KEY, boardConfigs);
-	await mem.write(REGISTERED_BOARDS_STORAGE_KEY, registeredBoards);
-	parentCallCoordinationController.setRegisteredBoards(registeredBoards);
+	await purgeCompanionDevicePeripheral(peripheralId);
+	registeredCompanionDevices = registeredCompanionDevices.filter(companionDevice => companionDevice.Serial !== companionDeviceRecord.Serial);
+	delete companionDeviceConfigs[companionDeviceRecord.Serial];
+	await mem.write(COMPANION_DEVICE_CONFIGS_STORAGE_KEY, companionDeviceConfigs);
+	await mem.write(REGISTERED_COMPANION_DEVICES_STORAGE_KEY, registeredCompanionDevices);
+	parentCallCoordinationController.setRegisteredCompanionDevices(registeredCompanionDevices);
 
-	await sendRegistrationResponse('DeregistrationAccepted', message, boardRecord, withTransaction(message, {
+	await sendRegistrationResponse('DeregistrationAccepted', message, companionDeviceRecord, withTransaction(message, {
 		Status: 'Deregistered',
 		PeripheralId: peripheralId
 	}), true);
-	log.info({ Message: 'Companion board deregistered from parent room', Serial: boardRecord.Serial, PeripheralId: peripheralId, RegisteredBoardCount: registeredBoards.length });
+	log.info({ Message: 'Companion Device deregistered from Parent Room', Serial: companionDeviceRecord.Serial, PeripheralId: peripheralId, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 }
 
-async function purgeBoardPeripheral(peripheralId) {
+async function purgeCompanionDevicePeripheral(peripheralId) {
 	if (!peripheralId || !await isPeripheralConnected(peripheralId)) {
-		log.info({ Message: 'Companion board peripheral already absent', PeripheralId: peripheralId });
+		log.debug({ Message: 'Companion Device peripheral already absent', PeripheralId: peripheralId });
 		return;
 	}
 
 	await xapi.Command.Peripherals.Purge({ ID: peripheralId });
-	log.info({ Message: 'Companion board peripheral purged', PeripheralId: peripheralId });
+	log.info({ Message: 'Companion Device peripheral purged', PeripheralId: peripheralId });
 }
 
 async function isPeripheralConnected(peripheralId) {
@@ -344,22 +344,22 @@ function normalizeStatusList(status) {
 	return Object.keys(status).map(key => status[key]).filter(value => value && typeof value === 'object');
 }
 
-function normalizeBoardRecord(message) {
+function normalizeCompanionDeviceRecord(message) {
 	const source = message.Source || {};
 	const payload = message.Payload || {};
-	const board = payload.Board || {};
-	const serial = board.Serial || message.Serial;
-	const existingBoard = registeredBoards.find(item => item.Serial === serial) || {};
+	const companionDevicePayload = payload.Board || {};
+	const serial = companionDevicePayload.Serial || message.Serial;
+	const existingCompanionDeviceRecord = registeredCompanionDevices.find(item => item.Serial === serial) || {};
 	const now = new Date().toISOString();
 
 	return {
 		Serial: serial,
-		Name: board.Name || source.Name || message.Serial,
-		Host: board.Host || source.Host || existingBoard.Host || '',
-		Username: board.Username || existingBoard.Username || '',
-		Password: board.Password || existingBoard.Password || '',
-		MacAddress: board.MacAddress || source.MacAddress || '',
-		ProductPlatform: board.ProductPlatform || '',
+		Name: companionDevicePayload.Name || source.Name || message.Serial,
+		Host: companionDevicePayload.Host || source.Host || existingCompanionDeviceRecord.Host || '',
+		Username: companionDevicePayload.Username || existingCompanionDeviceRecord.Username || '',
+		Password: companionDevicePayload.Password || existingCompanionDeviceRecord.Password || '',
+		MacAddress: companionDevicePayload.MacAddress || source.MacAddress || '',
+		ProductPlatform: companionDevicePayload.ProductPlatform || '',
 		Capabilities: payload.Capabilities || {},
 		RegisteredAt: getRegisteredAt(serial) || now,
 		LastMessageAt: now
@@ -367,17 +367,17 @@ function normalizeBoardRecord(message) {
 }
 
 function getRegisteredAt(serial) {
-	const board = registeredBoards.find(item => item.Serial === serial);
-	return board ? board.RegisteredAt : '';
+	const companionDevice = registeredCompanionDevices.find(item => item.Serial === serial);
+	return companionDevice ? companionDevice.RegisteredAt : '';
 }
 
-function isRegisteredBoard(serial) {
-	return registeredBoards.some(board => board.Serial === serial);
+function isRegisteredCompanionDevice(serial) {
+	return registeredCompanionDevices.some(companionDevice => companionDevice.Serial === serial);
 }
 
 async function sendConfigRequired(message) {
-	const boardRecord = normalizeBoardRecord(message);
-	await sendRegistrationResponse('ConfigRequired', message, boardRecord, withTransaction(message, { Reason: 'BoardConfigNotSynced' }), false);
+	const companionDeviceRecord = normalizeCompanionDeviceRecord(message);
+	await sendRegistrationResponse('ConfigRequired', message, companionDeviceRecord, withTransaction(message, { Reason: 'BoardConfigNotSynced' }), false);
 }
 
 function withTransaction(message, payload) {
@@ -394,16 +394,16 @@ function createTransactionId(prefix, serial) {
 	return `${prefix}:${serial}:${Date.now()}`;
 }
 
-async function sendRegistrationResponse(action, inboundMessage, boardRecord, payload, isAccepted) {
+async function sendRegistrationResponse(action, inboundMessage, companionDeviceRecord, payload, isAccepted) {
 	const parentSource = await getParentSource();
-	const boardDevice = {
-		host: boardRecord.Host,
-		username: boardRecord.Username,
-		password: boardRecord.Password
+	const companionDevice = {
+		host: companionDeviceRecord.Host,
+		username: companionDeviceRecord.Username,
+		password: companionDeviceRecord.Password
 	};
 
 	try {
-		await deviceComms.sendMessageCommand(xapi, boardDevice, action, payload, {
+		await deviceComms.sendMessageCommand(xapi, companionDevice, action, payload, {
 			app: 'Companion Board 2026',
 			serial: await getParentSerial(),
 			source: parentSource
@@ -411,10 +411,10 @@ async function sendRegistrationResponse(action, inboundMessage, boardRecord, pay
 	} catch (error) {
 		await xapi.Command.UserInterface.Message.Prompt.Display({
 			Title: 'Companion Registration Error',
-			Text: `${isAccepted ? 'Accepted' : 'Denied'} ${boardRecord.Name}, but response failed. Check board credentials.`,
+			Text: `${isAccepted ? 'Accepted' : 'Denied'} ${companionDeviceRecord.Name}, but response failed. Check Companion Device credentials.`,
 			Duration: 10
 		});
-		log.warn({ Message: 'Failed to send registration response to board', Action: action, Serial: boardRecord.Serial, Error: error.code || error.message || 'Unknown response error', ErrorContext: error.Context || {} });
+		log.warn({ Message: 'Failed to send registration response to Companion Device', Action: action, Serial: companionDeviceRecord.Serial, Error: error.code || error.message || 'Unknown response error', ErrorContext: error.Context || {} });
 	}
 }
 

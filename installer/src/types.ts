@@ -79,7 +79,7 @@ export interface ConfigLeaf {
   value: ConfigValue;
   start: number;
   end: number;
-  lockedReason?: 'version' | 'board-host';
+  lockedReason?: 'version' | 'companion-device-host';
 }
 
 export interface ConfigDocument {

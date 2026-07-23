@@ -10,24 +10,24 @@ import type {
   InstallManifest,
 } from './types';
 
-export type BoardXapi = ReturnType<typeof connect>;
+export type CompanionDeviceXapi = ReturnType<typeof connect>;
 
-export interface BoardCredentials {
+export interface CompanionDeviceCredentials {
   host: string;
   username: string;
   password: string;
 }
 
-export function normalizeBoardHost(input: string): string {
+export function normalizeCompanionDeviceHost(input: string): string {
   const trimmed = input.trim();
-  if (!trimmed) throw new Error('Enter the Board address.');
+  if (!trimmed) throw new Error('Enter the Companion Device address.');
   let url: URL;
   try {
     url = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`);
   } catch {
-    throw new Error('Enter a valid Board hostname or IP address.');
+    throw new Error('Enter a valid Companion Device hostname or IP address.');
   }
-  if (url.username || url.password || !url.host) throw new Error('Enter a valid Board hostname or IP address.');
+  if (url.username || url.password || !url.host) throw new Error('Enter a valid Companion Device hostname or IP address.');
   return url.host;
 }
 
@@ -35,7 +35,7 @@ export function normalizeSerial(value: string): string {
   return value.toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
-export function connectToBoard(credentials: BoardCredentials, timeoutMs = 20_000): Promise<BoardXapi> {
+export function connectToCompanionDevice(credentials: CompanionDeviceCredentials, timeoutMs = 20_000): Promise<CompanionDeviceXapi> {
   return new Promise((resolve, reject) => {
     const xapi = connect(`wss://${credentials.host}`, {
       username: credentials.username,
@@ -56,9 +56,9 @@ export function connectToBoard(credentials: BoardCredentials, timeoutMs = 20_000
         resolve(xapi);
       }
     };
-    const onError = () => finish(new Error('Unable to connect to the Board. Verify its certificate is trusted, the address is reachable, and the installer credentials are correct.'));
+    const onError = () => finish(new Error('Unable to connect to the Companion Device. Verify its certificate is trusted, the address is reachable, and the installer credentials are correct.'));
     const timer = window.setTimeout(
-      () => finish(new Error('The Board connection timed out. Trust its certificate in this browser, then try again.')),
+      () => finish(new Error('The Companion Device connection timed out. Trust its certificate in this browser, then try again.')),
       timeoutMs,
     );
     xapi.on('error', onError);
@@ -73,11 +73,11 @@ function scalarString(value: unknown): string {
     const candidate = value as Record<string, unknown>;
     if (typeof candidate.Value === 'string' || typeof candidate.Value === 'number') return String(candidate.Value);
   }
-  throw new Error('The Board returned an unexpected status value.');
+  throw new Error('The Companion Device returned an unexpected status value.');
 }
 
-export async function validateConnectedBoard(
-  xapi: BoardXapi,
+export async function validateConnectedCompanionDevice(
+  xapi: CompanionDeviceXapi,
   manifest: InstallManifest,
   expectedSerial: string,
 ): Promise<DeviceCompatibility> {
@@ -101,8 +101,8 @@ export async function validateConnectedBoard(
   };
 }
 
-export async function validateCallbackCredentials(credentials: BoardCredentials): Promise<void> {
-  const validationConnection = await connectToBoard(credentials);
+export async function validateCallbackCredentials(credentials: CompanionDeviceCredentials): Promise<void> {
+  const validationConnection = await connectToCompanionDevice(credentials);
   validationConnection.close();
 }
 
@@ -115,7 +115,7 @@ function macroArray(value: unknown): unknown[] {
   return [];
 }
 
-export async function listInstalledMacros(xapi: BoardXapi): Promise<InstalledMacro[]> {
+export async function listInstalledMacros(xapi: CompanionDeviceXapi): Promise<InstalledMacro[]> {
   const response = await xapi.command('Macros Macro Get', { Content: 'False' });
   return macroArray(response)
     .map((item): InstalledMacro | undefined => {

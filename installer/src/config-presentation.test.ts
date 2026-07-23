@@ -8,7 +8,7 @@ function leaf(path: Array<string | number>): ConfigLeaf {
 
 describe('Config presentation', () => {
   it('turns implementation keys into user-facing labels', () => {
-    expect(humanizeConfigSegment('CompanionBoardInformation')).toBe('Companion Board Information');
+    expect(humanizeConfigSegment('CompanionBoardInformation')).toBe('Companion Device Information');
     expect(humanizeConfigSegment('urlOverride')).toBe('URL Override');
     expect(humanizeConfigSegment('pin')).toBe('PIN');
     expect(humanizeConfigSegment('info2')).toBe('Info 2');

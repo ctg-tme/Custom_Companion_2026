@@ -21,12 +21,12 @@ or implied.
  *
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.3
+ * Version:                 1.0.4
  *
  * Description:             Parent Call Coordination controller for the Custom Companion Solution.
  *                          Owns parent call detection, BYOD detection, participant admission,
  *                          current-booking Meeting Password lookup, call-detail responses, and call
- *                          synchronization sent to registered boards.
+ *                          synchronization sent to registered Companion Devices.
  *
  * Documentation:           N/A
  *
@@ -53,7 +53,7 @@ or implied.
  *   Status.Conference.Call.Webex.MeetingInviteLink, Status.Call[1].Protocol, and
  *   Command.Bookings.List with ScheduleType Current.
  * - Command: Command.Conference.Participant.Admit.
- * - Network read: DeviceComms getCallStatus for a registered companion board.
+ * - Network read: DeviceComms getCallStatus for a registered Companion Device.
  */
 
 const ADMISSION_CHECK_DEBOUNCE_MS = 1500;
@@ -68,9 +68,9 @@ function createParentCallCoordination(options) {
 	const deviceComms = dependencies.deviceComms;
 	const HTTP_CLIENT_CONFIG = dependencies.httpClientConfig;
 	const sendRegistrationResponse = dependencies.sendRegistrationResponse;
-	const normalizeBoardRecord = dependencies.normalizeBoardRecord;
+	const normalizeCompanionDeviceRecord = dependencies.normalizeCompanionDeviceRecord;
 	const now = typeof dependencies.now === 'function' ? dependencies.now : Date.now;
-	let registeredBoards = [];
+	let registeredCompanionDevices = [];
 	let admissionCheckTimeout = null;
 	let admissionPollInterval = null;
 	let admissionPollDeadline = 0;
@@ -87,8 +87,8 @@ function createParentCallCoordination(options) {
 	let isByodSessionActive = false;
 	let callStateReconciliationPromise = null;
 
-	function setRegisteredBoards(value) {
-		registeredBoards = Array.isArray(value) ? value : [];
+	function setRegisteredCompanionDevices(value) {
+		registeredCompanionDevices = Array.isArray(value) ? value : [];
 	}
 
 	async function start() {
@@ -130,7 +130,7 @@ function createParentCallCoordination(options) {
 			}
 
 			pendingCallRemoteNumber = capturedRemoteNumber;
-			log.info({ Message: 'Captured parent call remote number', RemoteNumber: pendingCallRemoteNumber });
+			log.debug({ Message: 'Captured Parent Room call remote number', RemoteNumber: pendingCallRemoteNumber });
 			if (parentActiveCallCount > 0) {
 				sendPendingCallSync(detectionToken, { Trigger: 'ActiveCallCount', ActiveCallCount: parentActiveCallCount });
 				return;
@@ -181,13 +181,13 @@ function createParentCallCoordination(options) {
 		xapi.Status.SystemUnit.State.NumberOfActiveCalls.on(callCount => {
 			const activeCallCount = Number(normalizeEventValue(callCount));
 			parentActiveCallCount = activeCallCount;
-			log.debug({ Message: 'Parent active call count updated', ActiveCallCount: activeCallCount });
+			log.debug({ Message: 'Parent Room active call count updated', ActiveCallCount: activeCallCount });
 
 			if (activeCallCount > 0) {
 				sendPendingCallSync(callDetectionToken, { Trigger: 'ActiveCallCount', ActiveCallCount: activeCallCount });
 				if (!activeParentCallDetails && !pendingCallRemoteNumber) {
 					reconcileCurrentCallState('ActiveCallCount', true).catch(error => {
-						utils.softError({ Context: 'Failed to reconcile active parent call from call count', ActiveCallCount: activeCallCount, Error: error });
+						utils.softError({ Context: 'Failed to reconcile active Parent Room call from call count', ActiveCallCount: activeCallCount, Error: error });
 					});
 				}
 				queueCompanionAdmissionCheck('ActiveCallCount');
@@ -252,17 +252,17 @@ function createParentCallCoordination(options) {
 		admissionPollDeadline = Date.now() + ADMISSION_POLL_TIMEOUT_MS;
 		admissionPollInterval = setInterval(() => {
 			runAdmissionPoll(reason).catch(error => {
-				utils.softError({ Context: 'Failed to poll companion admission', Reason: reason, Error: error });
+				log.debug({ Message: 'Failed to poll Companion Device admission', Reason: reason, Error: error.code || error.message || 'Unknown Companion Device admission polling error' });
 			});
 		}, ADMISSION_POLL_INTERVAL_MS);
-		log.info({ Message: 'Companion admission polling started', Reason: reason, IntervalMs: ADMISSION_POLL_INTERVAL_MS, TimeoutMs: ADMISSION_POLL_TIMEOUT_MS });
+		log.debug({ Message: 'Companion Device admission polling started', Reason: reason, IntervalMs: ADMISSION_POLL_INTERVAL_MS, TimeoutMs: ADMISSION_POLL_TIMEOUT_MS });
 	}
 
 	function stopAdmissionPolling(reason) {
 		if (admissionPollInterval) {
 			clearInterval(admissionPollInterval);
 			admissionPollInterval = null;
-			log.info({ Message: 'Companion admission polling stopped', Reason: reason, SawWaiting: admissionPollSawWaiting });
+			log.debug({ Message: 'Companion Device admission polling stopped', Reason: reason, SawWaiting: admissionPollSawWaiting });
 		}
 		admissionPollDeadline = 0;
 		admissionPollSawWaiting = false;
@@ -285,7 +285,7 @@ function createParentCallCoordination(options) {
 		}
 
 		if (admissionPollSawWaiting) {
-			stopAdmissionPolling('CompanionBoardNoLongerWaiting');
+			stopAdmissionPolling('CompanionDeviceNoLongerWaiting');
 			return;
 		}
 
@@ -300,7 +300,7 @@ function createParentCallCoordination(options) {
 		admissionCheckTimeout = setTimeout(() => {
 			admissionCheckTimeout = null;
 			processCompanionAdmission(reason).catch(error => {
-				utils.softError({ Context: 'Failed to process companion admission', Reason: reason, Error: error });
+				log.debug({ Message: 'Failed to process debounced Companion Device admission check', Reason: reason, Error: error.code || error.message || 'Unknown Companion Device admission error' });
 			});
 		}, ADMISSION_CHECK_DEBOUNCE_MS);
 	}
@@ -322,19 +322,19 @@ function createParentCallCoordination(options) {
 		const hostCheck = getSelfHostStatus(roster);
 		const waitingMatches = getWaitingCompanionParticipants(roster.participants);
 		if (waitingMatches.length < 1) {
-			log.debug({ Message: 'Companion admission skipped; no waiting companion boards found', Reason: reason, CanAdmit: hostCheck.canAdmit, IsHost: hostCheck.isHost, IsCohost: hostCheck.isCohost });
+			log.debug({ Message: 'Companion Device admission skipped; no waiting Companion Devices found', Reason: reason, CanAdmit: hostCheck.canAdmit, IsHost: hostCheck.isHost, IsCohost: hostCheck.isCohost });
 			return { waitingCount: 0, canAdmit: hostCheck.canAdmit };
 		}
 
 		if (!hostCheck.canAdmit) {
 			await sendAdmissionRequired(waitingMatches, hostCheck);
-			log.info({ Message: 'Companion admission requires meeting host or cohost', Reason: reason, WaitingBoardCount: waitingMatches.length, ParentSelfParticipantId: roster.participantSelf });
+			log.debug({ Message: 'Companion Device admission requires meeting host or cohost', Reason: reason, WaitingCompanionDeviceCount: waitingMatches.length, ParentSelfParticipantId: roster.participantSelf });
 			return { waitingCount: waitingMatches.length, canAdmit: false };
 		}
 
 		const callId = await getActiveCallId();
 		if (callId === null) {
-			log.warn({ Message: 'Companion admission skipped; active CallId unavailable', Reason: reason, WaitingBoardCount: waitingMatches.length });
+			log.debug({ Message: 'Companion Device admission skipped; active CallId unavailable', Reason: reason, WaitingCompanionDeviceCount: waitingMatches.length });
 			return { waitingCount: waitingMatches.length, canAdmit: true };
 		}
 
@@ -400,17 +400,17 @@ function createParentCallCoordination(options) {
 	function getWaitingCompanionParticipants(participants) {
 		const matches = [];
 
-		for (let boardIndex = 0; boardIndex < registeredBoards.length; boardIndex++) {
-			const board = registeredBoards[boardIndex];
-			const boardName = normalizeName(board.Name);
-			if (!boardName) {
+		for (let companionDeviceIndex = 0; companionDeviceIndex < registeredCompanionDevices.length; companionDeviceIndex++) {
+			const companionDevice = registeredCompanionDevices[companionDeviceIndex];
+			const companionDeviceName = normalizeName(companionDevice.Name);
+			if (!companionDeviceName) {
 				continue;
 			}
 
 			for (let participantIndex = 0; participantIndex < participants.length; participantIndex++) {
 				const participant = participants[participantIndex];
-				if (normalizeName(getValue(participant.DisplayName)) === boardName && normalizeName(getValue(participant.Status)) === 'waiting') {
-					matches.push({ board: board, participant: participant });
+				if (normalizeName(getValue(participant.DisplayName)) === companionDeviceName && normalizeName(getValue(participant.Status)) === 'waiting') {
+					matches.push({ companionDevice: companionDevice, participant: participant });
 				}
 			}
 		}
@@ -421,18 +421,18 @@ function createParentCallCoordination(options) {
 	async function sendAdmissionRequired(waitingMatches, hostCheck) {
 		for (let index = 0; index < waitingMatches.length; index++) {
 			const match = waitingMatches[index];
-			if (admissionNoticeSerials[match.board.Serial]) {
+			if (admissionNoticeSerials[match.companionDevice.Serial]) {
 				continue;
 			}
 
-			await sendRegistrationResponse('CallSync', { MessageId: '' }, match.board, {
+			await sendRegistrationResponse('CallSync', { MessageId: '' }, match.companionDevice, {
 				CallKind: 'AdmissionRequired',
 				Reason: 'ParentNotHostOrCohost',
-				DisplayName: getValue(match.participant.DisplayName) || match.board.Name,
+				DisplayName: getValue(match.participant.DisplayName) || match.companionDevice.Name,
 				ParentIsHost: hostCheck.isHost,
 				ParentIsCohost: hostCheck.isCohost
 			}, true);
-			admissionNoticeSerials[match.board.Serial] = true;
+			admissionNoticeSerials[match.companionDevice.Serial] = true;
 		}
 	}
 
@@ -444,41 +444,41 @@ function createParentCallCoordination(options) {
 
 		admissionInFlightParticipantIds[participantId] = true;
 		try {
-			const validation = await validateBoardCallIdentity(waitingMatch.board);
+			const validation = await validateCompanionDeviceCallIdentity(waitingMatch.companionDevice);
 			if (!validation.isValid) {
-				log.info({ Message: 'Companion admission skipped; board call did not match parent call', BoardName: waitingMatch.board.Name, BoardCallIdentities: validation.callIdentities, ParentCall: activeParentCallDetails });
+				log.debug({ Message: 'Companion Device admission skipped; Companion Device call did not match Parent Room call', CompanionDeviceName: waitingMatch.companionDevice.Name, CompanionDeviceCallIdentities: validation.callIdentities, ParentCall: activeParentCallDetails });
 				return;
 			}
 
 			await xapi.Command.Conference.Participant.Admit({ CallId: Number(callId), ParticipantId: participantId });
-			delete admissionNoticeSerials[waitingMatch.board.Serial];
-			await sendRegistrationResponse('CallSync', { MessageId: '' }, waitingMatch.board, {
+			delete admissionNoticeSerials[waitingMatch.companionDevice.Serial];
+			await sendRegistrationResponse('CallSync', { MessageId: '' }, waitingMatch.companionDevice, {
 				CallKind: 'AdmissionAdmitted',
-				DisplayName: getValue(waitingMatch.participant.DisplayName) || waitingMatch.board.Name,
+				DisplayName: getValue(waitingMatch.participant.DisplayName) || waitingMatch.companionDevice.Name,
 				ParentCanAdmit: true
 			}, true);
-			log.info({ Message: 'Companion board admitted from lobby', DisplayName: getValue(waitingMatch.participant.DisplayName), ParticipantId: participantId, CallId: callId, MatchStrategy: validation.matchStrategy });
+			log.info({ Message: 'Companion Device admitted from lobby', DisplayName: getValue(waitingMatch.participant.DisplayName), ParticipantId: participantId, CallId: callId, MatchStrategy: validation.matchStrategy });
 		} finally {
 			delete admissionInFlightParticipantIds[participantId];
 		}
 	}
 
-	async function validateBoardCallIdentity(board) {
+	async function validateCompanionDeviceCallIdentity(companionDevice) {
 		if (!activeParentCallDetails) {
 			return { isValid: false, callIdentities: [], matchStrategy: 'NoActiveParentCall' };
 		}
 
-		let boardCalls = [];
+		let companionDeviceCalls = [];
 		try {
-			boardCalls = await getBoardCallStatus(board);
+			companionDeviceCalls = await getCompanionDeviceCallStatus(companionDevice);
 		} catch (error) {
-			log.warn({ Message: 'Failed to read companion board call status before admission', BoardName: board.Name, Host: board.Host, Error: error.code || error.message || 'Unknown board call status error', ErrorContext: error.Context || {} });
-			return { isValid: false, callIdentities: [], matchStrategy: 'BoardStatusUnavailable' };
+			log.warn({ Message: 'Failed to read Companion Device call status before admission', CompanionDeviceName: companionDevice.Name, Host: companionDevice.Host, Error: error.code || error.message || 'Unknown Companion Device call status error', ErrorContext: error.Context || {} });
+			return { isValid: false, callIdentities: [], matchStrategy: 'CompanionDeviceStatusUnavailable' };
 		}
 
 		const callIdentities = [];
-		for (let index = 0; index < boardCalls.length; index++) {
-			const values = [boardCalls[index].CallbackNumber, boardCalls[index].RemoteNumber, boardCalls[index].RemoteURI];
+		for (let index = 0; index < companionDeviceCalls.length; index++) {
+			const values = [companionDeviceCalls[index].CallbackNumber, companionDeviceCalls[index].RemoteNumber, companionDeviceCalls[index].RemoteURI];
 			for (let valueIndex = 0; valueIndex < values.length; valueIndex++) {
 				const value = getValue(values[valueIndex]);
 				if (value && callIdentities.indexOf(value) < 0) {
@@ -486,26 +486,26 @@ function createParentCallCoordination(options) {
 				}
 			}
 		}
-		const hasExactIdentityMatch = callIdentities.some(identity => doesBoardIdentityMatchParentCall(identity));
-		const hasWebexCallMatch = !hasExactIdentityMatch && isWebexParentCall() && boardCalls.some(isWebexBoardCall);
+		const hasExactIdentityMatch = callIdentities.some(identity => doesCompanionDeviceIdentityMatchParentCall(identity));
+		const hasWebexCallMatch = !hasExactIdentityMatch && isWebexParentCall() && companionDeviceCalls.some(isWebexCompanionDeviceCall);
 
 		return {
 			isValid: hasExactIdentityMatch || hasWebexCallMatch,
 			callIdentities: callIdentities,
-			matchStrategy: hasExactIdentityMatch ? 'ExactCallIdentity' : hasWebexCallMatch ? 'RegisteredWaitingBoardWebexCall' : 'NoMatch'
+			matchStrategy: hasExactIdentityMatch ? 'ExactCallIdentity' : hasWebexCallMatch ? 'RegisteredWaitingCompanionDeviceWebexCall' : 'NoMatch'
 		};
 	}
 
-	async function getBoardCallStatus(board) {
+	async function getCompanionDeviceCallStatus(companionDevice) {
 		return deviceComms.getCallStatus(xapi, {
-			host: board.Host,
-			username: board.Username,
-			password: board.Password
+			host: companionDevice.Host,
+			username: companionDevice.Username,
+			password: companionDevice.Password
 		}, HTTP_CLIENT_CONFIG);
 	}
 
-	function doesBoardIdentityMatchParentCall(boardIdentity) {
-		const normalizedBoardIdentity = normalizeCallIdentity(boardIdentity);
+	function doesCompanionDeviceIdentityMatchParentCall(companionDeviceIdentity) {
+		const normalizedCompanionDeviceIdentity = normalizeCallIdentity(companionDeviceIdentity);
 		const parentCallValues = [
 			activeParentCallDetails.JoinTarget,
 			activeParentCallDetails.MeetingInviteLink,
@@ -517,7 +517,7 @@ function createParentCallCoordination(options) {
 
 		for (let index = 0; index < parentCallValues.length; index++) {
 			const normalizedParentValue = normalizeCallIdentity(parentCallValues[index]);
-			if (normalizedParentValue && normalizedBoardIdentity === normalizedParentValue) {
+			if (normalizedParentValue && normalizedCompanionDeviceIdentity === normalizedParentValue) {
 				return true;
 			}
 		}
@@ -533,7 +533,7 @@ function createParentCallCoordination(options) {
 		return values.indexOf('webex') >= 0 || String(activeParentCallDetails.Protocol || '').toLowerCase() === 'spark';
 	}
 
-	function isWebexBoardCall(call) {
+	function isWebexCompanionDeviceCall(call) {
 		const values = [getValue(call.Protocol), getValue(call.CallbackNumber), getValue(call.RemoteNumber), getValue(call.RemoteURI)].join(' ').toLowerCase();
 		return values.indexOf('webex') >= 0 || String(getValue(call.Protocol) || '').toLowerCase() === 'spark';
 	}
@@ -651,15 +651,15 @@ function createParentCallCoordination(options) {
 	}
 
 	async function sendByodSync(source, state) {
-		for (let index = 0; index < registeredBoards.length; index++) {
-			await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredBoards[index], {
+		for (let index = 0; index < registeredCompanionDevices.length; index++) {
+			await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredCompanionDevices[index], {
 				CallKind: 'BYOD',
 				ByodSource: source,
 				ByodState: state
 			}, true);
 		}
 
-		log.info({ Message: 'Parent BYOD call sync sent', Source: source, State: state, RegisteredBoardCount: registeredBoards.length });
+		log.debug({ Message: 'Parent Room BYOD call sync sent', Source: source, State: state, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 	}
 
 	async function sendCallSync(remoteNumber, call) {
@@ -670,8 +670,8 @@ function createParentCallCoordination(options) {
 	}
 
 	async function sendNetworkCallSync(remoteNumber, callDetails, reason) {
-		for (let index = 0; index < registeredBoards.length; index++) {
-			await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredBoards[index], {
+		for (let index = 0; index < registeredCompanionDevices.length; index++) {
+			await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredCompanionDevices[index], {
 				CallKind: 'Network',
 				RemoteNumber: remoteNumber || '',
 				JoinTarget: activeParentCallDetails && activeParentCallDetails.JoinTarget || remoteNumber || '',
@@ -681,7 +681,7 @@ function createParentCallCoordination(options) {
 			}, true);
 		}
 
-		log.info({ Message: 'Parent call sync sent', Reason: reason, RemoteNumber: remoteNumber || '', JoinTarget: activeParentCallDetails && activeParentCallDetails.JoinTarget || '', MeetingPlatform: callDetails.meetingPlatform, Protocol: callDetails.protocol, ParentCall: activeParentCallDetails, RegisteredBoardCount: registeredBoards.length });
+		log.debug({ Message: 'Parent Room call sync sent', Reason: reason, RemoteNumber: remoteNumber || '', JoinTarget: activeParentCallDetails && activeParentCallDetails.JoinTarget || '', MeetingPlatform: callDetails.meetingPlatform, Protocol: callDetails.protocol, ParentCall: activeParentCallDetails, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 	}
 
 	async function getActiveParentCallDetails(remoteNumber, call, callDetails) {
@@ -721,7 +721,7 @@ function createParentCallCoordination(options) {
 					activeCallCount = statusCount;
 				}
 			} catch (error) {
-				log.warn({ Message: 'Failed to read parent active call count during reconciliation; using Status.Call count', Reason: reason, CallStatusCount: calls.length, Error: error.message || error.code || 'Unknown active call count error' });
+				log.debug({ Message: 'Failed to read Parent Room active call count during reconciliation; using Status.Call count', Reason: reason, CallStatusCount: calls.length, Error: error.message || error.code || 'Unknown active call count error' });
 			}
 			parentActiveCallCount = activeCallCount;
 
@@ -730,12 +730,12 @@ function createParentCallCoordination(options) {
 				if (shouldBroadcast) {
 					await sendCallDisconnectSync(reason);
 				}
-				log.info({ Message: 'Parent call-state reconciliation found no active call', Reason: reason });
+				log.debug({ Message: 'Parent Room call-state reconciliation found no active call', Reason: reason });
 				return null;
 			}
 
 			if (calls.length < 1) {
-				log.warn({ Message: 'Parent call-state reconciliation found an active count without Status.Call details', Reason: reason, ActiveCallCount: activeCallCount });
+				log.debug({ Message: 'Parent Room call-state reconciliation found an active count without Status.Call details', Reason: reason, ActiveCallCount: activeCallCount });
 				prepareCallDetection();
 				return activeParentCallDetails;
 			}
@@ -751,7 +751,7 @@ function createParentCallCoordination(options) {
 			}
 			queueCompanionAdmissionCheck(reason);
 			startAdmissionPolling(reason);
-			log.info({ Message: 'Parent active call state reconciled', Reason: reason, ParentCall: activeParentCallDetails, Broadcast: !!shouldBroadcast });
+			log.debug({ Message: 'Parent Room active call state reconciled', Reason: reason, ParentCall: activeParentCallDetails, Broadcast: !!shouldBroadcast });
 			return activeParentCallDetails;
 		})();
 
@@ -766,7 +766,7 @@ function createParentCallCoordination(options) {
 		try {
 			return normalizeCallStatus(await xapi.Status.Call.get());
 		} catch (error) {
-			log.debug({ Message: 'Failed to read current parent call status', Error: error.message || error.code || 'Unknown call status error' });
+			log.debug({ Message: 'Failed to read current Parent Room call status', Error: error.message || error.code || 'Unknown call status error' });
 			return [];
 		}
 	}
@@ -803,14 +803,14 @@ function createParentCallCoordination(options) {
 	}
 
 	async function sendCallDisconnectSync(reason) {
-		for (let index = 0; index < registeredBoards.length; index++) {
-			await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredBoards[index], {
+		for (let index = 0; index < registeredCompanionDevices.length; index++) {
+			await sendRegistrationResponse('CallSync', { MessageId: '' }, registeredCompanionDevices[index], {
 				CallKind: 'Disconnect',
 				Reason: reason || 'ParentCallCountZero'
 			}, true);
 		}
 
-		log.info({ Message: 'Parent call disconnect sync sent', RegisteredBoardCount: registeredBoards.length });
+		log.debug({ Message: 'Parent Room call disconnect sync sent', RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 	}
 
 	async function getParentCallDetails(call) {
@@ -854,7 +854,7 @@ function createParentCallCoordination(options) {
 	async function handleMeetingPasswordRequest(message) {
 		const payload = message && message.Payload || {};
 		const requestId = String(payload.RequestId || '');
-		const boardRecord = registeredBoards.find(board => board.Serial === message.Serial) || normalizeBoardRecord(message);
+		const companionDeviceRecord = registeredCompanionDevices.find(companionDevice => companionDevice.Serial === message.Serial) || normalizeCompanionDeviceRecord(message);
 		let resolution = {
 			passwordAvailable: false,
 			meetingPassword: '',
@@ -872,14 +872,14 @@ function createParentCallCoordination(options) {
 			}
 		}
 
-		await sendRegistrationResponse('MeetingPasswordResponse', message, boardRecord, {
+		await sendRegistrationResponse('MeetingPasswordResponse', message, companionDeviceRecord, {
 			RequestId: requestId,
 			PasswordAvailable: resolution.passwordAvailable,
 			MeetingPassword: resolution.meetingPassword,
 			Reason: resolution.reason
 		}, true);
 		log.info({
-			Message: 'Parent Meeting Password lookup completed',
+			Message: 'Parent Room Meeting Password lookup completed',
 			Serial: message.Serial,
 			RequestId: requestId,
 			PasswordAvailable: resolution.passwordAvailable,
@@ -1036,9 +1036,9 @@ function createParentCallCoordination(options) {
 	}
 
 	async function handleActiveCallDetailsRequest(message) {
-		const boardRecord = registeredBoards.find(board => board.Serial === message.Serial) || normalizeBoardRecord(message);
+		const companionDeviceRecord = registeredCompanionDevices.find(companionDevice => companionDevice.Serial === message.Serial) || normalizeCompanionDeviceRecord(message);
 		await reconcileCurrentCallState('ActiveCallDetailsRequest', false);
-		await sendRegistrationResponse('CallSync', message, boardRecord, {
+		await sendRegistrationResponse('CallSync', message, companionDeviceRecord, {
 			CallKind: 'ActiveCallDetails',
 			ParentHasActiveCall: !!activeParentCallDetails,
 			RemoteNumber: activeParentCallDetails && activeParentCallDetails.DialedRemoteNumber || '',
@@ -1049,12 +1049,12 @@ function createParentCallCoordination(options) {
 			Request: message.Payload || {}
 		}, true);
 		startAdmissionPolling('ActiveCallDetailsRequest');
-		log.info({ Message: 'Parent active call details sent to board', Serial: message.Serial, ParentHasActiveCall: !!activeParentCallDetails, ParentCall: activeParentCallDetails });
+		log.debug({ Message: 'Parent Room active call details sent to Companion Device', Serial: message.Serial, ParentHasActiveCall: !!activeParentCallDetails, ParentCall: activeParentCallDetails });
 	}
 
 
 	return {
-		setRegisteredBoards,
+		setRegisteredCompanionDevices,
 		start,
 		handleActiveCallDetailsRequest,
 		handleMeetingPasswordRequest

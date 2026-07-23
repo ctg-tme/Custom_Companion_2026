@@ -25,7 +25,7 @@ function propertyName(node: SyntaxNode): string {
 function lockedReason(path: Array<string | number>): ConfigLeaf['lockedReason'] {
   const last = path.at(-1);
   if (typeof last === 'string' && last.toLowerCase() === 'version') return 'version';
-  if (path.length === 2 && path[0] === 'CompanionBoardInformation' && path[1] === 'host') return 'board-host';
+  if (path.length === 2 && path[0] === 'CompanionBoardInformation' && path[1] === 'host') return 'companion-device-host';
   return undefined;
 }
 
@@ -137,11 +137,11 @@ export function patchConfigSource(document: ConfigDocument, values: Map<string, 
 export function setLockedInstallerValues(
   document: ConfigDocument,
   values: Map<string, ConfigValue>,
-  boardHost: string,
+  companionDeviceHost: string,
 ): Map<string, ConfigValue> {
   const result = new Map(values);
   for (const leaf of document.leaves) {
-    if (leaf.lockedReason === 'board-host') result.set(configPathId(leaf.path), boardHost);
+    if (leaf.lockedReason === 'companion-device-host') result.set(configPathId(leaf.path), companionDeviceHost);
   }
   return result;
 }

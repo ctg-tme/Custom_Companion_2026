@@ -12,7 +12,7 @@ const contract = {
   RoomReferenceMacroFile: 'Custom-Campanion_7_RoomReference_2026.js',
   GeneratedStorageMacro: 'Custom-Campanion-Storage',
   InitializationSuccessMessage: 'Custom Campanion initialized',
-  InitializationStoppedMessage: 'Custom Campanion board initialization stopped',
+  InitializationStoppedMessage: 'Custom Campanion Companion Device initialization stopped',
 };
 
 function header(value = version) {

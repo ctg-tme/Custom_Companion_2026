@@ -21,9 +21,9 @@ or implied.
 
  * Date Created:            July 09, 2026
  * Revised:                 July 23, 2026
- * Version:                 0.1.2.38
+ * Version:                 0.1.2.39
  *
- * Description:             Companion board entry macro and lifecycle orchestrator. Domain workflows
+ * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
  *
  * Documentation:           N/A
@@ -47,15 +47,15 @@ import { utils } from './Custom-Campanion_3_Utils_2026';
 import { companionUi } from './Custom-Campanion_4_UI_2026';
 import { companionState } from './Custom-Campanion_5_State_2026';
 import { deviceComms } from './Custom-Campanion_6_DeviceComms_2026';
-import { boardServices } from './Custom-Campanion_8_Services_2026';
+import { companionDeviceServices } from './Custom-Campanion_8_Services_2026';
 import { parentConnectivity } from './Custom-Campanion_9_ParentConnectivity_2026';
 import { pairedEnvironment } from './Custom-Campanion_10_PairedEnvironment_2026';
-import { boardCallSync } from './Custom-Campanion_11_BoardCallSync_2026';
+import { companionDeviceCallSync } from './Custom-Campanion_11_BoardCallSync_2026';
 import { standbyCoordination } from './Custom-Campanion_13_StandbyCoordination_2026';
 import { pinMode } from './Custom-Campanion_14_PinMode_2026';
 import { parentRegistration } from './Custom-Campanion_15_ParentRegistration_2026';
 
-const log = new utils.Logger('Custom-Campanion_Board_Main');
+const log = new utils.Logger('Custom-Campanion_Companion_Device_Main');
 
 const STORAGE_MACRO_NAME = 'Custom-Campanion';
 const MAX_PARENT_DEVICES = 6;
@@ -93,9 +93,9 @@ const mem = new MemoryStorage(xapi, { StorageMacroName: STORAGE_MACRO_NAME });
 
 let parentDevices = [];
 let pendingDeregistrations = [];
-let boardState = createBoardState(companionState.STAND_ALONE_PARENT_SERIAL);
+let companionDeviceState = createCompanionDeviceState(companionState.STANDALONE_PARENT_SERIAL);
 let parentDeviceStatus = [];
-let activeParentSerial = companionState.STAND_ALONE_PARENT_SERIAL;
+let activeParentSerial = companionState.STANDALONE_PARENT_SERIAL;
 let companionPeripheralId = '';
 let isHandlingSelection = false;
 let isUnhealthy = false;
@@ -135,10 +135,10 @@ const parentConnectivityController = parentConnectivity.create({
 		getRuntimeContext: () => ({
 			isUnhealthy: isUnhealthy,
 			isHandlingSelection: isHandlingSelection,
-			mode: boardState.mode,
+			mode: companionDeviceState.mode,
 			activeParentSerial: activeParentSerial,
-			activeParentHost: boardState.activeParent.host,
-			activeParentName: boardState.activeParent.name
+			activeParentHost: companionDeviceState.activeParent.host,
+			activeParentName: companionDeviceState.activeParent.name
 		}),
 		onSnapshotChanged: snapshot => {
 			parentDevices = snapshot.parentDevices;
@@ -149,16 +149,16 @@ const parentConnectivityController = parentConnectivity.create({
 		onAvailabilityChanged: async () => renderSelectDeviceUi(),
 		onInfoChanged: async () => applyRuntimeWebWidget(),
 		onSelectionVerified: completeVerifiedParentSelection,
-		onCallPreservationChanged: async () => applyUiFeatureMode(boardState.mode),
+		onCallPreservationChanged: async () => applyUiFeatureMode(companionDeviceState.mode),
 		onRecovered: async () => {
-			await applyUiFeatureMode(boardState.mode);
+			await applyUiFeatureMode(companionDeviceState.mode);
 			await renderSelectDeviceUi();
 		},
 		onUnavailableFallback: async parentDevice => {
 			await transitionToStandalone({ Reason: 'ParentUnavailable', PreserveParentConnectivityInfo: true });
 			await showSelectedParentOfflinePrompt(parentDevice);
 		},
-		isBoardInActiveCall: isBoardInActiveCall,
+		isCompanionDeviceInActiveCall: isCompanionDeviceInActiveCall,
 		getPeripheralId: getCompanionPeripheralId
 	}
 });
@@ -178,11 +178,11 @@ const pairedEnvironmentController = pairedEnvironment.create({
 	},
 	callbacks: {
 		getRuntimeContext: () => ({
-			mode: boardState.mode,
+			mode: companionDeviceState.mode,
 			isUnhealthy: isUnhealthy,
-			activeParentName: boardState.activeParent.name,
+			activeParentName: companionDeviceState.activeParent.name,
 			runtimeInfo3: getRuntimeInfo3Text(),
-			callEndOverride: boardState.mode === 'Paired' && (parentConnectivityController.isCallPreservationActive() || unhealthyReleasePending) ? 'Auto' : null
+			callEndOverride: companionDeviceState.mode === 'Paired' && (parentConnectivityController.isCallPreservationActive() || unhealthyReleasePending) ? 'Auto' : null
 		}),
 		onRequiredMediaFailure: handleRequiredMediaFailure
 	}
@@ -205,14 +205,14 @@ const standbyCoordinationController = standbyCoordination.create({
 	},
 	callbacks: {
 		getRuntimeContext: () => ({
-			mode: boardState.mode,
+			mode: companionDeviceState.mode,
 			activeParentSerial: activeParentSerial
 		}),
 		onInfoChanged: async () => applyRuntimeWebWidget()
 	}
 });
 
-const boardCallSyncController = boardCallSync.create({
+const companionDeviceCallSyncController = companionDeviceCallSync.create({
 	xapi: xapi,
 	deviceComms: deviceComms,
 	httpClientConfig: HTTP_CLIENT_CONFIG,
@@ -229,11 +229,11 @@ const boardCallSyncController = boardCallSync.create({
 	},
 	callbacks: {
 		getRuntimeContext: () => ({
-			mode: boardState.mode,
+			mode: companionDeviceState.mode,
 			activeParentSerial: activeParentSerial
 		}),
-		getActiveParentDevice: () => companionState.findActiveParentDevice(boardState, parentDevices),
-		getRuntimeBoardInformation: async () => boardServices.getRuntimeCompanionBoardInformation(xapi, getConfiguredCompanionBoardInformation(), log),
+		getActiveParentDevice: () => companionState.findActiveParentDevice(companionDeviceState, parentDevices),
+		getRuntimeCompanionDeviceInformation: async () => companionDeviceServices.getRuntimeCompanionDeviceInformation(xapi, getConfiguredCompanionDeviceInformation(), log),
 		clearStandbySyncState: () => standbyCoordinationController.clear(),
 		onCallCountZeroBoundary: handleCallCountZeroBoundary,
 		onInfoChanged: async () => applyRuntimeWebWidget()
@@ -244,7 +244,7 @@ const parentRegistrationController = parentRegistration.create({
 	xapi: xapi,
 	mem: mem,
 	deviceComms: deviceComms,
-	boardServices: boardServices,
+	companionDeviceServices: companionDeviceServices,
 	companionUi: companionUi,
 	pinModeController: pinModeController,
 	parentDevicesStorageKey: companionState.PARENT_DEVICES_STORAGE_KEY,
@@ -263,11 +263,11 @@ const parentRegistrationController = parentRegistration.create({
 	callbacks: {
 		getRuntimeContext: () => ({
 			isUnhealthy: isUnhealthy,
-			mode: boardState.mode,
+			mode: companionDeviceState.mode,
 			activeParentSerial: activeParentSerial
 		}),
-		isBoardInActiveCall: isBoardInActiveCall,
-		getRuntimeBoardInformation: async () => boardServices.getRuntimeCompanionBoardInformation(xapi, getConfiguredCompanionBoardInformation(), log),
+		isCompanionDeviceInActiveCall: isCompanionDeviceInActiveCall,
+		getRuntimeCompanionDeviceInformation: async () => companionDeviceServices.getRuntimeCompanionDeviceInformation(xapi, getConfiguredCompanionDeviceInformation(), log),
 		getParentSyncConfig: getParentSyncConfig,
 		releaseActiveParentForDeregistration: releaseActiveParentForDeregistration,
 		onStateChanged: handleParentRegistrationStateChanged
@@ -282,7 +282,7 @@ async function init() {
 		} catch (error) {
 			utils.hardError({
 				Code: 'CC26-INIT-HTTPCLIENT',
-				Component: 'BoardMain',
+				Component: 'CompanionDeviceMain',
 				Context: 'Failed to initialize RoomOS HTTPClient',
 				Remediation: 'Correct the HTTPClient configuration or macro permissions, then restart the Macro Runtime.',
 				Error: error
@@ -294,7 +294,7 @@ async function init() {
 		} catch (error) {
 			utils.hardError({
 				Code: 'CC26-INIT-MEMORY',
-				Component: 'BoardMain',
+				Component: 'CompanionDeviceMain',
 				Context: 'Failed to initialize Memory-Storage-Functions-V2',
 				Remediation: 'Verify the Memory-Storage-Functions-V2 dependency and storage macro, then restart the Macro Runtime.',
 				Error: error
@@ -303,18 +303,18 @@ async function init() {
 
 		await loadMemoryState();
 		registerCompanionMessageHandlers();
-		boardCallSyncController.registerCallCountHandler();
-		boardCallSyncController.registerAuthenticationRequestHandler();
+		companionDeviceCallSyncController.registerCallCountHandler();
+		companionDeviceCallSyncController.registerAuthenticationRequestHandler();
 		pairedEnvironmentController.registerMediaHandlers();
-		await boardCallSyncController.initializeActiveCallCount();
-		await boardCallSyncController.initializeAuthenticationRequest();
+		await companionDeviceCallSyncController.initializeActiveCallCount();
+		await companionDeviceCallSyncController.initializeAuthenticationRequest();
 		await initializeUiFeatureMode();
 		await standbyCoordinationController.initializeConfig();
 		await parentConnectivityController.refresh({ isInterval: false, notifyAvailabilityChange: false });
-		boardState = createBoardState(activeParentSerial);
-		await applyUiFeatureMode(boardState.mode);
-		await standbyCoordinationController.applyMode(boardState.mode);
-		if (boardState.mode === 'Paired') {
+		companionDeviceState = createCompanionDeviceState(activeParentSerial);
+		await applyUiFeatureMode(companionDeviceState.mode);
+		await standbyCoordinationController.applyMode(companionDeviceState.mode);
+		if (companionDeviceState.mode === 'Paired') {
 			await pairedEnvironmentController.enforceInitialMediaState();
 		}
 		if (isUnhealthy) {
@@ -326,12 +326,12 @@ async function init() {
 		await parentRegistrationController.reconcilePendingDeregistrations();
 		parentConnectivityController.start();
 		await parentConnectivityController.evaluate();
-		if (boardState.mode === 'Paired') {
-			await boardCallSyncController.requestActiveParentCallState('BoardInitialization');
+		if (companionDeviceState.mode === 'Paired') {
+			await companionDeviceCallSyncController.requestActiveParentCallState('CompanionDeviceInitialization');
 		}
 
 		companionState.warnIfCredentialsAreStored(parentDevices, log);
-		log.info({ Message: 'Custom Campanion initialized', Version: config.version, ActiveParent: boardState.activeParent.name });
+		log.info({ Message: 'Custom Campanion initialized', Version: config.version, ActiveParentRoom: companionDeviceState.activeParent.name });
 	} catch (error) {
 		await handleInitializationFailure(error);
 	}
@@ -343,9 +343,9 @@ async function handleInitializationFailure(error) {
 	await pinModeController.stop();
 	parentConnectivityController.stop();
 	log.error({
-		Message: 'Custom Campanion board initialization stopped',
+		Message: 'Custom Campanion Companion Device initialization stopped',
 		Code: diagnostic.Code || error.code || 'CC26-INIT-UNKNOWN',
-		Component: diagnostic.Component || 'BoardMain',
+		Component: diagnostic.Component || 'CompanionDeviceMain',
 		Context: diagnostic.Context || 'Unhandled initialization failure',
 		Remediation: diagnostic.Remediation || 'Diagnose the logged xAPI failure, then restart the Macro Runtime.',
 		StorageErrorCode: diagnostic.StorageErrorCode,
@@ -373,10 +373,15 @@ async function loadMemoryState() {
 	if (parentDevices.length > MAX_PARENT_DEVICES) {
 		parentDevices = parentDevices.slice(0, MAX_PARENT_DEVICES);
 		await mem.write(companionState.PARENT_DEVICES_STORAGE_KEY, parentDevices);
-		log.warn({ Message: 'Parent device list exceeded maximum and was trimmed', MaxParentDevices: MAX_PARENT_DEVICES });
+		log.warn({ Message: 'Parent Room Device list exceeded maximum and was trimmed', MaxParentDevices: MAX_PARENT_DEVICES });
 	}
-	activeParentSerial = await companionState.readMemoryOrInitialize(mem, companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, companionState.STAND_ALONE_PARENT_SERIAL, utils);
-	boardState = createBoardState(activeParentSerial);
+	const storedActiveParentSerial = await companionState.readMemoryOrInitialize(mem, companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, companionState.STANDALONE_PARENT_SERIAL, utils);
+	activeParentSerial = companionState.normalizeActiveParentSerial(storedActiveParentSerial);
+	if (activeParentSerial !== storedActiveParentSerial) {
+		await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
+		log.info({ Message: 'Normalized legacy Standalone mode storage value' });
+	}
+	companionDeviceState = createCompanionDeviceState(activeParentSerial);
 	await pinModeController.initialize();
 	pairedEnvironmentController.setStandaloneUiFeatureConfig(await companionState.readMemoryOrDefault(mem, companionState.STANDALONE_UI_FEATURE_CONFIG_STORAGE_KEY, {}, utils));
 	standbyCoordinationController.setStandaloneConfig(await companionState.readMemoryOrDefault(mem, companionState.STANDALONE_STANDBY_CONFIG_STORAGE_KEY, {}, utils));
@@ -410,29 +415,29 @@ async function handleCompanionMessage(message) {
 			await sendParentConfigMessage(message);
 			break;
 		case 'ConfigAccepted':
-			log.info({ Message: 'Parent accepted board configuration', Source: message.Source, Payload: message.Payload });
-			if (message.Serial === activeParentSerial && boardState.mode === 'Paired') {
-				await boardCallSyncController.requestActiveParentCallState('ConfigAccepted');
+			log.info({ Message: 'Parent Room Device accepted Companion Device configuration', Source: message.Source, Payload: message.Payload });
+			if (message.Serial === activeParentSerial && companionDeviceState.mode === 'Paired') {
+				await companionDeviceCallSyncController.requestActiveParentCallState('ConfigAccepted');
 			}
 			break;
 		case 'ConfigDenied':
 			await xapi.Command.UserInterface.Message.Prompt.Display({
 				Title: 'Room Configuration Denied',
-				Text: message.Payload && message.Payload.Reason ? message.Payload.Reason : 'The room denied this board registration request.',
+				Text: message.Payload && message.Payload.Reason ? message.Payload.Reason : 'The Parent Room Device denied this Companion Device registration request.',
 				Duration: 10
 			});
 			break;
 		case 'ConfigRequired':
-			log.warn({ Message: 'Parent requested config sync before processing action', Source: message.Source, Payload: message.Payload });
+			log.warn({ Message: 'Parent Room Device requested config sync before processing action', Source: message.Source, Payload: message.Payload });
 			break;
 		case 'StandbySync':
 			await standbyCoordinationController.handleMessage(message);
 			break;
 		case 'CallSync':
-			await boardCallSyncController.handleMessage(message);
+			await companionDeviceCallSyncController.handleMessage(message);
 			break;
 		case 'MeetingPasswordResponse':
-			await boardCallSyncController.handleMeetingPasswordResponse(message);
+			await companionDeviceCallSyncController.handleMeetingPasswordResponse(message);
 			break;
 	}
 }
@@ -442,7 +447,7 @@ async function initializeUiFeatureMode() {
 }
 
 async function installParentMacrosOnOnlineParents() {
-	await boardServices.installParentMacrosOnOnlineParents({
+	await companionDeviceServices.installParentMacrosOnOnlineParents({
 		xapi: xapi,
 		deviceComms: deviceComms,
 		parentDeviceStatus: parentDeviceStatus,
@@ -454,12 +459,12 @@ async function installParentMacrosOnOnlineParents() {
 }
 
 async function connectPeripheralToOnlineParents() {
-	companionPeripheralId = await boardServices.connectPeripheralToOnlineParents({
+	companionPeripheralId = await companionDeviceServices.connectPeripheralToOnlineParents({
 		xapi: xapi,
 		deviceComms: deviceComms,
 		parentDeviceStatus: parentDeviceStatus,
 		findParentDeviceByHost: findParentDeviceByHost,
-		companionBoardInformation: getConfiguredCompanionBoardInformation(),
+		companionDeviceInformation: getConfiguredCompanionDeviceInformation(),
 		configVersion: config.version,
 		peripheralType: PERIPHERAL_TYPE,
 		httpClientConfig: HTTP_CLIENT_CONFIG,
@@ -607,7 +612,7 @@ async function handleWidgetAction(event) {
 	try {
 		switch (widget.action) {
 			case 'ReleaseDevice':
-				await selectStandAloneMode();
+				await selectStandaloneMode();
 				break;
 			case 'ParentSelect':
 				await selectParentByIndex(widget.index);
@@ -618,11 +623,11 @@ async function handleWidgetAction(event) {
 	}
 }
 
-async function selectStandAloneMode() {
-	if (!ALLOW_STANDALONE_DURING_ACTIVE_CALL && await isBoardInActiveCall()) {
+async function selectStandaloneMode() {
+	if (!ALLOW_STANDALONE_DURING_ACTIVE_CALL && await isCompanionDeviceInActiveCall()) {
 		await xapi.Command.UserInterface.Message.Prompt.Display({
 			Title: 'Call In Progress',
-			Text: 'End the active call before running this board Stand Alone.',
+			Text: 'End the active call before running this Companion Device in Standalone mode.',
 			Duration: 10
 		});
 		return;
@@ -643,47 +648,47 @@ async function selectParentByIndex(parentIndex) {
 
 async function completeVerifiedParentSelection(refreshedParentDevice, parentStatus) {
 	standbyCoordinationController.clear();
-	boardCallSyncController.cancel();
+	companionDeviceCallSyncController.cancel();
 	activeParentSerial = parentStatus.serial;
-	boardState = createBoardState(activeParentSerial);
+	companionDeviceState = createCompanionDeviceState(activeParentSerial);
 	await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
 	await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
 	await parentConnectivityController.clearInfo();
-	await applyUiFeatureMode(boardState.mode);
-	await standbyCoordinationController.applyMode(boardState.mode);
+	await applyUiFeatureMode(companionDeviceState.mode);
+	await standbyCoordinationController.applyMode(companionDeviceState.mode);
 	await pairedEnvironmentController.enforceInitialMediaState();
 	if (isUnhealthy) {
 		return false;
 	}
 	await standbyCoordinationController.scheduleSelectedParentSync(refreshedParentDevice);
-	await boardCallSyncController.requestActiveParentCallState('ParentSelection');
+	await companionDeviceCallSyncController.requestActiveParentCallState('ParentSelection');
 	return true;
 }
 
 async function transitionToStandalone(options = {}) {
-	const wasPaired = boardState.mode === 'Paired';
-	const hadActiveCall = wasPaired && !options.SkipMediaRestore ? await isBoardInActiveCall() : false;
+	const wasPaired = companionDeviceState.mode === 'Paired';
+	const hadActiveCall = wasPaired && !options.SkipMediaRestore ? await isCompanionDeviceInActiveCall() : false;
 
 	await parentConnectivityController.cancel(!options.PreserveParentConnectivityInfo);
-	boardCallSyncController.cancel();
+	companionDeviceCallSyncController.cancel();
 	standbyCoordinationController.clear();
-	activeParentSerial = companionState.STAND_ALONE_PARENT_SERIAL;
-	boardState = createBoardState(activeParentSerial);
+	activeParentSerial = companionState.STANDALONE_PARENT_SERIAL;
+	companionDeviceState = createCompanionDeviceState(activeParentSerial);
 	await companionUi.setSelectedParent(xapi, parentDevices, activeParentSerial);
 	await mem.write(companionState.ACTIVE_PARENT_SERIAL_STORAGE_KEY, activeParentSerial);
-	await applyUiFeatureMode(boardState.mode);
-	await standbyCoordinationController.applyMode(boardState.mode);
+	await applyUiFeatureMode(companionDeviceState.mode);
+	await standbyCoordinationController.applyMode(companionDeviceState.mode);
 
 	if (wasPaired && !options.SkipMediaRestore) {
 		await pairedEnvironmentController.handleStandaloneRelease(hadActiveCall);
 	}
 
-	log.info({ Message: 'Companion board released to StandAlone mode', Reason: options.Reason || 'Unspecified', ActiveCallPreserved: hadActiveCall });
+	log.info({ Message: 'Companion Device released to Standalone mode', Reason: options.Reason || 'Unspecified', ActiveCallPreserved: hadActiveCall });
 }
 
 async function releaseActiveParentForDeregistration() {
-	boardCallSyncController.cancel();
-	await boardCallSyncController.disconnectAllCalls();
+	companionDeviceCallSyncController.cancel();
+	await companionDeviceCallSyncController.disconnectAllCalls();
 	await transitionToStandalone({ Reason: 'ParentRoomDeregistration', SkipMediaRestore: true });
 	await pairedEnvironmentController.handleStandaloneRelease(false);
 }
@@ -703,7 +708,7 @@ async function handleParentRegistrationStateChanged(snapshot) {
 		parentDeviceStatus = parentDeviceStatus.filter(status => parentDevices.some(device => device.serial === status.serial || device.host === status.host));
 	}
 	parentConnectivityController.setParentDevices(parentDevices, parentDeviceStatus);
-	boardState = createBoardState(activeParentSerial);
+	companionDeviceState = createCompanionDeviceState(activeParentSerial);
 	await renderSelectDeviceUi();
 }
 
@@ -718,7 +723,7 @@ function replaceParentDeviceStatus(statuses, replacement) {
 	return updated;
 }
 
-async function isBoardInActiveCall() {
+async function isCompanionDeviceInActiveCall() {
 	try {
 		const activeCallCount = Number(getXapiValue(await xapi.Status.SystemUnit.State.NumberOfActiveCalls.get()));
 		if (!Number.isFinite(activeCallCount)) {
@@ -728,7 +733,7 @@ async function isBoardInActiveCall() {
 	} catch (error) {
 		log.error({
 			Code: 'CC26-CALL-COUNT-READ',
-			Component: 'BoardMain',
+			Component: 'CompanionDeviceMain',
 			Context: 'Failed to read the local active call count at a release boundary',
 			Remediation: 'Diagnose Status.SystemUnit.State.NumberOfActiveCalls. Volume will remain unchanged because call safety cannot be confirmed.',
 			Error: error
@@ -740,7 +745,7 @@ async function isBoardInActiveCall() {
 async function handleRequiredMediaFailure(code, context, error) {
 	await handleRuntimeHardFailure({
 		Code: code,
-		Component: 'BoardMain',
+		Component: 'CompanionDeviceMain',
 		Context: context,
 		Remediation: 'Diagnose the logged local xAPI path or command, correct the macro or RoomOS compatibility issue, then restart the Macro Runtime.',
 		Error: error
@@ -758,7 +763,7 @@ async function handleRuntimeHardFailure(diagnostic) {
 	await parentConnectivityController.cancel(false);
 	log.error({
 		Code: diagnostic.Code || 'CC26-RUNTIME-HARD-ERROR',
-		Component: diagnostic.Component || 'BoardMain',
+		Component: diagnostic.Component || 'CompanionDeviceMain',
 		Context: diagnostic.Context || 'A required runtime operation failed',
 		Remediation: diagnostic.Remediation || 'Diagnose the logged failure, then restart the Macro Runtime.',
 		StorageErrorCode: diagnostic.StorageErrorCode,
@@ -779,13 +784,13 @@ async function handleRuntimeHardFailure(diagnostic) {
 
 	await applyUnhealthyInfoBlock();
 
-	if (await isBoardInActiveCall()) {
-		unhealthyReleasePending = boardState.mode === 'Paired';
-		await applyUiFeatureMode(boardState.mode);
+	if (await isCompanionDeviceInActiveCall()) {
+		unhealthyReleasePending = companionDeviceState.mode === 'Paired';
+		await applyUiFeatureMode(companionDeviceState.mode);
 		return;
 	}
 
-	if (boardState.mode === 'Paired') {
+	if (companionDeviceState.mode === 'Paired') {
 		await transitionToStandalone({ Reason: diagnostic.Code || 'RuntimeHardFailure' });
 	}
 }
@@ -794,7 +799,7 @@ async function showSelectedParentOfflinePrompt(parentDevice) {
 	const roomName = parentDevice.name || parentDevice.host || 'Selected room';
 	await xapi.Command.UserInterface.Message.Prompt.Display({
 		Title: 'Room Unavailable',
-		Text: `${roomName} is unavailable. This board is now running Stand Alone.`,
+		Text: `${roomName} is unavailable. This Companion Device is now running Standalone.`,
 		Duration: 10
 	});
 }
@@ -804,7 +809,7 @@ async function applyUiFeatureMode(mode) {
 }
 
 async function applyRuntimeWebWidget() {
-	await pairedEnvironmentController.applyRuntimeWebWidget(boardState.mode);
+	await pairedEnvironmentController.applyRuntimeWebWidget(companionDeviceState.mode);
 }
 
 async function handleCallCountZeroBoundary() {
@@ -827,23 +832,23 @@ function getXapiValue(value) {
 }
 
 function getRuntimeInfo3Text() {
-	return (isUnhealthy ? UNHEALTHY_INFO_TEXT : '') || parentConnectivityController.getInfoText() || boardCallSyncController.getInfoText() || standbyCoordinationController.getInfoText();
+	return (isUnhealthy ? UNHEALTHY_INFO_TEXT : '') || parentConnectivityController.getInfoText() || companionDeviceCallSyncController.getInfoText() || standbyCoordinationController.getInfoText();
 }
 
-async function sendParentReadyRequest(parentDevice, companionBoardInformation) {
+async function sendParentReadyRequest(parentDevice, companionDeviceInformation) {
 	await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.parentReadyRequest, {
 		Board: {
-			Username: companionBoardInformation.username,
-			Password: companionBoardInformation.password
+			Username: companionDeviceInformation.username,
+			Password: companionDeviceInformation.password
 		}
 	}, {
 		app: 'Companion Board 2026',
-		serial: companionBoardInformation.serial,
+		serial: companionDeviceInformation.serial,
 		source: {
 			Role: 'Board',
-			Name: companionBoardInformation.name,
-			Host: companionBoardInformation.host,
-			MacAddress: companionBoardInformation.macAddress
+			Name: companionDeviceInformation.name,
+			Host: companionDeviceInformation.host,
+			MacAddress: companionDeviceInformation.macAddress
 		}
 	}, HTTP_CLIENT_CONFIG);
 }
@@ -851,17 +856,17 @@ async function sendParentReadyRequest(parentDevice, companionBoardInformation) {
 async function sendParentConfigMessage(message) {
 	const parentDevice = findParentDeviceBySerial(message.Serial) || companionState.findParentDeviceByHost(parentDevices, message.Source && message.Source.Host);
 	if (!parentDevice) {
-		log.warn({ Message: 'ParentReady received from unknown parent', Serial: message.Serial, Source: message.Source });
+		log.warn({ Message: 'ParentReady received from an unknown Parent Room Device', Serial: message.Serial, Source: message.Source });
 		return;
 	}
 
-	const companionBoardInformation = await boardServices.getRuntimeCompanionBoardInformation(xapi, getConfiguredCompanionBoardInformation(), log);
+	const companionDeviceInformation = await companionDeviceServices.getRuntimeCompanionDeviceInformation(xapi, getConfiguredCompanionDeviceInformation(), log);
 	await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.configSync, {
 		Config: getParentSyncConfig(),
 		Board: {
-			Username: companionBoardInformation.username,
-			Password: companionBoardInformation.password,
-			ProductPlatform: companionBoardInformation.productPlatform
+			Username: companionDeviceInformation.username,
+			Password: companionDeviceInformation.password,
+			ProductPlatform: companionDeviceInformation.productPlatform
 		},
 		Capabilities: {
 			CanJoinCall: true,
@@ -871,12 +876,12 @@ async function sendParentConfigMessage(message) {
 		}
 	}, {
 		app: 'Companion Board 2026',
-		serial: companionBoardInformation.serial,
+		serial: companionDeviceInformation.serial,
 		source: {
 			Role: 'Board',
-			Name: companionBoardInformation.name,
-			Host: companionBoardInformation.host,
-			MacAddress: companionBoardInformation.macAddress
+			Name: companionDeviceInformation.name,
+			Host: companionDeviceInformation.host,
+			MacAddress: companionDeviceInformation.macAddress
 		}
 	}, HTTP_CLIENT_CONFIG);
 }
@@ -892,11 +897,11 @@ function getParentSyncConfig() {
 
 async function applyUnhealthyInfoBlock() {
 	try {
-		await pairedEnvironmentController.applyRuntimeWebWidget(boardState.mode);
+		await pairedEnvironmentController.applyRuntimeWebWidget(companionDeviceState.mode);
 	} catch (error) {
 		log.warn({
 			Code: 'CC26-UNHEALTHY-INFO3',
-			Component: 'BoardMain',
+			Component: 'CompanionDeviceMain',
 			Context: 'Failed to publish the Unhealthy State message to Companion Web Widget Infoblock 3',
 			Remediation: 'Use the cc26_error panel and console diagnostic for administrator recovery.',
 			Error: error
@@ -904,8 +909,8 @@ async function applyUnhealthyInfoBlock() {
 	}
 }
 
-function createBoardState(parentSerial) {
-	return companionState.createBoardState(parentSerial, parentDevices, getStandaloneCompanionBoardInformation());
+function createCompanionDeviceState(parentSerial) {
+	return companionState.createCompanionDeviceState(parentSerial, parentDevices, getStandaloneCompanionDeviceInformation());
 }
 
 function findParentDeviceByHost(host) {
@@ -917,28 +922,28 @@ function findParentDeviceBySerial(serial) {
 }
 
 function getCompanionPeripheralId() {
-	return companionPeripheralId || boardServices.getCompanionPeripheralId(getConfiguredCompanionBoardInformation());
+	return companionPeripheralId || companionDeviceServices.getCompanionPeripheralId(getConfiguredCompanionDeviceInformation());
 }
 
-function getConfiguredCompanionBoardInformation() {
-	const boardInformation = config.CompanionBoardInformation || {};
+function getConfiguredCompanionDeviceInformation() {
+	const companionDeviceInformation = config.CompanionBoardInformation || {};
 
 	return {
-		host: boardInformation.host || '',
-		username: boardInformation.username || '',
-		password: boardInformation.password || ''
+		host: companionDeviceInformation.host || '',
+		username: companionDeviceInformation.username || '',
+		password: companionDeviceInformation.password || ''
 	};
 }
 
-function getStandaloneCompanionBoardInformation() {
-	const boardInformation = getConfiguredCompanionBoardInformation();
+function getStandaloneCompanionDeviceInformation() {
+	const companionDeviceInformation = getConfiguredCompanionDeviceInformation();
 
 	return {
-		serial: companionState.STAND_ALONE_PARENT_SERIAL,
-		name: companionState.STAND_ALONE_PARENT_SERIAL,
-		host: boardInformation.host,
-		username: boardInformation.username,
-		password: boardInformation.password
+		serial: companionState.STANDALONE_PARENT_SERIAL,
+		name: companionState.STANDALONE_PARENT_SERIAL,
+		host: companionDeviceInformation.host,
+		username: companionDeviceInformation.username,
+		password: companionDeviceInformation.password
 	};
 }
 

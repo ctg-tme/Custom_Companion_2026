@@ -22,14 +22,14 @@ describe('dynamic Config editing', () => {
     const source = await readFile(new URL('../../Custom-Campanion_2_Config_2026.js', import.meta.url), 'utf8');
     const document = parseConfigDocument(source);
     let values = new Map<string, ConfigValue>(document.leaves.map((leaf) => [configPathId(leaf.path), leaf.value]));
-    values = setLockedInstallerValues(document, values, 'board.lab.example');
+    values = setLockedInstallerValues(document, values, 'companion-device.lab.example');
     for (const leaf of document.leaves) {
       const path = formatConfigPath(leaf.path);
       if (path === 'CompanionBoardInformation.username') values.set(configPathId(leaf.path), 'custom-companion');
       if (path === 'CompanionBoardInformation.password') values.set(configPathId(leaf.path), 'temporary-test-value');
     }
     const patched = patchConfigSource(document, values);
-    expect(patched).toContain('host: "board.lab.example"');
+    expect(patched).toContain('host: "companion-device.lab.example"');
     expect(patched).toContain('username: "custom-companion"');
     expect(patched).toContain("temperatureUnit: 'fahrenheit'");
     expect(patched).toContain('// These values initialize PIN Mode only when saved PIN Mode state does not exist.');
