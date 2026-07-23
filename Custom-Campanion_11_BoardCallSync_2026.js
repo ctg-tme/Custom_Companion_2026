@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 20, 2026
  * Revised:                 July 23, 2026
- * Version:                 1.0.4
+ * Version:                 1.0.5
  *
  * Description:             Board Call Synchronization controller for the Custom Companion Solution.
  *                          Owns board call sync classification, Webex join and disconnect behavior,
@@ -72,8 +72,8 @@ function createBoardCallSync(options) {
 	let parentCallRequestInFlight = false;
 	let joinCommandPendingUntil = 0;
 
-	const UNAUTHORIZED_CALL_NOTICE_TEXT = 'Calls must be started from the Paired Room. Return this board to StandAlone to place a call directly.';
-	const UNAUTHORIZED_CALL_ALERT_TITLE = 'Calling Unavailable While Paired';
+	const UNAUTHORIZED_CALL_NOTICE_TEXT = 'Calling is available through the Parent Room while this board is Paired. Start the call from the Parent Room, or return this board to StandAlone to call directly.';
+	const UNAUTHORIZED_CALL_ALERT_TITLE = 'Start Calls from the Parent Room';
 
 	function registerCallCountHandler() {
 		dependencies.xapi.Status.SystemUnit.State.NumberOfActiveCalls.on(callCount => {
@@ -310,10 +310,10 @@ function createBoardCallSync(options) {
 				await setInfo('');
 			}
 			dependencies.log.info({
-				Message: hadActiveBoardCall ? 'Direct board call disconnected because calling is unavailable while Paired' : 'Parent call-state reconciliation found no active parent call',
+				Message: hadActiveBoardCall ? 'Direct board call disconnected; Paired calls must start from the Parent Room' : 'Parent call-state reconciliation found no active parent call',
 				RequestReason: requestReason,
 				DisconnectedBoardCall: hadActiveBoardCall,
-				PairedCallPolicy: hadActiveBoardCall ? 'Calls must be started from the Paired Room' : '',
+				PairedCallPolicy: hadActiveBoardCall ? 'While Paired, start calls from the Parent Room' : '',
 				UserGuidance: hadActiveBoardCall ? UNAUTHORIZED_CALL_NOTICE_TEXT : '',
 				NoticeDurationSeconds: hadActiveBoardCall ? getUnauthorizedCallNoticeDurationSeconds() : 0
 			});
@@ -583,9 +583,9 @@ function createBoardCallSync(options) {
 		await disconnectAllCalls();
 		await showUnauthorizedCallNotice(reason);
 		dependencies.log.warn({
-			Message: 'Direct board call disconnected because calling is unavailable while Paired',
+			Message: 'Direct board call disconnected; Paired calls must start from the Parent Room',
 			Reason: reason,
-			PairedCallPolicy: 'Calls must be started from the Paired Room',
+			PairedCallPolicy: 'While Paired, start calls from the Parent Room',
 			UserGuidance: UNAUTHORIZED_CALL_NOTICE_TEXT,
 			NoticeDurationSeconds: getUnauthorizedCallNoticeDurationSeconds()
 		});
