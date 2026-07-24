@@ -49,11 +49,11 @@ A person with administrative access to the RoomOS device WebUI and Macro Editor 
 _Avoid_: In-Room User, room operator
 
 **Companion Installer**:
-A browser-based deployment tool used by a Device Administrator to configure and install the solution onto a Companion Device. A Parent Room Device is never its installation target; after installation it may start the Companion Device-owned Installer Parent Room Registration workflow.
+A browser-based deployment tool used by a Device Administrator to configure and install the solution onto a Companion Device. A Parent Room Device is never its installation target; from Complete Setup it may optionally start the Companion Device-owned Installer Parent Room Registration workflow zero or more times.
 _Avoid_: Parent installer, room installer
 
 **Installer Parent Room Registration**:
-The post-installation Device Administrator workflow that starts Parent Room Registration from the Companion Installer while the Companion Device performs the normal verification, Parent Room macro installation, and durable registration. It uses the authenticated Device Administrator session instead of PIN Mode and does not display the in-room registration experience.
+The optional post-installation Device Administrator workflow that starts Parent Room Registration from the Companion Installer while the Companion Device performs the normal verification, Parent Room macro installation, and durable registration. It uses the authenticated Device Administrator session instead of PIN Mode and does not display the in-room registration experience.
 _Avoid_: Direct Parent Room Device installation, remote Parent Room Device configuration, PIN bypass
 
 **Installer Credentials**:

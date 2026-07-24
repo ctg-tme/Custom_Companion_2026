@@ -1126,14 +1126,6 @@ input[type='radio'] {
   margin-bottom: 20px;
 }
 
-.parent-registration-panel {
-  max-width: 920px;
-}
-
-.parent-registration-panel .notice {
-  margin-bottom: 20px;
-}
-
 .parent-registration-form {
   display: grid;
   gap: 2px;
@@ -1592,6 +1584,61 @@ input[type='radio'] {
 .success-dialog p {
   margin-bottom: 24px;
   color: var(--mds-color-theme-text-secondary-normal, #000000b3);
+}
+
+.parent-registration-modal {
+  z-index: 20;
+  align-items: start;
+  overflow: auto;
+}
+
+.parent-registration-dialog {
+  position: relative;
+  width: min(100%, 920px);
+  max-height: calc(100dvh - 48px);
+  padding: 32px;
+  overflow: auto;
+  border-radius: 18px;
+  background: var(--mds-color-theme-background-solid-primary-normal, #fff);
+  box-shadow: 0 18px 60px var(--mds-color-core-black-alpha-40, #00000066);
+}
+
+.parent-registration-dialog .panel-heading {
+  padding-right: 48px;
+}
+
+.parent-registration-dialog .notice {
+  margin: 20px 0;
+}
+
+.parent-registration-dialog .log-panel {
+  margin-top: 20px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+@media (max-width: 680px) {
+  .parent-registration-modal {
+    padding: 14px;
+  }
+
+  .parent-registration-dialog {
+    max-height: calc(100dvh - 28px);
+    padding: 22px;
+  }
+
+  .dialog-actions {
+    flex-direction: column-reverse;
+  }
+
+  .dialog-actions .button {
+    width: 100%;
+  }
 }
 
 @media (max-width: 860px) {

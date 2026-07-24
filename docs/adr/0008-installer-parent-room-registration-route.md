@@ -11,7 +11,7 @@ A Device Administrator completing a Companion Installer deployment needs to regi
 
 ## Decision
 
-After confirmed Companion Device initialization, the Companion Installer retains its authenticated JSXAPI connection and sends a transaction-correlated local `Message.Send` envelope with action `InstallerParentRegistrationRequest`. The message contains only the Parent Room Device host, expected serial, credentials, and an explicit acknowledgement that permits replacement of an existing registration or Pending Deregistration.
+After confirmed Companion Device initialization, the Companion Installer transitions to Complete Setup and retains its authenticated JSXAPI connection until the Device Administrator explicitly finishes the workflow. Complete Setup offers an optional **Add Parent** modal that may be opened zero or more times; Parent Room Registration may instead be completed later from the Companion Device interface. Each modal submission sends a transaction-correlated local `Message.Send` envelope with action `InstallerParentRegistrationRequest`. The message contains only the Parent Room Device host, expected serial, credentials, and an explicit acknowledgement that permits replacement of an existing registration or Pending Deregistration.
 
 The Companion Device accepts this action only when it names the connected Companion Device and declares the Installer source role. It starts the existing Parent Room Registration pipeline with an installer presentation channel:
 
@@ -24,7 +24,8 @@ This route is not a direct Parent Room Device control API. RoomOS administrator 
 
 ## Consequences
 
-- Device Administrators can add one or more Parent Room Devices during installation without operating the Companion Device UI.
+- Device Administrators can add zero or more Parent Room Devices during installation without operating the Companion Device UI.
+- Closing the Add Parent modal returns to Complete Setup without disconnecting; Finish is the explicit session-disconnect boundary.
 - In-Room User registration retains its PIN-gated flow and visible prompts.
 - A submitted local message is only a request. Parent Room Registration is successful only after the Companion Device emits the matching completion result.
 - The action is deliberately narrow and uses the existing message envelope, so a future caller must not treat its declared source role as a general network authorization mechanism.

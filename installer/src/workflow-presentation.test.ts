@@ -15,20 +15,25 @@ describe('installer workflow presentation', () => {
     expect(source).not.toContain('The serial read from the Companion Device is never displayed or logged.');
   });
 
-  it('shows the complete Config with human-facing labels and ends with installer Parent Room Registration', async () => {
+  it('keeps installer Parent Room Registration optional from Complete Setup', async () => {
     const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
 
     expect(source).toContain('Configuration summary');
     expect(source).not.toContain('Full Config object');
     expect(source).toContain('humanizeConfigForReview(redactConfig(withLeafValues');
     expect(source).toContain('Every generated setting is shown with human-facing labels.');
-    expect(source).toContain("'Register Parent Room Device'");
+    expect(source).toContain("const STEPS = ['Introduction', 'Release', 'Connect', 'Configure', 'Installation Type', 'Review', 'Install', 'Complete Setup']");
+    expect(source).not.toContain("'Register Parent Room Device', 'Complete Setup'");
+    expect(source).toContain('id="add-parent"');
+    expect(source).toContain('Add Parent');
+    expect(source).toContain('this.parentRegistrationModalOpen ? this.renderParentRegistrationModal()');
     expect(source).toContain('createParentRegistrationRequest');
     expect(source).toContain('sendParentRegistrationRequest');
-    expect(source).toContain('nothing is shown in its in-room interface');
+    expect(source).toContain('Nothing is shown in the Companion Device in-room interface');
     expect(source).toContain("'Complete Setup'");
     expect(source).toContain('Complete setup on the Companion Device');
-    expect(source).toContain('this.completeSetup()');
+    expect(source).toContain('continueToCompleteSetup()');
+    expect(source).toContain('this.companionDevice?.close();');
   });
 
   it('requires an installation type before review and repeats clean-install consequences', async () => {
