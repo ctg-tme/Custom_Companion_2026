@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse } from 'acorn';
 
 const projectMacroFilePattern = /^Custom-Campanion_[A-Za-z0-9_-]+_2026\.js$/;
 const fourPartVersionPattern = /^\d+(?:\.\d+){3}$/;
@@ -41,6 +42,80 @@ function verifySyntax(repositoryDirectory, fileName) {
     const detail = (result.stderr || result.stdout || 'unknown syntax error').trim();
     throw new Error(`${fileName} failed JavaScript syntax validation: ${detail}`);
   }
+}
+
+function verifyUserInterfaceMessageFields(source, fileName) {
+  const program = parse(source, {
+    ecmaVersion: 'latest',
+    locations: true,
+    sourceType: 'module',
+  });
+  const violations = [];
+
+  walkSyntaxTree(program, (node) => {
+    if (node.type !== 'ObjectExpression') return;
+    const properties = new Map();
+    for (const property of node.properties) {
+      if (property.type !== 'Property') continue;
+      const propertyName = syntaxPropertyName(property.key);
+      if (propertyName) properties.set(propertyName, property);
+    }
+
+    for (const [titleField, textField] of [['Title', 'Text'], ['title', 'text']]) {
+      if (!properties.has(titleField) || !properties.has(textField)) continue;
+      for (const field of [titleField, textField]) {
+        const newlineNode = findStaticNewline(properties.get(field).value);
+        if (newlineNode) {
+          violations.push(`${field} at line ${newlineNode.loc.start.line}`);
+        }
+      }
+    }
+  });
+
+  if (violations.length) {
+    throw new Error(`${fileName} UserInterface Message Title and Text fields cannot contain newline characters (${violations.join(', ')}).`);
+  }
+}
+
+function syntaxPropertyName(key) {
+  if (key.type === 'Identifier') return key.name;
+  if (key.type === 'Literal' && typeof key.value === 'string') return key.value;
+  return null;
+}
+
+function findStaticNewline(node) {
+  if (node.type === 'Literal' && typeof node.value === 'string' && /[\r\n]/.test(node.value)) {
+    return node;
+  }
+  if (node.type === 'TemplateLiteral') {
+    const quasi = node.quasis.find((item) => /[\r\n]/.test(item.value.cooked || ''));
+    if (quasi) return quasi;
+  }
+  for (const child of syntaxChildren(node)) {
+    const match = findStaticNewline(child);
+    if (match) return match;
+  }
+  return null;
+}
+
+function walkSyntaxTree(node, visit) {
+  visit(node);
+  for (const child of syntaxChildren(node)) walkSyntaxTree(child, visit);
+}
+
+function syntaxChildren(node) {
+  const children = [];
+  for (const [key, value] of Object.entries(node)) {
+    if (key === 'loc' || key === 'start' || key === 'end') continue;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item && typeof item.type === 'string') children.push(item);
+      }
+    } else if (value && typeof value.type === 'string') {
+      children.push(value);
+    }
+  }
+  return children;
 }
 
 export async function verifyReleaseContract(repositoryDirectory) {
@@ -99,6 +174,7 @@ export async function verifyReleaseContract(repositoryDirectory) {
     const source = await readFile(join(repositoryDirectory, file), 'utf8');
     sourceByFile.set(file, source);
     verifySyntax(repositoryDirectory, file);
+    verifyUserInterfaceMessageFields(source, file);
   }
 
   const mainSource = sourceByFile.get(mainMacroFile);

@@ -118,3 +118,12 @@ test('rejects Installer Parent Room Registration contract drift', async (t) => {
   });
   await assert.rejects(verifyReleaseContract(repositoryDirectory), /Installer Parent Room Registration contract value/i);
 });
+
+test('rejects newline characters in UserInterface Message Title and Text fields', async (t) => {
+  const repositoryDirectory = await withFixture(t, {
+    sources: {
+      [contract.MainMacroFile]: `${header()}console.log('${contract.InitializationSuccessMessage}');\nconsole.log('${contract.InitializationStoppedMessage}');\nconsole.log('${contract.InstallerParentRegistrationAction}');\nconsole.log('${contract.InstallerParentRegistrationSuccessMessage}');\nconsole.log('${contract.InstallerParentRegistrationFailureMessage}');\nxapi.Command.UserInterface.Message.Prompt.Display({ Title: 'Review', Text: 'Line one\\nLine two' });\n`,
+    },
+  });
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /UserInterface Message Title and Text fields cannot contain newline characters/i);
+});

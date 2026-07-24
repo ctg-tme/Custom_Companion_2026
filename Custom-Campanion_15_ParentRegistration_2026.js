@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 22, 2026
  * Revised:                 July 24, 2026
- * Version:                 1.0.5
+ * Version:                 1.0.6
  *
  * Description:             Parent Room Registration and Deregistration controller. Owns the
  *                          PIN-authorized wizard, locked provisioning stages, long-hold removal,
@@ -452,7 +452,7 @@ function createParentRegistration(options) {
 		dependencies.pinModeController.touchSession();
 		await dependencies.companionUi.showCompanionPrompt(dependencies.xapi, {
 			title: 'Register Parent Room Device?',
-			text: `Host: ${wizard.host}\nSerial: ${wizard.serial}\nUsername: ${wizard.username}\n\nThe Companion Device will verify this identity before installing the shared Parent Room macros and registering with the Parent Room Device.`,
+			text: `Host: ${wizard.host}; Serial: ${wizard.serial}; Username: ${wizard.username}. The Companion Device will verify this identity before installing the shared Parent Room macros and registering with the Parent Room Device.`,
 			feedbackId: FEEDBACK_IDS.confirmRegistration,
 			options: ['Register Device', 'Cancel'],
 			duration: STAGE_TIMEOUT_MS / 1000
