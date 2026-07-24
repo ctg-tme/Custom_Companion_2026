@@ -9,6 +9,7 @@ on:
       - 'installer/**'
       - 'manifest.json'
       - 'README.md'
+      - 'assets/icons/**'
       - 'Custom-Campanion_*_2026.js'
   workflow_dispatch:
 

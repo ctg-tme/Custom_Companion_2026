@@ -21,10 +21,12 @@ describe('Momentum Design assets', () => {
 });
 
 describe('generated runtime content', () => {
-  it('publishes the current README and resolves the Main Fork version', async () => {
-    const [repositoryReadme, publishedReadme, snapshotText, configSource] = await Promise.all([
+  it('publishes the current README, Custom Companion icon, and Main Fork version', async () => {
+    const [repositoryReadme, publishedReadme, repositoryIcon, publishedIcon, snapshotText, configSource] = await Promise.all([
       readFile(new URL('../../README.md', import.meta.url), 'utf8'),
       readFile(new URL('../public/content/README.md', import.meta.url), 'utf8'),
+      readFile(new URL('../../assets/icons/custom-companion-512.png', import.meta.url)),
+      readFile(new URL('../public/icons/custom-companion-512.png', import.meta.url)),
       readFile(new URL('../public/main/snapshot.json', import.meta.url), 'utf8'),
       readFile(new URL('../../Custom-Campanion_2_Config_2026.js', import.meta.url), 'utf8'),
     ]);
@@ -32,7 +34,9 @@ describe('generated runtime content', () => {
     const currentVersion = configSource.match(/\bversion\s*:\s*['"]([^'"]+)['"]/)?.[1];
 
     expect(publishedReadme).toBe(repositoryReadme);
+    expect(publishedIcon).toEqual(repositoryIcon);
     expect(snapshot.ref).toBe('main');
     expect(snapshot.version).toBe(currentVersion);
+    expect(configSource).toContain('https://ctg-tme.github.io/Custom_Companion_2026/icons/custom-companion-512.png');
   });
 });
