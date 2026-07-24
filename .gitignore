@@ -6,5 +6,6 @@ custom-companion-peer-review-2026-07-14.html
 /LOCAL_AI_CONTEXT_PROMPT.md
 /outputs/*/Custom_Companion_2026_Test_Plan_v*.xlsx
 /outputs/*/Custom_Companion_2026_Test_Plan_v*.xlsx.inspect.ndjson
+/output/pdf/
 /tmp/test-plan-*/
 /.roomos-local/
