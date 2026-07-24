@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 24, 2026
- * Version:                 0.1.2.50
+ * Version:                 0.1.2.51
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -536,8 +536,7 @@ async function renderParentRoomDeviceSelectionUi() {
 			parentDevices,
 			parentDeviceStatus,
 			activeParentSerial,
-			pinModeController.isEnabled(),
-			config.UserInterface.WebWidget.CompanionWidget.defaultIconUrl
+			pinModeController.isEnabled()
 		);
 	} catch (error) {
 		utils.softError({ Context: 'Failed to render Companion Device Select UI', Error: error });

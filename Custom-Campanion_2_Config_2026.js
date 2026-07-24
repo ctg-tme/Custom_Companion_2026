@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 24, 2026
- * Version:                 0.1.2.50
+ * Version:                 0.1.2.51
  *
  * Description:             User-facing configuration for the Custom Companion solution on supported Companion Devices.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -42,7 +42,7 @@ or implied.
  */
 
 const config = {
-  version: '0.1.2.50',
+  version: '0.1.2.51',
   CompanionBoardInformation: {
     host: '10.0.0.120',
     username: '',
@@ -64,7 +64,6 @@ const config = {
     WebWidget: {
       urlOverride: '',
       CompanionWidget: {
-        defaultIconUrl: 'https://ctg-tme.github.io/Custom_Companion_2026/icons/custom-companion-512.png',
         enabled: true,
         restoreStandaloneExisting: false,
         weather: {
@@ -79,11 +78,11 @@ const config = {
         },
         Standalone: {
           info2: 'Use Companion Device Select to register or select a Parent Room Device.',
-          iconUrl: ''
+          iconUrl: 'https://ctg-tme.github.io/Custom_Companion_2026/icons/custom-companion-512.png'
         },
         Paired: {
           info2: 'Use Companion Device Select to choose Standalone or another Parent Room Device.',
-          iconUrl: ''
+          iconUrl: 'https://ctg-tme.github.io/Custom_Companion_2026/icons/custom-companion-512.png'
         }
       }
     }

@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 24, 2026
- * Version:                 1.0.26
+ * Version:                 1.0.27
  *
  * Description:             Companion Device access and hidden panels, custom access-panel icon,
  *                          PIN/registration/status prompts, shared Companion Alert ownership,
@@ -47,6 +47,7 @@ const ACCESS_PANEL_ID = 'cc26_access';
 const PANEL_ID = 'cc26_hidden';
 const ERROR_PANEL_ID = 'cc26_error';
 const ERROR_PROMPT_ID = 'cc26_error_prompt';
+const ACCESS_PANEL_ICON_URL = 'https://ctg-tme.github.io/Custom_Companion_2026/icons/custom-companion-512.png';
 const PARENT_ROOM_DEVICE_SELECTION_PAGE_ID = `${PANEL_ID}~SelectParentRoomDevice`;
 const CONFIG_PAGE_ID = `${PANEL_ID}~Config`;
 const STANDALONE_MODE_WIDGET_ID = `${PARENT_ROOM_DEVICE_SELECTION_PAGE_ID}~Standalone`;
@@ -237,7 +238,7 @@ function buildParentWidgetXml(parentDevice, parentStatus, index) {
 				</Widget>`;
 }
 
-async function savePanel(XAPIObject, parentDevices, parentDeviceStatus, activeParentSerial, pinModeEnabled, iconUrl) {
+async function savePanel(XAPIObject, parentDevices, parentDeviceStatus, activeParentSerial, pinModeEnabled) {
 	await Promise.all([
 		removePanel(XAPIObject, ERROR_PANEL_ID),
 		removePanel(XAPIObject, LEGACY_PANEL_ID)
@@ -247,12 +248,10 @@ async function savePanel(XAPIObject, parentDevices, parentDeviceStatus, activePa
 		XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: PANEL_ID }, buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial))
 	]);
 	const panelUpdates = [
+		fetchIconByUrl(XAPIObject, ACCESS_PANEL_ICON_URL, ACCESS_PANEL_ID),
 		setSelectedParent(XAPIObject, parentDevices, activeParentSerial),
 		setPinModeFeedback(XAPIObject, pinModeEnabled)
 	];
-	if (iconUrl) {
-		panelUpdates.push(fetchIconByUrl(XAPIObject, iconUrl, ACCESS_PANEL_ID));
-	}
 	await Promise.all(panelUpdates);
 }
 
@@ -595,7 +594,7 @@ function buildCompanionWebWidgetUrl(options) {
 		info1: options.mode === 'Standalone' ? 'Operating in Standalone' : `Paired to Parent Room Device:\n${options.parentRoomDeviceName || 'Unknown Parent Room Device'}`,
 		info2: contextConfig.info2 || '',
 		info3: limitWebWidgetInfoText(options.runtimeInfo3),
-		iconUrl: contextConfig.iconUrl || webWidgetConfig.defaultIconUrl || ''
+		iconUrl: contextConfig.iconUrl || ''
 	};
 
 	const weatherConfig = webWidgetConfig.weather || {};

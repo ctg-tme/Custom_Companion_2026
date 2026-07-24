@@ -22,13 +22,15 @@ describe('Momentum Design assets', () => {
 
 describe('generated runtime content', () => {
   it('publishes the current README, Custom Companion icon, and Main Fork version', async () => {
-    const [repositoryReadme, publishedReadme, repositoryIcon, publishedIcon, snapshotText, configSource] = await Promise.all([
+    const [repositoryReadme, publishedReadme, repositoryIcon, publishedIcon, snapshotText, configSource, mainSource, uiSource] = await Promise.all([
       readFile(new URL('../../README.md', import.meta.url), 'utf8'),
       readFile(new URL('../public/content/README.md', import.meta.url), 'utf8'),
       readFile(new URL('../../assets/icons/custom-companion-512.png', import.meta.url)),
       readFile(new URL('../public/icons/custom-companion-512.png', import.meta.url)),
       readFile(new URL('../public/main/snapshot.json', import.meta.url), 'utf8'),
       readFile(new URL('../../Custom-Campanion_2_Config_2026.js', import.meta.url), 'utf8'),
+      readFile(new URL('../../Custom-Campanion_1_Main_2026.js', import.meta.url), 'utf8'),
+      readFile(new URL('../../Custom-Campanion_4_UI_2026.js', import.meta.url), 'utf8'),
     ]);
     const snapshot = JSON.parse(snapshotText) as { ref: string; version: string };
     const currentVersion = configSource.match(/\bversion\s*:\s*['"]([^'"]+)['"]/)?.[1];
@@ -37,6 +39,10 @@ describe('generated runtime content', () => {
     expect(publishedIcon).toEqual(repositoryIcon);
     expect(snapshot.ref).toBe('main');
     expect(snapshot.version).toBe(currentVersion);
-    expect(configSource).toContain('https://ctg-tme.github.io/Custom_Companion_2026/icons/custom-companion-512.png');
+    expect(configSource).not.toContain('defaultIconUrl');
+    expect(configSource.match(/iconUrl:\s*'https:\/\/ctg-tme\.github\.io\/Custom_Companion_2026\/icons\/custom-companion-512\.png'/g)).toHaveLength(2);
+    expect(mainSource).not.toContain('defaultIconUrl');
+    expect(uiSource).toContain("const ACCESS_PANEL_ICON_URL = 'https://ctg-tme.github.io/Custom_Companion_2026/icons/custom-companion-512.png';");
+    expect(uiSource).toContain('fetchIconByUrl(XAPIObject, ACCESS_PANEL_ICON_URL, ACCESS_PANEL_ID)');
   });
 });
