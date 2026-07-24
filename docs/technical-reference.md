@@ -65,26 +65,28 @@ See [`installer/README.md`](../installer/README.md) for local commands and ADR 0
 
 ## Initialization
 
-The Companion Device initializes first. It registers the UI event routes, initializes HTTPClient and MemoryStorage, loads local state including PIN Mode and Pending Deregistrations, registers call/media subscriptions, validates known Parent Room Devices, applies local mode policy, installs the Parent Room runtime package, connects itself as a peripheral, asks each online Parent Room Device to confirm that the runtime is ready before sending Companion Device-owned configuration, and makes one cleanup attempt for each tombstone. HTTPClient, MemoryStorage, or PIN Mode initialization failure stops initialization, logs a stable administrator diagnostic, removes `cc26_access`, `cc26_hidden`, and legacy `cc26`, and installs the gray widgetless `cc26_error` action panel.
+The Companion Device initializes first. It registers the UI event routes, verifies that `CompanionBoardInformation.host`, `.username`, and `.password` are nonblank strings, initializes HTTPClient and MemoryStorage, loads local state including PIN Mode and Pending Deregistrations, registers call/media subscriptions, validates known Parent Room Devices, applies local mode policy, installs the Parent Room runtime package, connects itself as a peripheral, asks each online Parent Room Device to confirm that the runtime is ready before sending Companion Device-owned configuration, and makes one cleanup attempt for each tombstone. The runtime check confirms that every required Companion Device Callback Credentials configuration field is present without logging its value; the Companion Installer separately authenticates those credentials before installation. Missing callback configuration, HTTPClient failure, MemoryStorage failure, or PIN Mode initialization failure stops initialization, logs a stable administrator diagnostic, removes `cc26_access`, `cc26_hidden`, and legacy `cc26`, and installs the gray widgetless `cc26_error` action panel.
 
 ```mermaid
 flowchart TD
 	A[Custom-Campanion_1_Main_2026 starts] --> B[Register UI handlers]
-	B --> C[Enable HTTPClient]
-	C --> D[Initialize MemoryStorage]
-	C -- Failure --> X[Log diagnostic and install cc26_error]
+	B --> C[Verify callback host, username, and password]
+	C -- Missing or invalid --> X[Log diagnostic and install cc26_error]
+	C --> D[Enable HTTPClient]
+	D --> E[Initialize MemoryStorage]
 	D -- Failure --> X
-	D --> E[Read stored Parent Room Devices, Companion Device mode, and PIN Mode state]
-	E -- Invalid PIN state --> X
-	E --> F[Register message, Paired Environment, call-count, microphone-mute, and volume subscriptions]
-	F --> G[Perform initial call, UI, standby, and media reads]
-	G --> H[Refresh parent identities with HTTP GET]
-	H --> I[Apply Standalone or Paired policy]
-	I --> J[Render Companion Device Select and apply its custom icon]
-	J --> K[Install Parent Room runtime package on online Parent Room Devices]
-	K --> L[Connect Companion Device as Parent Room Device peripheral]
-	L --> M[Send initial heartbeat and ParentReadyRequest]
-	M --> N[Retry Pending Deregistrations, then start parent status and heartbeat interval]
+	E -- Failure --> X
+	E --> F[Read stored Parent Room Devices, Companion Device mode, and PIN Mode state]
+	F -- Invalid PIN state --> X
+	F --> G[Register message, Paired Environment, call-count, microphone-mute, and volume subscriptions]
+	G --> H[Perform initial call, UI, standby, and media reads]
+	H --> I[Refresh parent identities with HTTP GET]
+	I --> J[Apply Standalone or Paired policy]
+	J --> K[Render Companion Device Select and apply its custom icon]
+	K --> L[Install Parent Room runtime package on online Parent Room Devices]
+	L --> M[Connect Companion Device as Parent Room Device peripheral]
+	M --> N[Send initial heartbeat and ParentReadyRequest]
+	N --> O[Retry Pending Deregistrations, then start parent status and heartbeat interval]
 ```
 
 ## Durable Memory and Capture Lifecycle

@@ -176,7 +176,7 @@ Use valid JavaScript string escaping for every value. Never paste a configuratio
    - `Custom-Campanion_2_Config_2026` through `Custom-Campanion_15_ParentRegistration_2026`
    - `Custom-Campanion_7_RoomReference_2026`, which is the source later installed on Parent Room Devices as `Custom-Campanion_Room_2026`
 6. Open the Macro Console, then activate `Custom-Campanion_1_Main_2026`.
-7. Wait for `Custom Companion initialized on Companion Device`. If initialization stops, leave the helper macros inactive, inspect the full diagnostic, correct the named prerequisite, and restart the Macro Runtime only after the fault is understood.
+7. Wait for `Custom Companion initialized on Companion Device`. Main verifies that `CompanionBoardInformation.host`, `.username`, and `.password` are nonblank strings before enabling the solution; a missing field stops initialization with `CC26-INIT-CALLBACK-CREDENTIALS`. If initialization stops, leave the helper macros inactive, inspect the full diagnostic, correct the named prerequisite, and restart the Macro Runtime only after the fault is understood.
 
 Do not manually install the Parent Room package. During Parent Room Registration, the Companion Device copies the required source to the Parent Room Device, renames the entry macro to `Custom-Campanion_Room_2026`, activates only that Parent Room entry, and restarts the Parent Room Macro Runtime.
 
@@ -222,6 +222,7 @@ Command acceptance, file presence, and macro activation do not by themselves pro
 | Installer cannot connect | Open the Companion Device HTTPS page in the same browser and trust its certificate; confirm the host, administrator credentials, local network path, and secure WebSocket access. |
 | Installer rejects compatibility | Confirm the expected serial, exact product platform, and RoomOS version against the selected release manifest. |
 | Main reports an import or JavaScript error | Confirm all 15 numbered macros and `Memory-Storage-Functions-V2` came from the intended source set, retain exact names, and are saved before Main is activated. |
+| Initialization stops at Companion Device Callback Credentials | Set all three `CompanionBoardInformation` fields to the callback host, username, and password. For manual installation, verify the account and bidirectional HTTPS path separately before restarting. |
 | Initialization stops at HTTPClient or memory | Confirm the Macro Runtime and HTTPClient configuration can be changed, the dependency exists under its exact name, and the administrator diagnostic identifies no permissions or storage failure. |
 | Companion Device Select is replaced by Companion Device Unavailable | Read the hard-error diagnostic, correct the prerequisite or required xAPI path, then restart the Macro Runtime. |
 | Parent Room Registration fails | Confirm host syntax, expected serial, Parent Room Device credentials and permissions, HTTPS reachability in both directions, available registration capacity, and the transaction's macro logs. |

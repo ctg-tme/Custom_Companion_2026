@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 24, 2026
- * Version:                 0.1.2.48
+ * Version:                 0.1.2.49
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -298,6 +298,7 @@ const parentRegistrationController = parentRegistration.create({
 async function init() {
 	try {
 		registerUiEventHandlers();
+		validateCompanionDeviceCallbackConfiguration();
 		try {
 			await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG);
 		} catch (error) {
@@ -355,6 +356,30 @@ async function init() {
 		log.info({ Message: 'Custom Companion initialized on Companion Device', Version: config.version, ActiveParentRoomDevice: companionDeviceState.activeParent.name });
 	} catch (error) {
 		await handleInitializationFailure(error);
+	}
+}
+
+function validateCompanionDeviceCallbackConfiguration() {
+	const callbackConfiguration = config.CompanionBoardInformation;
+	const requiredFields = ['host', 'username', 'password'];
+	const invalidFields = [];
+
+	for (let index = 0; index < requiredFields.length; index++) {
+		const field = requiredFields[index];
+		const value = callbackConfiguration && callbackConfiguration[field];
+		if (typeof value !== 'string' || !value.trim()) {
+			invalidFields.push(`CompanionBoardInformation.${field}`);
+		}
+	}
+
+	if (invalidFields.length > 0) {
+		utils.hardError({
+			Code: 'CC26-INIT-CALLBACK-CREDENTIALS',
+			Component: 'CompanionDeviceMain',
+			Context: 'Companion Device Callback Credentials configuration is incomplete',
+			Remediation: 'Set config.CompanionBoardInformation.host, username, and password to an existing Companion Device callback account, then restart the Macro Runtime.',
+			InvalidConfigurationFields: invalidFields
+		});
 	}
 }
 

@@ -105,8 +105,8 @@ The administrator-facing source configuration is in `Custom-Campanion_2_Config_2
 | Config path | Purpose | Administration guidance |
 | --- | --- | --- |
 | `version` | Release-wide project version used by runtime and release verification. | Release-owned. Do not edit it independently. |
-| `CompanionBoardInformation.host` | Companion Device callback host distributed to Parent Room Devices. | Use an address reachable from every Parent Room Device. Update it if network addressing changes. |
-| `CompanionBoardInformation.username` and `.password` | Existing local Companion Device Callback Credentials. | Create or update the account first. Protect the Config macro because these values are stored in source. |
+| `CompanionBoardInformation.host` | Companion Device callback host distributed to Parent Room Devices. | Use a nonblank address reachable from every Parent Room Device. Update it if network addressing changes. |
+| `CompanionBoardInformation.username` and `.password` | Existing local Companion Device Callback Credentials. | Both values are required. Create or update the account first. Initialization stops if any callback field is missing or blank. Protect the Config macro because these values are stored in source. |
 | `pinMode.defaults.enabled` and `.pin` | Bootstrap state used only when no durable PIN Mode record exists. | The PIN must contain 4–8 digits. These values do not replace a healthy current PIN after initialization. |
 | `httpClient.allowInsecureHTTPS` | Sets RoomOS `HttpClient AllowInsecureHTTPS` and the request option used for device-to-device HTTPS. | `true` permits certificates that RoomOS does not trust. Set `false` only after confirming the complete certificate chain and host names in both directions. |
 | `UserInterface.WebWidget.urlOverride` | Replaces the built-in Simple-WebWidget base URL. | Leave empty for the release default. Validate any custom page on every supported display. |

@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 24, 2026
- * Version:                 0.1.2.48
+ * Version:                 0.1.2.49
  *
  * Description:             User-facing configuration for the Custom Companion solution on supported Companion Devices.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -42,7 +42,7 @@ or implied.
  */
 
 const config = {
-  version: '0.1.2.48',
+  version: '0.1.2.49',
   CompanionBoardInformation: {
     host: '10.0.0.120',
     username: '',
