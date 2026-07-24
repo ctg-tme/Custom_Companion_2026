@@ -10,14 +10,14 @@ Before editing, summarize the intended scope, order, untouched areas, and materi
 
 Before changing anything:
 
-1. Read `README.md`, `CONTEXT.md`, relevant files under `docs/adr/`, recent Git history, current status/diffs, ignored local context, and the source involved in the work package.
+1. Read `README.md`, `docs/technical-reference.md`, `CONTEXT.md`, relevant files under `docs/adr/`, recent Git history, current status/diffs, ignored local context, and the source involved in the work package.
 2. Review relevant RoomOS development context in `../Bobbys_Macro_AI_Agents` and `../LAB-1451/docs/Main-Lab/RoomOS`.
 3. Treat current runtime source and observed device behavior as authoritative. Correct stale documentation when behavior or architecture changes.
 4. Preserve pre-existing and unrelated changes. Keep POCs, experiments, generated storage, installer build output, and explicitly ignored files outside deployable source.
 
 ## Runtime and installer rules
 
-- Preserve the unbundled numbered-macro architecture, naming, ownership, activation model, and canonical terms documented in `README.md`, `CONTEXT.md`, and the ADRs.
+- Preserve the unbundled numbered-macro architecture, naming, ownership, activation model, and canonical terms documented in `docs/technical-reference.md`, `CONTEXT.md`, and the ADRs.
 - Use RoomOS QuickJS-compatible JavaScript and modern explicit xAPI syntax. Keep xAPI paths, commands, subscriptions, and initial reads obvious and documented.
 - Preserve trust, credentials, storage, transport, standby, pairing, parent provisioning, Companion Installer, and call-platform decisions.
 - Do not remove Deferred Surfaces or inert non-Webex references, and do not describe them as implemented.
@@ -80,7 +80,7 @@ No triage-label workflow is used. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-This is a single-context repository using root `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md`.
+This is a single-context repository using root `CONTEXT.md`, `docs/technical-reference.md`, and `docs/adr/`. See `docs/agents/domain.md`.
 
 ### Task-specific skills
 

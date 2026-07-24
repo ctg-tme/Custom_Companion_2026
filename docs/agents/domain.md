@@ -4,7 +4,8 @@ Custom Companion is a single-context repository. The runtime macros and Companio
 
 ## Read before exploring
 
-- `README.md` for implemented behavior, macro ownership, deployment, and installer operation.
+- `README.md` for the product overview and documentation entry points.
+- `docs/technical-reference.md` for implemented behavior, macro ownership, deployment, and installer operation.
 - `CONTEXT.md` for canonical domain language and terms to avoid.
 - Relevant ADRs under `docs/adr/` before changing architecture, trust, credentials, storage, transport, standby, pairing, installer, or call-platform decisions.
 - `installer/README.md`, `manifest.json`, and `installer/release-contract.json` for installation and release work.
