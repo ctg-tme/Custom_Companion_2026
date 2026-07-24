@@ -5,6 +5,7 @@ Use this index to choose the document that matches your role and task.
 | Document | Audience | Purpose | Status |
 | --- | --- | --- | --- |
 | [Project README](../README.md) | Everyone | A short explanation of Custom Companion, what makes it useful, and its main limits. | Current |
+| [Installation Guide](installation-guide.md) | Device Administrators | Recommended Companion Installer workflow, manual installation, hardware and software requirements, validation, and troubleshooting. | Current |
 | [User Guide](user-guide.md) | In-Room Users | Everyday use of Companion Device Select, Standalone, Paired operation, calls, status messages, and PIN-protected actions. | Outline |
 | [Admin Guide](admin-guide.md) | Device Administrators | Planning, installation, configuration, Parent Room Registration, validation, maintenance, recovery, and troubleshooting. | Outline |
 | [Technical Reference](technical-reference.md) | Developers and maintainers | Detailed runtime architecture, state ownership, communication, xAPI contracts, installer behavior, and implementation limits. | Current |
@@ -15,6 +16,7 @@ Use this index to choose the document that matches your role and task.
 ## Document responsibilities
 
 - The root README is the approachable project landing page.
+- The Installation Guide is the current procedure for guided and manual deployment.
 - The User Guide will explain what an In-Room User sees and does.
 - The Admin Guide will explain safe deployment and operational ownership.
 - The Technical Reference records how the implemented solution works.

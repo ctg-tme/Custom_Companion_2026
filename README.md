@@ -37,6 +37,7 @@ Webex call coordination is implemented. Other call platforms remain on the Paren
 
 ## Documentation
 
+- [Installation Guide](docs/installation-guide.md) — recommended Companion Installer workflow, manual macro installation, requirements, and validation.
 - [User Guide](docs/user-guide.md) — planned everyday operation guide and current content outline.
 - [Admin Guide](docs/admin-guide.md) — planned deployment, configuration, maintenance, and troubleshooting guide outline.
 - [Technical Reference](docs/technical-reference.md) — complete runtime architecture, installer behavior, state, communication, and xAPI details.
