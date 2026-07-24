@@ -4,7 +4,7 @@ Copyright (c) 2026 Cisco and/or its affiliates.
 This software is licensed to you under the terms of the Cisco Sample
 Code License, Version 1.1 (the "License"). You may obtain a copy of the
 License at
-			  https://developer.cisco.com/docs/licenses
+              https://developer.cisco.com/docs/licenses
 All use of the material herein must be in accordance with the terms of
 the License. All rights not expressly granted by the License are
 reserved. Unless required by applicable law or agreed to separately in
@@ -18,26 +18,30 @@ or implied.
  * Author(s):               Robert (Bobby) McGonigle Jr
  *                          Technical Marketing Engineer
  *                          Cisco Systems Inc.
-
+ *
  * Date Created:            July 09, 2026
  * Revised:                 July 24, 2026
  * Version:                 0.1.2.47
  *
- * Description:             Parent Room registration, validation, deregistration, and peripheral-cleanup entry macro used as the install source.
- *                          The numbered source remains inactive on the Companion Device; Parent Room installation renames
- *                          and activates it as Custom-Campanion_Room_2026.
+ * Description:             Inactive Parent Room entry source for registration, validation,
+ *                          deregistration, peripheral cleanup, and controller coordination.
+ *                          Parent Room installation renames and activates it as
+ *                          Custom-Campanion_Room_2026.
  *
- * Documentation:           N/A
+ * Documentation:           https://github.com/ctg-tme/Custom_Companion_2026/blob/main/docs/technical-reference.md
  *
  * Software Platforms:      RoomOS
  *
- * Hardware Platforms:      Board Pro Series
+ * Hardware Platforms:      Compatible RoomOS Parent Room Devices
  *
- * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_3_Utils_2026, Custom-Campanion_6_DeviceComms_2026, Custom-Campanion_12_ParentCallCoordination_2026
+ * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_3_Utils_2026,
+ *                          Custom-Campanion_6_DeviceComms_2026,
+ *                          Custom-Campanion_12_ParentCallCoordination_2026
  *
- * AI Generation:           Percentage: 95%
- *                          Model(s): GPT-5.3-Codex
- *                          Instruction File(s): /Users/bomcgoni/.claude/rules/Bobby_McGonigles_Macro_Rule_Set_for_AI.md
+ * AI Generation:           Percentage: 95% (estimated)
+ *                          Model(s): OpenAI Codex (GPT-5 family)
+ *                          Instruction File(s): AGENTS.md,
+ *                          https://github.com/ctg-tme/Bobbys_Macro_AI_Agents/blob/main/AGENTS.md
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
 

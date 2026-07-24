@@ -18,24 +18,26 @@ or implied.
  * Author(s):               Robert (Bobby) McGonigle Jr
  *                          Technical Marketing Engineer
  *                          Cisco Systems Inc.
-
+ *
  * Date Created:            July 09, 2026
  * Revised:                 July 24, 2026
  * Version:                 1.0.2
  *
  * Description:             Shared structured logging plus soft and hard diagnostic boundaries.
  *
- * Documentation:           N/A
+ * Documentation:           https://github.com/ctg-tme/Custom_Companion_2026/blob/main/docs/technical-reference.md
  *
  * Software Platforms:      RoomOS
  *
- * Hardware Platforms:      Board Pro Series
+ * Hardware Platforms:      Board Pro, Board Pro G2, Board Pro G3, Desk Pro, Desk, Desk Mini, Desk Pro G2;
+ *                          compatible RoomOS Parent Room Devices
  *
  * Code Dependencies:       None
  *
- * AI Generation:           Percentage: 95%
- *                          Model(s): GPT-5.3-Codex
- *                          Instruction File(s): /Users/bomcgoni/.claude/rules/Bobby_McGonigles_Macro_Rule_Set_for_AI.md
+ * AI Generation:           Percentage: 95% (estimated)
+ *                          Model(s): OpenAI Codex (GPT-5 family)
+ *                          Instruction File(s): AGENTS.md,
+ *                          https://github.com/ctg-tme/Bobbys_Macro_AI_Agents/blob/main/AGENTS.md
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
 

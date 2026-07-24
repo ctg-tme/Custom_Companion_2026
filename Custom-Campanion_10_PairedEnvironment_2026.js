@@ -18,27 +18,28 @@ or implied.
  * Author(s):               Robert (Bobby) McGonigle Jr
  *                          Technical Marketing Engineer
  *                          Cisco Systems Inc.
-
+ *
  * Date Created:            July 20, 2026
- * Revised:                 July 23, 2026
+ * Revised:                 July 24, 2026
  * Version:                 1.0.6
  *
- * Description:             Paired Environment policy controller for the Custom Companion Solution.
+ * Description:             Paired Environment Policy controller for the Custom Companion solution.
  *                          Owns reversible local configuration policy, Companion Web Widget mode,
  *                          Paired microphone/volume/Do Not Disturb enforcement, and safe
  *                          Standalone restoration.
  *
- * Documentation:           N/A
+ * Documentation:           https://github.com/ctg-tme/Custom_Companion_2026/blob/main/docs/technical-reference.md
  *
  * Software Platforms:      RoomOS
  *
- * Hardware Platforms:      Board Pro Series
+ * Hardware Platforms:      Board Pro, Board Pro G2, Board Pro G3, Desk Pro, Desk, Desk Mini, Desk Pro G2
  *
  * Code Dependencies:       Custom-Campanion_4_UI_2026
  *
- * AI Generation:           Percentage: 95%
- *                          Model(s): GPT-5.3-Codex
- *                          Instruction File(s): /Users/bomcgoni/.claude/rules/Bobby_McGonigles_Macro_Rule_Set_for_AI.md
+ * AI Generation:           Percentage: 95% (estimated)
+ *                          Model(s): OpenAI Codex (GPT-5 family)
+ *                          Instruction File(s): AGENTS.md,
+ *                          https://github.com/ctg-tme/Bobbys_Macro_AI_Agents/blob/main/AGENTS.md
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
 

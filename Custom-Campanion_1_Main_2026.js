@@ -18,7 +18,7 @@ or implied.
  * Author(s):               Robert (Bobby) McGonigle Jr
  *                          Technical Marketing Engineer
  *                          Cisco Systems Inc.
-
+ *
  * Date Created:            July 09, 2026
  * Revised:                 July 24, 2026
  * Version:                 0.1.2.47
@@ -26,17 +26,29 @@ or implied.
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
  *
- * Documentation:           N/A
+ * Documentation:           https://github.com/ctg-tme/Custom_Companion_2026/blob/main/docs/technical-reference.md
  *
  * Software Platforms:      RoomOS
  *
- * Hardware Platforms:      Board Pro Series
+ * Hardware Platforms:      Board Pro, Board Pro G2, Board Pro G3, Desk Pro, Desk, Desk Mini, Desk Pro G2
  *
- * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_2_Config_2026, Custom-Campanion_3_Utils_2026, Custom-Campanion_4_UI_2026, Custom-Campanion_5_State_2026, Custom-Campanion_6_DeviceComms_2026, Custom-Campanion_8_Services_2026, Custom-Campanion_9_ParentConnectivity_2026, Custom-Campanion_10_PairedEnvironment_2026, Custom-Campanion_11_BoardCallSync_2026, Custom-Campanion_13_StandbyCoordination_2026, Custom-Campanion_14_PinMode_2026, Custom-Campanion_15_ParentRegistration_2026, Custom-Companion-Memory-Storage
+ * Code Dependencies:       Memory-Storage-Functions-V2, Custom-Campanion_2_Config_2026,
+ *                          Custom-Campanion_3_Utils_2026, Custom-Campanion_4_UI_2026,
+ *                          Custom-Campanion_5_State_2026, Custom-Campanion_6_DeviceComms_2026,
+ *                          Custom-Campanion_7_RoomReference_2026, Custom-Campanion_8_Services_2026,
+ *                          Custom-Campanion_9_ParentConnectivity_2026,
+ *                          Custom-Campanion_10_PairedEnvironment_2026,
+ *                          Custom-Campanion_11_BoardCallSync_2026,
+ *                          Custom-Campanion_12_ParentCallCoordination_2026,
+ *                          Custom-Campanion_13_StandbyCoordination_2026,
+ *                          Custom-Campanion_14_PinMode_2026,
+ *                          Custom-Campanion_15_ParentRegistration_2026,
+ *                          Custom-Campanion-Storage
  *
- * AI Generation:           Percentage: 95%
- *                          Model(s): GPT-5.3-Codex
- *                          Instruction File(s): /Users/bomcgoni/.claude/rules/Bobby_McGonigles_Macro_Rule_Set_for_AI.md
+ * AI Generation:           Percentage: 95% (estimated)
+ *                          Model(s): OpenAI Codex (GPT-5 family)
+ *                          Instruction File(s): AGENTS.md,
+ *                          https://github.com/ctg-tme/Bobbys_Macro_AI_Agents/blob/main/AGENTS.md
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
 

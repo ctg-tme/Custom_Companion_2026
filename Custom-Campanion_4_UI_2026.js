@@ -4,7 +4,7 @@ Copyright (c) 2026 Cisco and/or its affiliates.
 This software is licensed to you under the terms of the Cisco Sample
 Code License, Version 1.1 (the "License"). You may obtain a copy of the
 License at
-			  https://developer.cisco.com/docs/licenses
+              https://developer.cisco.com/docs/licenses
 All use of the material herein must be in accordance with the terms of
 the License. All rights not expressly granted by the License are
 reserved. Unless required by applicable law or agreed to separately in
@@ -18,25 +18,26 @@ or implied.
  * Author(s):               Robert (Bobby) McGonigle Jr
  *                          Technical Marketing Engineer
  *                          Cisco Systems Inc.
-
+ *
  * Date Created:            July 09, 2026
- * Revised:                 July 23, 2026
+ * Revised:                 July 24, 2026
  * Version:                 1.0.25
  *
- * Description:             Companion access/hidden panels, PIN/registration/status prompts,
- *                          shared alert ownership, and WebWidget adapter.
+ * Description:             Companion Device access and hidden panels, PIN/registration/status prompts,
+ *                          shared Companion Alert ownership, and Companion WebWidget adapter.
  *
- * Documentation:           N/A
+ * Documentation:           https://github.com/ctg-tme/Custom_Companion_2026/blob/main/docs/technical-reference.md
  *
  * Software Platforms:      RoomOS
  *
- * Hardware Platforms:      Board Pro Series
+ * Hardware Platforms:      Board Pro, Board Pro G2, Board Pro G3, Desk Pro, Desk, Desk Mini, Desk Pro G2
  *
  * Code Dependencies:       None
  *
- * AI Generation:           Percentage: 95%
- *                          Model(s): GPT-5.3-Codex
- *                          Instruction File(s): /Users/bomcgoni/.claude/rules/Bobby_McGonigles_Macro_Rule_Set_for_AI.md
+ * AI Generation:           Percentage: 95% (estimated)
+ *                          Model(s): OpenAI Codex (GPT-5 family)
+ *                          Instruction File(s): AGENTS.md,
+ *                          https://github.com/ctg-tme/Bobbys_Macro_AI_Agents/blob/main/AGENTS.md
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
 

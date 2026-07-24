@@ -45,6 +45,12 @@ The deployable source remains unbundled and uses 15 numbered macros. On the Comp
 
 No build or bundling step is required for the runtime macros. The Companion Installer installs these source files without changing their runtime boundaries. See [ADR 0001](adr/0001-unbundled-domain-macros.md).
 
+## Source Header Metadata
+
+All 15 deployable source macros use the same metadata rules. `Date Created` records the file's first tracked source date, while `Revised` records its latest content revision. Main, Config, `config.version`, and RoomReference share the four-part project version; each helper or domain macro keeps its own implementation version. Header-only maintenance does not change either version set.
+
+The Documentation field links back to this Technical Reference. Companion Device-only hardware lists follow the Release Manifest, Parent Room-only sources identify their Parent Room Device role, and shared sources identify both deployment roles. AI Generation is an estimate across the accumulated source rather than a line-level measurement. The model is named by stable family because the source spans multiple Codex sessions, and the instruction references point to the tracked project guidance plus the public RoomOS macro guidance instead of a developer-specific local path.
+
 ## Companion Installer
 
 The static browser installer in [`installer/`](../installer/) deploys a selected release or the current Main Fork (Beta) snapshot to a Companion Device through JSXAPI. The root [`manifest.json`](../manifest.json) is the Release Manifest and remains authoritative for installable project macros, minimum RoomOS, supported product platforms, and external dependencies. The installer never targets a Parent Room Device directly; the installed Companion Device runtime retains Parent Room provisioning ownership.

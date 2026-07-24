@@ -20,25 +20,26 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 20, 2026
- * Revised:                 July 23, 2026
+ * Revised:                 July 24, 2026
  * Version:                 1.0.6
  *
- * Description:             Parent Call Coordination controller for the Custom Companion Solution.
- *                          Owns parent call detection, BYOD detection, participant admission,
+ * Description:             Parent Call Coordination controller for the Custom Companion solution.
+ *                          Owns Parent Room Device call and BYOD detection, participant admission,
  *                          current-booking Meeting Password lookup, call-detail responses, and call
  *                          synchronization sent to registered Companion Devices.
  *
- * Documentation:           N/A
+ * Documentation:           https://github.com/ctg-tme/Custom_Companion_2026/blob/main/docs/technical-reference.md
  *
  * Software Platforms:      RoomOS
  *
- * Hardware Platforms:      Room Series
+ * Hardware Platforms:      Compatible RoomOS Parent Room Devices
  *
  * Code Dependencies:       None
  *
- * AI Generation:           Percentage: 95%
- *                          Model(s): GPT-5.3-Codex
- *                          Instruction File(s): /Users/bomcgoni/.claude/rules/Bobby_McGonigles_Macro_Rule_Set_for_AI.md
+ * AI Generation:           Percentage: 95% (estimated)
+ *                          Model(s): OpenAI Codex (GPT-5 family)
+ *                          Instruction File(s): AGENTS.md,
+ *                          https://github.com/ctg-tme/Bobbys_Macro_AI_Agents/blob/main/AGENTS.md
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
 
