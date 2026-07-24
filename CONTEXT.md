@@ -24,6 +24,10 @@ _Avoid_: Connected mode, linked mode
 The reversible Companion Device policy that suppresses independent endpoint behavior while Paired without replacing Standalone preferences. A surface is governed only after its exact Standalone value has been captured durably.
 _Avoid_: Paired defaults, unpaired settings
 
+**Standalone Preference Snapshot**:
+A durable record used to return a Companion Device surface to its exact pre-Paired value. A valid snapshot is learned while the operating mode is known to be Standalone; a value observed while Paired is not a Standalone preference, even when it is the current RoomOS configuration.
+_Avoid_: Memory capture, Paired value, presumed RoomOS default
+
 **Companion Device Select**:
 The in-room interface for choosing Standalone or a registered Parent Room Device and for opening the configuration controls for PIN Mode, Parent Room Registration, and Parent Room Deregistration.
 _Avoid_: Select Device, room picker, board select

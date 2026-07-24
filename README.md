@@ -77,6 +77,56 @@ flowchart TD
 	M --> N[Retry Pending Deregistrations, then start parent status and heartbeat interval]
 ```
 
+## Durable Memory and Capture Lifecycle
+
+RoomOS configurations persist across device boots and Macro Runtime restarts. Macro variables and subscriptions do not. Custom Companion therefore keeps its own durable runtime state in the generated `Custom-Campanion-Storage` macro through `Memory-Storage-Functions-V2`. A captured configuration record is a **Standalone Preference Snapshot**: an exact value used for later restoration, not a presumed RoomOS default.
+
+Initialization establishes the operating mode before the Paired Environment controller decides whether it may capture values. It initializes MemoryStorage, reads `activeParentSerial`, derives Standalone or Paired, loads the saved snapshots, and only then initializes configuration capture and subscriptions. A recovered Paired mode skips Paired Environment capture and reapplies policy from the saved Standalone Preference Snapshots. A recovered Standalone mode captures the current supported values before continuing.
+
+```mermaid
+flowchart TD
+	A[Macro Runtime starts] --> B[Initialize MemoryStorage]
+	B --> C[Read activeParentSerial]
+	C --> D[Derive Standalone or Paired]
+	D --> E[Load saved preference snapshots]
+	E --> F{Recovered mode}
+	F -- Paired --> G[Skip Paired Environment capture]
+	G --> H[Register subscriptions]
+	H --> I[Reapply Paired policy from saved snapshots]
+	F -- Standalone --> J[Capture current supported values]
+	J --> K[Write changed snapshots]
+	K --> H
+```
+
+The Companion Device storage records have different ownership and update rules:
+
+| Record | Owner and write point | Restart purpose |
+| --- | --- | --- |
+| `parentDevices` | Parent Room Registration commits a verified record; Parent Connectivity may refresh verified identity fields. | Rebuilds the selectable Parent Room Device list and preserves the credentials required for autonomous communication. |
+| `pendingDeregistrations` | Parent Room Deregistration writes a tombstone before retiring the selectable record and removes it only after the matching acknowledgement. | Resumes unconfirmed Parent Room Device cleanup. |
+| `activeParentSerial` | A verified Parent Room Device selection or transition to Standalone writes the selected operating-mode authority. | Derives Paired or Standalone before Paired Environment capture is considered. |
+| `pinMode` | Initialized once from valid configured defaults, then changed only by authorized PIN Mode operations; a failed write is retried once. | Restores the sole runtime authority for PIN Mode. |
+| `standaloneUiFeatureConfig` | Captured during a Standalone initialization, immediately before entering Paired, and from supported configuration changes observed while Standalone. It also holds optional original WebWidget restore metadata. | Restores the exact supported Standalone UI feature values. |
+| `standalonePairedEnvironmentConfig` | Captured during a Standalone initialization, immediately before entering Paired, and from supported environment changes observed while Standalone. | Restores Mute Warning, the applicable proximity mode, AirPlay and Miracast modes, per-ID non-camera connector presentation selection, and proximity service availability. |
+| `standaloneStandbyConfig` | Initializes missing entries from current Standby Control, Halfwake Mode, and Office Hours values, then updates them from changes observed while Standalone. | Restores the exact saved Standalone standby preferences. |
+
+The Parent Room Device has separate generated memory. `registeredBoards` stores its recognized Companion Device records, while `boardConfigs` stores the last accepted Companion Device configuration by serial. `ConfigSync` writes both records; confirmed deregistration removes both. Parent Room initialization reloads them before validation and call coordination begin.
+
+Paired Environment capture follows these mode boundaries:
+
+| Event | Capture or save behavior |
+| --- | --- |
+| Runtime starts with durable mode Standalone | Fully capture current supported Paired Environment values. |
+| A verified Parent Room Device is about to become active | Fully capture while the runtime is still Standalone, then persist the Parent Room Device serial and apply Paired values. |
+| A supported value changes while Standalone | Update the corresponding Standalone Preference Snapshot. |
+| Runtime starts with durable mode Paired | Do not capture; load the existing snapshots and reapply Paired policy. |
+| A supported value changes while Paired | Do not save it as a Standalone preference; reapply Paired policy. |
+| The Companion Device returns to Standalone | Fill only previously missing Paired Environment entries, then restore exact saved values. |
+
+The standby snapshot currently has a narrower guard than the Paired Environment snapshots. Existing saved standby entries are never overwritten during initialization, but missing entries are filled from the current device values without first requiring recovered Standalone mode. A Paired restart with an incomplete `standaloneStandbyConfig` can therefore learn a Paired-enforced standby value as the missing Standalone preference. This is a known restart-hardening gap.
+
+A Standard Installation preserves all of these records. A Clean Installation deliberately removes the generated Companion Device storage and therefore removes both the operating-mode authority and every Standalone Preference Snapshot. Because RoomOS configurations themselves persist, a Clean Installation performed while Paired can leave Paired-enforced configuration values on the device; the next initialization has no deleted snapshot from which to recover the earlier Standalone values.
+
 ## Parent Room Macro Installation
 
 The Companion Device installs the Parent Room runtime onto each online Parent Room Device. The installed runtime name is `Custom-Campanion_Room_2026`; `Custom-Campanion_12_ParentCallCoordination_2026`, Utils, DeviceComms, and MemoryStorage are copied as dependencies. Only `Custom-Campanion_Room_2026` is activated. Companion Device configuration stays on the Companion Device and is sent later with `ConfigSync`.
@@ -308,6 +358,8 @@ Standalone standby preferences are saved in Companion Device memory for `Standby
 
 The reversible Paired Environment Policy is owned by `Custom-Campanion_10_PairedEnvironment_2026`. Immediately before a verified Parent Room Device selection changes the runtime from Standalone to Paired, the controller reads every supported governed configuration and stores the exact Standalone values in Companion Device memory. Configuration subscriptions update those preferences only while the Companion Device is actually Standalone. Returning to Standalone restores only exact saved values. An optional path or connector that is unsupported, absent, or missing a durable Standalone value is logged and left unchanged; this is especially important when a release first starts on a device that was already Paired.
 
+On a steady-state Paired Macro Runtime restart, Main loads `activeParentSerial` and both Paired Environment snapshots before initialization reaches the capture gate. The recovered Paired mode skips capture, and `captureStandaloneConfig` also rejects direct calls unless the current mode is Standalone. Paired subscription events reapply policy rather than updating either Standalone Preference Snapshot.
+
 The UI feature slice sets Video Mute, Participant List, and Whiteboard Start to `Auto`; the other known call controls plus Share Start are set to `Hidden`, and `BYOD.QRCodePairing` is set to `Disabled`. Call End is `Hidden` during normal Paired operation and temporarily `Auto` during Call Preservation or an active-call Unhealthy State. Unsupported optional feature paths are logged and skipped. Because RoomOS does not expose a dedicated Raise Hand visibility configuration, device acceptance must confirm Raise Hand remains available with MidCallControls hidden.
 
 The remaining Paired configuration slice sets `UserInterface.MuteWarning = Disabled`, `Video.Input.AirPlay.Mode = Off`, and `Video.Input.Miracast.Mode = Off`. `Config.Provisioning.Mode` selects exactly one proximity alternative: `Webex.Proximity.Mode = Off` when its value is `Webex`, otherwise `Proximity.Mode = Off`; the controller never blindly sets both. AirPlay and Miracast `PresentationSelection` remain unchanged because those sharing modes are disabled completely.
@@ -328,6 +380,8 @@ flowchart TD
 	B -- Yes --> C[Set activeParentSerial to Standalone]
 	C --> D[Write active Parent Room memory]
 	D --> E[Restore exact stored Standalone Paired Environment values]
+	D -. Runtime stops before restoration completes .-> X[Next initialization sees Standalone]
+	X --> Y[Full startup capture can learn Paired or partly restored values]
 	B -- No --> F[Validate selected Parent Room Device is online]
 	F --> G[Capture exact Standalone Paired Environment values]
 	G --> H[Set activeParentSerial to parent serial]
@@ -335,6 +389,10 @@ flowchart TD
 	I --> J[Apply Paired Environment Policy]
 	J --> K[Send active Parent Room Device heartbeat]
 ```
+
+The dashed path is a current source-level restart limitation, not a device-validated failure. A steady-state Paired restart is protected, but the Paired-to-Standalone transition persists `activeParentSerial = Standalone` immediately before restoring the Paired Environment and standby snapshots. If the Macro Runtime stops after that durable write but before restoration finishes, the next initialization trusts Standalone mode and may overwrite saved preferences with Paired-enforced or partially restored current values.
+
+The recommended hardening direction is to make the durable Standalone mode write the commit point rather than the first restoration step. The runtime can switch its in-memory context to Standalone, restore the Paired Environment and standby snapshots under their existing apply guards, and write `activeParentSerial = Standalone` only after those restorations succeed. A restart before that final write would recover Paired and idempotently reapply Paired policy without changing the snapshots; a restart after it would observe already-restored Standalone configurations. The standby controller should also require Standalone mode before learning missing snapshot entries and defer Paired enforcement for any standby path without a saved Standalone value. A write-ahead transition marker could preserve the user's intent to finish entering Standalone after a restart, but it adds another durable state machine and is not required merely to protect the snapshots. None of this hardening is implemented yet.
 
 ## Unhealthy State and Administrator Communication
 
