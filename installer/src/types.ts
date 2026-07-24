@@ -5,6 +5,9 @@ export const CONFIG_MACRO_FILE = releaseContract.ConfigMacroFile;
 export const ROOM_REFERENCE_MACRO_FILE = releaseContract.RoomReferenceMacroFile;
 export const INITIALIZATION_SUCCESS_MESSAGE = releaseContract.InitializationSuccessMessage;
 export const INITIALIZATION_STOPPED_MESSAGE = releaseContract.InitializationStoppedMessage;
+export const INSTALLER_PARENT_REGISTRATION_ACTION = releaseContract.InstallerParentRegistrationAction;
+export const INSTALLER_PARENT_REGISTRATION_SUCCESS_MESSAGE = releaseContract.InstallerParentRegistrationSuccessMessage;
+export const INSTALLER_PARENT_REGISTRATION_FAILURE_MESSAGE = releaseContract.InstallerParentRegistrationFailureMessage;
 export const GENERATED_STORAGE_MACRO = releaseContract.GeneratedStorageMacro;
 export const PROJECT_MACRO_PATTERN = /^Custom-Campanion_.*_2026$/;
 
@@ -98,4 +101,25 @@ export interface InitializationOutcome {
   kind: InitializationOutcomeKind;
   warnings: string[];
   failure?: string;
+}
+
+export interface ParentRegistrationForm {
+  host: string;
+  serial: string;
+  username: string;
+  password: string;
+  passwordConfirmation: string;
+  allowOverwrite: boolean;
+}
+
+export interface ParentRegistrationRequest {
+  transactionId: string;
+  text: string;
+}
+
+export type ParentRegistrationOutcomeKind = 'succeeded' | 'failed' | 'timeout';
+
+export interface ParentRegistrationOutcome {
+  kind: ParentRegistrationOutcomeKind;
+  message?: string;
 }

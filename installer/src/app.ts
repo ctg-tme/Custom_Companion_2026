@@ -32,6 +32,11 @@ import {
 } from './install';
 import { validateManifest } from './manifest';
 import { renderMermaidDiagrams } from './mermaid';
+import {
+  ParentRegistrationMonitor,
+  createParentRegistrationRequest,
+  sendParentRegistrationRequest,
+} from './parent-registration';
 import { discoverReleaseSources, loadSourceSnapshot } from './release-source';
 import { fetchRenderedReadme } from './readme';
 import {
@@ -45,12 +50,15 @@ import {
   type InstallResource,
   type InstallationType,
   type InstalledMacro,
+  type ParentRegistrationForm,
+  type ParentRegistrationOutcome,
+  type ParentRegistrationRequest,
   type ReleaseDiscovery,
   type ReleaseSource,
   type SourceSnapshot,
 } from './types';
 
-const STEPS = ['Introduction', 'Release', 'Connect', 'Configure', 'Installation Type', 'Review', 'Install', 'Complete Setup'];
+const STEPS = ['Introduction', 'Release', 'Connect', 'Configure', 'Installation Type', 'Review', 'Install', 'Register Parent Room Device', 'Complete Setup'];
 const TEAM_ICON_URL = 'https://avatars.githubusercontent.com/u/159071680?s=200&v=4';
 const TEAM_GITHUB_URL = 'https://github.com/ctg-tme';
 const CISCO_SAMPLE_CODE_LICENSE_URL = 'https://developer.cisco.com/docs/licenses';
@@ -120,6 +128,17 @@ export class InstallerApp {
   private macroLogs: Array<{ classification: LogClassification; message: string }> = [];
   private certificatePromptVisible = false;
   private completionHost = '';
+  private parentRegistrationForm: ParentRegistrationForm = {
+    host: '',
+    serial: '',
+    username: '',
+    password: '',
+    passwordConfirmation: '',
+    allowOverwrite: false,
+  };
+  private parentRegistrationOutcome?: ParentRegistrationOutcome;
+  private parentRegistrationMonitor?: ParentRegistrationMonitor;
+  private parentRegistrationLogs: string[] = [];
   private readonly localReviewEnabled = isLocalReviewHost(window.location.hostname);
   private localReviewMode = false;
 
@@ -165,6 +184,7 @@ export class InstallerApp {
       this.renderInstallationType(),
       this.renderReview(),
       this.renderInstall(),
+      this.renderParentRegistration(),
       this.renderCompleteSetup(),
     ];
     const actions = this.renderStepActions();
@@ -259,10 +279,22 @@ export class InstallerApp {
       return `<div class="actions split"><button class="button ghost" id="back-installation-type">Back to installation type</button><button class="button primary danger-button" id="begin-install" ${this.localReviewMode ? 'disabled' : ''}>${this.localReviewMode ? 'Install disabled in local review' : 'Install on Companion Device'}</button></div>`;
     }
     if (this.step === 7) {
+      if (this.localReviewMode) {
+        return '<div class="actions centered"><button class="button primary" id="dev-preview-complete">Preview complete setup</button></div>';
+      }
+      if (this.parentRegistrationOutcome?.kind === 'succeeded') {
+        return '<div class="actions split"><button class="button ghost" id="complete-parent-setup">Complete setup</button><button class="button primary" id="register-another-parent">Register another Parent Room Device</button></div>';
+      }
+      if (this.parentRegistrationOutcome?.kind === 'timeout') {
+        return `<div class="actions split"><button class="button ghost" id="complete-parent-setup">Complete setup</button><button class="button primary" id="keep-waiting-parent" ${this.busy ? 'disabled' : ''}>${this.busy ? '<span class="spinner inverse"></span>Waiting…' : 'Keep waiting'}</button></div>`;
+      }
+      return `<div class="actions split"><button class="button ghost" id="complete-parent-setup">Complete setup</button><button class="button primary" id="register-parent" ${this.busy ? 'disabled' : ''}>${this.busy ? '<span class="spinner inverse"></span>Registering…' : 'Register Parent Room Device'}</button></div>`;
+    }
+    if (this.step === 8) {
       return '<div class="actions centered"><button class="button primary" id="finish-setup">Finish — install another Companion Device</button></div>';
     }
     if (this.localReviewMode) {
-      return '<div class="actions centered"><button class="button primary" id="dev-preview-complete">Preview complete setup</button></div>';
+      return '<div class="actions centered"><button class="button primary" id="dev-preview-parent-registration">Preview Parent Room Device registration</button></div>';
     }
     const outcome = this.installOutcome;
     const ready = outcome?.kind === 'ready' || outcome?.kind === 'ready-with-warnings';
@@ -303,7 +335,7 @@ export class InstallerApp {
     const source = this.currentSource();
     const loading = !this.discovery;
     return `
-      ${this.pageHeader('Step 2 of 8', 'Choose an installation source', 'Published releases are the safest choice. Main Fork is available as a versioned Beta snapshot of this Pages build.')}
+      ${this.pageHeader('Step 2 of 9', 'Choose an installation source', 'Published releases are the safest choice. Main Fork is available as a versioned Beta snapshot of this Pages build.')}
       ${this.errorNotice()}
       <section class="panel source-panel">
         <div class="panel-heading"><span class="heading-icon">${cloudIcon}</span><div><h2>Release channel</h2><p>Stable releases appear first, followed by Preview builds and the versioned Main Fork (Beta).</p></div></div>
@@ -326,7 +358,7 @@ export class InstallerApp {
 
   private renderConnect(): string {
     return `
-      ${this.pageHeader('Step 3 of 8', 'Connect to the Companion Device', 'Sign in with the Companion Device administrator account used only for installation. If certificate trust blocks sign-in, a recovery link appears after the failed attempt.')}
+      ${this.pageHeader('Step 3 of 9', 'Connect to the Companion Device', 'Sign in with the Companion Device administrator account used only for installation. If certificate trust blocks sign-in, a recovery link appears after the failed attempt.')}
       ${this.errorNotice()}
       <section class="panel connect-panel">
         <div class="panel-heading"><span class="heading-icon">${deviceIcon}</span><div><h2>Companion Device connection</h2><p>Enter the device identity and administrator credentials. The serial comparison confirms the intended device before installation.</p></div></div>
@@ -399,7 +431,7 @@ export class InstallerApp {
 
   private renderConfigure(): string {
     return `
-      ${this.pageHeader('Step 4 of 8', 'Configure the Companion Device runtime', 'Every value is generated from the selected Config macro. Per-install edits remain in memory and never change repository files.')}
+      ${this.pageHeader('Step 4 of 9', 'Configure the Companion Device runtime', 'Every value is generated from the selected Config macro. Per-install edits remain in memory and never change repository files.')}
       ${this.errorNotice()}
       ${this.renderCompatibility()}
       ${this.compatibility?.deskSeriesWarning ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Desk Series is not recommended</strong><p>This platform is available for testing and special use cases.</p></div></div>` : ''}
@@ -413,7 +445,7 @@ export class InstallerApp {
 
   private renderInstallationType(): string {
     return `
-      ${this.pageHeader('Step 5 of 8', 'Choose an installation type', 'Choose whether the installer should preserve existing Custom Companion state or begin with a clean generated storage file.')}
+      ${this.pageHeader('Step 5 of 9', 'Choose an installation type', 'Choose whether the installer should preserve existing Custom Companion state or begin with a clean generated storage file.')}
       ${this.errorNotice()}
       <section class="installation-type-grid" aria-label="Installation type">
         <label class="installation-type-card ${this.installationType === 'standard' ? 'selected' : ''}">
@@ -449,7 +481,7 @@ export class InstallerApp {
       ? humanizeConfigForReview(redactConfig(withLeafValues(this.configDocument, this.configValues)))
       : {};
     return `
-      ${this.pageHeader('Step 6 of 8', 'Review before installing', 'All source files have passed preflight. The next action begins forward-only changes on the connected Companion Device.')}
+      ${this.pageHeader('Step 6 of 9', 'Review before installing', 'All source files have passed preflight. The next action begins forward-only changes on the connected Companion Device.')}
       ${this.errorNotice()}
       <section class="summary-grid install-summary">
         <div class="summary-item"><small>Installation source</small><strong>${escapeHtml(source?.label ?? '')}</strong><span title="${escapeHtml(this.snapshot?.commitSha ?? '')}">${escapeHtml((this.snapshot?.commitSha ?? '').slice(0, 12))}</span></div>
@@ -473,7 +505,7 @@ export class InstallerApp {
     const outcome = this.installOutcome;
     const ready = outcome?.kind === 'ready' || outcome?.kind === 'ready-with-warnings';
     return `
-      ${this.pageHeader('Step 7 of 8', ready ? 'Companion Device installation ready' : 'Installing and verifying', ready ? 'The Companion Device macros initialized successfully. Parent Room Device configuration still belongs in the Companion Device UI.' : 'The installer is listening to Event Macros Log for runtime errors and the initialization-complete message.')}
+      ${this.pageHeader('Step 7 of 9', ready ? 'Companion Device installation ready' : 'Installing and verifying', ready ? 'The Companion Device macros initialized successfully. You can now optionally register a Parent Room Device without using the in-room interface.' : 'The installer is listening to Event Macros Log for runtime errors and the initialization-complete message.')}
       ${this.installError ? `<div class="notice error"><span>${warningIcon}</span><div><strong>Installation stopped</strong><p>${escapeHtml(this.installError)}</p></div></div>` : ''}
       <section class="panel install-status">
         <div class="status-orb ${ready ? 'ready' : outcome?.kind === 'failed' ? 'failed' : ''}">${ready ? checkIcon : outcome?.kind === 'failed' ? warningIcon : '<span class="spinner large"></span>'}</div>
@@ -482,21 +514,52 @@ export class InstallerApp {
         ${outcome?.kind === 'ready-with-warnings' ? `<div class="notice warning inline"><span>${warningIcon}</span><div><strong>${outcome.warnings.length} runtime error${outcome.warnings.length === 1 ? '' : 's'} observed</strong><p>Initialization completed, but review the log entries below.</p></div></div>` : ''}
       </section>
       ${this.macroLogs.length ? `<details class="log-panel" open><summary>Macro event log <span>${this.macroLogs.length}</span></summary><ol>${this.macroLogs.slice(-50).map((entry) => `<li class="${entry.classification}"><span>${escapeHtml(entry.classification)}</span><code>${escapeHtml(entry.message)}</code></li>`).join('')}</ol></details>` : ''}
-      ${ready ? `<div class="modal-backdrop"><div class="success-dialog" role="dialog" aria-modal="true" aria-labelledby="ready-title"><button class="dialog-close" id="close-ready" aria-label="Close and disconnect">Close</button><span class="dialog-icon">${checkIcon}</span><h2 id="ready-title">Macros installed and ready</h2><p>Custom Companion initialized on the Companion Device. Configure Parent Room Devices next from the Companion Device UI.</p><button class="button primary" id="acknowledge-ready">Continue</button></div></div>` : ''}`;
+      ${ready ? `<div class="modal-backdrop"><div class="success-dialog" role="dialog" aria-modal="true" aria-labelledby="ready-title"><button class="dialog-close" id="close-ready" aria-label="Continue to Parent Room Device registration">Close</button><span class="dialog-icon">${checkIcon}</span><h2 id="ready-title">Macros installed and ready</h2><p>Custom Companion initialized on the Companion Device. Optionally register a Parent Room Device next.</p><button class="button primary" id="acknowledge-ready">Continue</button></div></div>` : ''}`;
+  }
+
+  private renderParentRegistration(): string {
+    const form = this.parentRegistrationForm;
+    const outcome = this.parentRegistrationOutcome;
+    const disabled = this.busy ? 'disabled' : '';
+    const outcomeNotice = outcome?.kind === 'succeeded'
+      ? `<div class="notice success"><span>${checkIcon}</span><div><strong>Parent Room Device registered</strong><p>The Companion Device confirmed the Parent Room Device installation and saved the registration.</p></div></div>`
+      : outcome?.kind === 'failed'
+        ? `<div class="notice error"><span>${warningIcon}</span><div><strong>Parent Room Device registration failed</strong><p>${escapeHtml(this.parentRegistrationResultText(outcome.message))}</p></div></div>`
+        : outcome?.kind === 'timeout'
+          ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Registration has not been confirmed</strong><p>The Companion Device is still connected and the log subscription remains active. Keep waiting for its final result.</p></div></div>`
+          : '';
+    return `
+      ${this.pageHeader('Step 8 of 9', 'Register a Parent Room Device', 'Use the signed-in Device Administrator session to start Parent Room Registration from this page. The Companion Device performs the existing verification and installation workflow; nothing is shown in its in-room interface.')}
+      ${this.errorNotice()}
+      <section class="panel parent-registration-panel">
+        <div class="panel-heading"><span class="heading-icon">${deviceIcon}</span><div><h2>Parent Room Device details</h2><p>The Companion Device verifies the expected serial before changing the Parent Room Device, installs the Parent Room macros, connects as a peripheral, and waits for confirmation. Parent credentials remain only in this browser session and the Companion Device's existing registration flow.</p></div></div>
+        ${outcomeNotice}
+        <form id="parent-registration-form" class="parent-registration-form">
+          <div class="connection-fields">
+            <label class="field"><span>Parent Room Device host address</span><input id="parent-device-host" inputmode="url" placeholder="parent.example.com or 10.0.0.121" value="${escapeHtml(form.host)}" autocomplete="off" ${disabled}></label>
+            <label class="field"><span>Parent Room Device Serial</span><input id="parent-device-serial" value="${escapeHtml(form.serial)}" autocomplete="off" spellcheck="false" ${disabled}><small>The Companion Device uses this value to verify the Parent Room Device before installation.</small></label>
+            <label class="field"><span>Parent Room Device Username</span><input id="parent-device-username" value="${escapeHtml(form.username)}" autocomplete="username" ${disabled}></label>
+            <label class="field"><span>Parent Room Device Password</span><input id="parent-device-password" type="password" value="${escapeHtml(form.password)}" autocomplete="new-password" ${disabled}></label>
+            <label class="field"><span>Confirm Parent Room Device Password</span><input id="parent-device-password-confirmation" type="password" value="${escapeHtml(form.passwordConfirmation)}" autocomplete="new-password" ${disabled}></label>
+          </div>
+          <label class="check-row replacement-ack"><input id="parent-device-overwrite" type="checkbox" ${form.allowOverwrite ? 'checked' : ''} ${disabled}><span><strong>Allow replacement of an existing Parent Room Registration</strong><small>Required only when the verified Parent Room Device is already registered or has a Pending Deregistration. This makes the new registration the current intent.</small></span></label>
+        </form>
+      </section>
+      ${this.parentRegistrationLogs.length ? `<details class="log-panel" open><summary>Parent registration activity <span>${this.parentRegistrationLogs.length}</span></summary><ol>${this.parentRegistrationLogs.map((message) => `<li class="info"><span>status</span><code>${escapeHtml(message)}</code></li>`).join('')}</ol></details>` : ''}`;
   }
 
   private renderCompleteSetup(): string {
     const host = this.completionHost || this.adminCredentials.host;
     return `
-      ${this.pageHeader('Step 8 of 8', 'Complete setup on the Companion Device', 'The Custom Companion Macro is installed. Parent Room Device configuration remains on the Companion Device.')}
+      ${this.pageHeader('Step 9 of 9', 'Complete setup on the Companion Device', 'The Custom Companion Macro is installed, and any Parent Room Device registration you completed has been confirmed.')}
       <section class="panel complete-setup-panel">
         <span class="completion-icon">${checkIcon}</span>
         <div>
           <h2>Continue on ${escapeHtml(host || 'the Companion Device')}</h2>
-          <p>The installer has disconnected from the device. Finish the remaining setup directly from the Custom Companion interface on the Companion Device.</p>
+          <p>The installer has disconnected from the device. Use the Companion Device interface for ongoing Parent Room Device selection and configuration.</p>
           <ol class="completion-steps">
             <li><strong>Open Custom Companion</strong><span>Return to the Companion Device and open its Custom Companion interface.</span></li>
-            <li><strong>Complete Parent Room Device configuration</strong><span>Add or update Parent Room Devices from the on-device configuration experience.</span></li>
+            <li><strong>Manage Parent Room Devices</strong><span>Add or update Parent Room Devices later from the on-device configuration experience.</span></li>
             <li><strong>Confirm the device is ready</strong><span>Review the registered Parent Room Devices and the Standalone state before placing the Companion Device into service.</span></li>
           </ol>
         </div>
@@ -509,7 +572,8 @@ export class InstallerApp {
     });
     this.byId('dev-reset')?.addEventListener('click', () => this.reset());
     this.byId('dev-preview-installation-type')?.addEventListener('click', () => void this.navigateLocalReview(4));
-    this.byId('dev-preview-complete')?.addEventListener('click', () => void this.navigateLocalReview(7));
+    this.byId('dev-preview-parent-registration')?.addEventListener('click', () => void this.navigateLocalReview(7));
+    this.byId('dev-preview-complete')?.addEventListener('click', () => void this.navigateLocalReview(8));
     this.byId('start-installer')?.addEventListener('click', () => { this.step = 1; this.error = ''; this.render(); });
     this.byId('back-introduction')?.addEventListener('click', () => { this.step = 0; this.error = ''; this.render(); });
     this.byId('source-select')?.addEventListener('change', (event) => {
@@ -556,9 +620,17 @@ export class InstallerApp {
       this.render();
     });
     this.byId('begin-install')?.addEventListener('click', () => void this.beginInstall());
-    this.byId('finish-install')?.addEventListener('click', () => this.completeInstallation());
-    this.byId('acknowledge-ready')?.addEventListener('click', () => this.completeInstallation());
-    this.byId('close-ready')?.addEventListener('click', () => this.completeInstallation());
+    this.byId('finish-install')?.addEventListener('click', () => this.continueToParentRegistration());
+    this.byId('acknowledge-ready')?.addEventListener('click', () => this.continueToParentRegistration());
+    this.byId('close-ready')?.addEventListener('click', () => this.continueToParentRegistration());
+    this.byId('parent-registration-form')?.addEventListener('submit', (event) => {
+      event.preventDefault();
+      void this.beginParentRegistration();
+    });
+    this.byId('register-parent')?.addEventListener('click', () => void this.beginParentRegistration());
+    this.byId('keep-waiting-parent')?.addEventListener('click', () => void this.waitForParentRegistration());
+    this.byId('register-another-parent')?.addEventListener('click', () => this.resetParentRegistrationForm());
+    this.byId('complete-parent-setup')?.addEventListener('click', () => this.completeSetup());
     this.byId('finish-setup')?.addEventListener('click', () => this.reset());
     this.byId('disconnect-install')?.addEventListener('click', () => this.reset());
     this.byId('keep-waiting')?.addEventListener('click', () => void this.waitForInitialization());
@@ -680,6 +752,17 @@ export class InstallerApp {
       password: (this.byId('admin-password') as HTMLInputElement | null)?.value ?? '',
     };
     this.expectedSerial = (this.byId('expected-serial') as HTMLInputElement | null)?.value ?? '';
+  }
+
+  private captureParentRegistrationForm(): ParentRegistrationForm {
+    return {
+      host: (this.byId('parent-device-host') as HTMLInputElement | null)?.value ?? this.parentRegistrationForm.host,
+      serial: (this.byId('parent-device-serial') as HTMLInputElement | null)?.value ?? this.parentRegistrationForm.serial,
+      username: (this.byId('parent-device-username') as HTMLInputElement | null)?.value ?? this.parentRegistrationForm.username,
+      password: (this.byId('parent-device-password') as HTMLInputElement | null)?.value ?? this.parentRegistrationForm.password,
+      passwordConfirmation: (this.byId('parent-device-password-confirmation') as HTMLInputElement | null)?.value ?? this.parentRegistrationForm.passwordConfirmation,
+      allowOverwrite: (this.byId('parent-device-overwrite') as HTMLInputElement | null)?.checked ?? this.parentRegistrationForm.allowOverwrite,
+    };
   }
 
   private openCertificate(): void {
@@ -868,9 +951,9 @@ export class InstallerApp {
     }
   }
 
-  private sanitizeLog(message: string): string {
+  private sanitizeLog(message: string, additionalSecrets: string[] = []): string {
     let result = message;
-    const secrets = [this.adminCredentials.password];
+    const secrets = [this.adminCredentials.password, ...additionalSecrets];
     try {
       secrets.push(this.callbackCredentials(this.configValues).password);
     } catch {
@@ -906,9 +989,106 @@ export class InstallerApp {
     }
   }
 
-  private completeInstallation(): void {
+  private continueToParentRegistration(): void {
     this.monitor?.close();
     this.monitor = undefined;
+    this.macroLogs = [];
+    this.error = '';
+    this.installError = '';
+    this.step = 7;
+    this.render();
+  }
+
+  private async beginParentRegistration(): Promise<void> {
+    if (!this.companionDevice || this.localReviewMode) return;
+    this.parentRegistrationForm = this.captureParentRegistrationForm();
+    let request: ParentRegistrationRequest;
+    try {
+      request = createParentRegistrationRequest(this.parentRegistrationForm, this.expectedSerial);
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
+      this.render();
+      return;
+    }
+
+    this.parentRegistrationMonitor?.close();
+    this.parentRegistrationLogs = [];
+    this.parentRegistrationOutcome = undefined;
+    this.error = '';
+    this.busy = true;
+    this.parentRegistrationMonitor = new ParentRegistrationMonitor(
+      this.companionDevice,
+      request.transactionId,
+      (message) => {
+        this.parentRegistrationLogs.push(this.sanitizeLog(message, [this.parentRegistrationForm.password]));
+        if (this.parentRegistrationLogs.length > 50) this.parentRegistrationLogs.shift();
+        this.render();
+      },
+    );
+    this.render();
+    try {
+      await sendParentRegistrationRequest(this.companionDevice, request);
+      await this.waitForParentRegistration();
+    } catch (error) {
+      this.parentRegistrationMonitor?.close();
+      this.parentRegistrationMonitor = undefined;
+      this.busy = false;
+      this.error = 'Unable to start Parent Room Device registration. ' + this.sanitizeLog(
+        error instanceof Error ? error.message : String(error),
+        [this.parentRegistrationForm.password],
+      );
+      this.parentRegistrationForm.password = '';
+      this.parentRegistrationForm.passwordConfirmation = '';
+      this.render();
+    }
+  }
+
+  private async waitForParentRegistration(): Promise<void> {
+    if (!this.parentRegistrationMonitor) return;
+    this.busy = true;
+    this.render();
+    this.parentRegistrationOutcome = await this.parentRegistrationMonitor.wait();
+    this.busy = false;
+    if (this.parentRegistrationOutcome.kind !== 'timeout') {
+      this.parentRegistrationMonitor.close();
+      this.parentRegistrationMonitor = undefined;
+      this.parentRegistrationForm.password = '';
+      this.parentRegistrationForm.passwordConfirmation = '';
+    }
+    this.render();
+  }
+
+  private parentRegistrationResultText(message: string | undefined): string {
+    if (!message) return 'The Companion Device reported that the Parent Room Device could not be registered.';
+    const detail = /"Detail"\s*:\s*"((?:\\.|[^"])*)"/.exec(message)?.[1];
+    if (!detail) return 'The Companion Device reported that the Parent Room Device could not be registered.';
+    try {
+      return JSON.parse('"' + detail + '"') as string;
+    } catch {
+      return detail;
+    }
+  }
+
+  private resetParentRegistrationForm(): void {
+    this.parentRegistrationForm = {
+      host: '',
+      serial: '',
+      username: '',
+      password: '',
+      passwordConfirmation: '',
+      allowOverwrite: false,
+    };
+    this.parentRegistrationOutcome = undefined;
+    this.parentRegistrationLogs = [];
+    this.error = '';
+    this.render();
+  }
+
+  private completeSetup(): void {
+    this.monitor?.close();
+    this.monitor = undefined;
+    this.parentRegistrationMonitor?.close();
+    this.parentRegistrationMonitor = undefined;
     this.companionDevice?.close();
     this.companionDevice = undefined;
     this.completionHost = this.adminCredentials.host;
@@ -917,15 +1097,26 @@ export class InstallerApp {
     this.configValues.clear();
     this.preparedResources = [];
     this.macroLogs = [];
+    this.parentRegistrationForm = {
+      host: '',
+      serial: '',
+      username: '',
+      password: '',
+      passwordConfirmation: '',
+      allowOverwrite: false,
+    };
+    this.parentRegistrationLogs = [];
     this.error = '';
     this.installError = '';
-    this.step = 7;
+    this.step = 8;
     this.render();
   }
 
   private reset(): void {
     this.monitor?.close();
     this.monitor = undefined;
+    this.parentRegistrationMonitor?.close();
+    this.parentRegistrationMonitor = undefined;
     this.companionDevice?.close();
     this.companionDevice = undefined;
     this.step = 0;
@@ -945,6 +1136,16 @@ export class InstallerApp {
     this.installOutcome = undefined;
     this.installError = '';
     this.macroLogs = [];
+    this.parentRegistrationForm = {
+      host: '',
+      serial: '',
+      username: '',
+      password: '',
+      passwordConfirmation: '',
+      allowOverwrite: false,
+    };
+    this.parentRegistrationOutcome = undefined;
+    this.parentRegistrationLogs = [];
     this.betaAcknowledged = false;
     this.localReviewMode = false;
     this.certificatePromptVisible = false;

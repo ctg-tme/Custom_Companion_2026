@@ -13,6 +13,9 @@ const contract = {
   GeneratedStorageMacro: 'Custom-Campanion-Storage',
   InitializationSuccessMessage: 'Custom Companion initialized on Companion Device',
   InitializationStoppedMessage: 'Custom Companion initialization stopped on Companion Device',
+  InstallerParentRegistrationAction: 'InstallerParentRegistrationRequest',
+  InstallerParentRegistrationSuccessMessage: 'Companion Installer Parent Room Registration completed',
+  InstallerParentRegistrationFailureMessage: 'Companion Installer Parent Room Registration failed',
 };
 
 function header(value = version) {
@@ -25,7 +28,7 @@ async function createFixture(overrides = {}) {
   await mkdir(installerDirectory, { recursive: true });
 
   const sources = {
-    [contract.MainMacroFile]: `${header()}console.log('${contract.InitializationSuccessMessage}');\nconsole.log('${contract.InitializationStoppedMessage}');\n`,
+    [contract.MainMacroFile]: `${header()}console.log('${contract.InitializationSuccessMessage}');\nconsole.log('${contract.InitializationStoppedMessage}');\nconsole.log('${contract.InstallerParentRegistrationAction}');\nconsole.log('${contract.InstallerParentRegistrationSuccessMessage}');\nconsole.log('${contract.InstallerParentRegistrationFailureMessage}');\n`,
     [contract.ConfigMacroFile]: `${header()}const config = { version: '${version}' };\nexport { config };\n`,
     [contract.RoomReferenceMacroFile]: `${header()}export const roomReference = true;\n`,
     ...overrides.sources,
@@ -105,4 +108,13 @@ test('rejects initialization-message drift', async (t) => {
     },
   });
   await assert.rejects(verifyReleaseContract(repositoryDirectory), /does not emit the Release Contract message/i);
+});
+
+test('rejects Installer Parent Room Registration contract drift', async (t) => {
+  const repositoryDirectory = await withFixture(t, {
+    sources: {
+      [contract.MainMacroFile]: `${header()}console.log('${contract.InitializationSuccessMessage}');\nconsole.log('${contract.InitializationStoppedMessage}');\n`,
+    },
+  });
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /Installer Parent Room Registration contract value/i);
 });

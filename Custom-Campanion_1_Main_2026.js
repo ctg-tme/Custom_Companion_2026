@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 23, 2026
- * Version:                 0.1.2.44
+ * Revised:                 July 24, 2026
+ * Version:                 0.1.2.45
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -78,6 +78,7 @@ const MESSAGE_CONFIG = {
 	routes: {
 		parentReadyRequest: 'ParentReadyRequest',
 		configSync: 'ConfigSync',
+		installerParentRegistration: 'InstallerParentRegistrationRequest',
 		activeCallDetailsRequest: 'ActiveCallDetailsRequest',
 		meetingPasswordRequest: 'MeetingPasswordRequest',
 		callState: 'parent.callState',
@@ -261,6 +262,7 @@ const parentRegistrationController = parentRegistration.create({
 	configVersion: config.version,
 	peripheralType: PERIPHERAL_TYPE,
 	initialHeartbeatTimeout: INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS,
+	installerRegistrationAction: MESSAGE_CONFIG.routes.installerParentRegistration,
 	log: log,
 	utils: utils,
 	policy: {
@@ -415,6 +417,9 @@ function registerCompanionMessageHandlers() {
 }
 
 async function handleCompanionMessage(message) {
+	if (await parentRegistrationController.handleInstallerRegistrationRequest(message)) {
+		return;
+	}
 	if (await parentRegistrationController.handleMessage(message)) {
 		return;
 	}

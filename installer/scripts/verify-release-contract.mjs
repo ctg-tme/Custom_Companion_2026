@@ -145,6 +145,20 @@ export async function verifyReleaseContract(repositoryDirectory) {
     }
   }
 
+  const installerParentRegistrationAction = requireString(contract.InstallerParentRegistrationAction, 'InstallerParentRegistrationAction');
+  const installerParentRegistrationSuccessMessage = requireString(contract.InstallerParentRegistrationSuccessMessage, 'InstallerParentRegistrationSuccessMessage');
+  const installerParentRegistrationFailureMessage = requireString(contract.InstallerParentRegistrationFailureMessage, 'InstallerParentRegistrationFailureMessage');
+  const allProjectSource = [...sourceByFile.values()].join('\n');
+  for (const value of [
+    installerParentRegistrationAction,
+    installerParentRegistrationSuccessMessage,
+    installerParentRegistrationFailureMessage,
+  ]) {
+    if (!allProjectSource.includes(value)) {
+      throw new Error(`The deployable source does not contain the Installer Parent Room Registration contract value: ${value}`);
+    }
+  }
+
   return {
     contract,
     manifest,

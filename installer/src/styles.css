@@ -908,6 +908,12 @@ input[type='radio'] {
   color: var(--mds-color-theme-text-warning-normal, #7d4705);
 }
 
+.notice.success {
+  border-color: var(--mds-color-core-green-30, #9de7d5);
+  background: var(--mds-color-theme-background-alert-success-normal, #cef5eb);
+  color: var(--mds-color-theme-text-success-normal, #185e46);
+}
+
 .notice.error,
 .notice.danger {
   border-color: var(--mds-color-core-red-30, #ffb8c1);
@@ -916,6 +922,7 @@ input[type='radio'] {
 }
 
 .notice.warning p,
+.notice.success p,
 .notice.error p,
 .notice.danger p {
   color: inherit;
@@ -1117,6 +1124,27 @@ input[type='radio'] {
 
 .callback-panel {
   margin-bottom: 20px;
+}
+
+.parent-registration-panel {
+  max-width: 920px;
+}
+
+.parent-registration-panel .notice {
+  margin-bottom: 20px;
+}
+
+.parent-registration-form {
+  display: grid;
+  gap: 2px;
+}
+
+.replacement-ack {
+  margin-top: 4px;
+  padding: 16px;
+  border: 1px solid var(--mds-color-theme-outline-primary-normal, #00000033);
+  border-radius: 10px;
+  background: var(--mds-color-theme-background-solid-secondary-normal, #f7f7f7);
 }
 
 .callback-panel .check-row {

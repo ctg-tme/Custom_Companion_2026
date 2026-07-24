@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 23, 2026
- * Version:                 0.1.2.44
+ * Revised:                 July 24, 2026
+ * Version:                 0.1.2.45
  *
  * Description:             User-facing configuration for the Custom Companion solution on supported wheel-kit devices.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -41,7 +41,7 @@ or implied.
  */
 
 const config = {
-  version: '0.1.2.44',
+  version: '0.1.2.45',
   CompanionBoardInformation: {
     host: '10.0.0.120',
     username: '',

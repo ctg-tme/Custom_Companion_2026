@@ -49,8 +49,12 @@ A person with administrative access to the RoomOS device WebUI and Macro Editor 
 _Avoid_: In-Room User, room operator
 
 **Companion Installer**:
-A browser-based deployment tool used by a Device Administrator to configure and install the solution onto a Companion Device. A Parent Room Device is never its installation target, and Parent Room Device configuration belongs to the Companion Device UI.
+A browser-based deployment tool used by a Device Administrator to configure and install the solution onto a Companion Device. A Parent Room Device is never its installation target; after installation it may start the Companion Device-owned Installer Parent Room Registration workflow.
 _Avoid_: Parent installer, room installer
+
+**Installer Parent Room Registration**:
+The post-installation Device Administrator workflow that starts Parent Room Registration from the Companion Installer while the Companion Device performs the normal verification, Parent Room macro installation, and durable registration. It uses the authenticated Device Administrator session instead of PIN Mode and does not display the in-room registration experience.
+_Avoid_: Direct Parent Room Device installation, remote Parent Room Device configuration, PIN bypass
 
 **Installer Credentials**:
 The administrator account used only by the Companion Installer to connect to and deploy onto a Companion Device.
@@ -73,7 +77,7 @@ The installation contract published with a Custom Companion release. It identifi
 _Avoid_: package manifest, file listing
 
 **Release Contract**:
-The build-time agreement that keeps the Release Manifest, eligible macro set, stable installer anchors, synchronized runtime project version, relative macro imports, JavaScript syntax, and Companion Device initialization messages consistent before an installation snapshot can be packaged.
+The build-time agreement that keeps the Release Manifest, eligible macro set, stable installer anchors, synchronized runtime project version, relative macro imports, JavaScript syntax, Companion Device initialization messages, and Installer Parent Room Registration route/result identifiers consistent before an installation snapshot can be packaged.
 _Avoid_: Manifest only, installer assumptions
 
 **Clean Installation**:

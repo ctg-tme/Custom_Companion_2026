@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 22, 2026
- * Revised:                 July 23, 2026
- * Version:                 1.0.3
+ * Revised:                 July 24, 2026
+ * Version:                 1.0.4
  *
  * Description:             Parent Room Registration and Deregistration controller. Owns the
  *                          PIN-authorized wizard, locked provisioning stages, long-hold removal,
@@ -91,6 +91,7 @@ function createParentRegistration(options) {
 	let longPressTriggeredWidgetId = '';
 	let cleanupResultNotice = null;
 	let transactionSequence = 0;
+	let installerRegistrationRequestInFlight = false;
 	const reconciliationInFlight = {};
 
 	function setState(devices, tombstones) {
@@ -442,11 +443,14 @@ function createParentRegistration(options) {
 		wizard = null;
 	}
 
-	async function runRegistration(credentials) {
-		const transactionId = createTransactionId('registration');
+	async function runRegistration(credentials, registrationOptions) {
+		const options = registrationOptions || {};
+		const transactionId = options.transactionId || createTransactionId('registration');
 		operation = {
 			kind: 'registration',
 			transactionId: transactionId,
+			channel: options.channel || 'in-room',
+			allowOverwrite: !!options.allowOverwrite,
 			candidate: null,
 			currentPrompt: null,
 			mayHaveRegistered: false,
@@ -454,7 +458,9 @@ function createParentRegistration(options) {
 			hadExistingRegistration: false,
 			supersededTombstoneSerial: ''
 		};
-		await dependencies.companionUi.closeProtectedPanel(dependencies.xapi);
+		if (usesInRoomRegistrationUi()) {
+			await dependencies.companionUi.closeProtectedPanel(dependencies.xapi);
+		}
 
 		try {
 			const candidate = await runLocalStage('Verifying Parent Room Device', `Checking the host, expected serial number, and credentials for ${credentials.host}.`, () => dependencies.deviceComms.parentInitializationRequest(dependencies.xapi, credentials, dependencies.httpClientConfig));
@@ -481,8 +487,13 @@ function createParentRegistration(options) {
 			await runMessageStage('Confirming Parent Room Registration', `${candidate.name} is validating capacity and saving this Companion Device registration.`, 'ConfigAccepted', () => sendConfigSync(candidate, companionDeviceInformation, transactionId));
 
 			await runLocalStage('Saving Parent Room Registration', `Saving ${candidate.name} to this Companion Device.`, () => commitRegistration(candidate));
+			const completedOperation = operation;
 			await finishOperation();
-			await showResult('Parent Room Device Registered', `${candidate.name} was successfully registered. It is now available in Companion Device Select.`);
+			if (completedOperation && completedOperation.channel === 'installer') {
+				reportInstallerRegistrationResult('completed', completedOperation.transactionId, `${candidate.name} was successfully registered.`, candidate);
+			} else {
+				await showResult('Parent Room Device Registered', `${candidate.name} was successfully registered. It is now available in Companion Device Select.`);
+			}
 			dependencies.log.info({ Message: 'Parent Room Registration completed', Host: candidate.host, Serial: candidate.serial, TransactionId: transactionId });
 		} catch (error) {
 			await handleRegistrationFailure(error);
@@ -491,6 +502,19 @@ function createParentRegistration(options) {
 
 	async function confirmRegistrationIntent(candidate) {
 		const tombstone = findPendingDeregistration(candidate.serial);
+		const existing = findParentBySerial(candidate.serial);
+		if (isInstallerRegistration()) {
+			if ((tombstone || existing) && !operation.allowOverwrite) {
+				throw buildOperationError(`${candidate.name} is already registered or has a Pending Deregistration. Select the replacement acknowledgement in the Companion Installer before continuing.`, 'CC26-INSTALLER-REGISTRATION-REPLACEMENT-REQUIRED');
+			}
+			if (tombstone) {
+				operation.supersededTombstoneSerial = candidate.serial;
+				if (cleanupResultNotice && cleanupResultNotice.serial === candidate.serial) {
+					cleanupResultNotice = null;
+				}
+			}
+			return;
+		}
 		if (tombstone) {
 			const confirmed = await runDecisionStage('Re-register Parent Room Device?', `${candidate.name} has a Pending Deregistration. Re-registering makes the new registration the current intent and cancels pending cleanup.`, ['Re-register', 'Cancel']);
 			if (!confirmed) {
@@ -502,7 +526,6 @@ function createParentRegistration(options) {
 			}
 		}
 
-		const existing = findParentBySerial(candidate.serial);
 		if (existing) {
 			const confirmed = await runDecisionStage('Overwrite Parent Room Registration?', `${candidate.name} is already registered. Replace its saved host and credentials with the newly verified values?`, ['Overwrite', 'Cancel']);
 			if (!confirmed) {
@@ -518,8 +541,10 @@ function createParentRegistration(options) {
 	}
 
 	async function runLocalStage(title, text, task) {
-		setLockedPrompt(title, text, FEEDBACK_IDS.progress, ['Please Wait']);
-		await reopenLockedPrompt();
+		if (usesInRoomRegistrationUi()) {
+			setLockedPrompt(title, text, FEEDBACK_IDS.progress, ['Please Wait']);
+			await reopenLockedPrompt();
+		}
 		return withStageTimeout(task());
 	}
 
@@ -532,8 +557,10 @@ function createParentRegistration(options) {
 	}
 
 	async function runMessageStage(title, text, expectedAction, sendRequest) {
-		setLockedPrompt(title, text, FEEDBACK_IDS.progress, ['Please Wait']);
-		await reopenLockedPrompt();
+		if (usesInRoomRegistrationUi()) {
+			setLockedPrompt(title, text, FEEDBACK_IDS.progress, ['Please Wait']);
+			await reopenLockedPrompt();
+		}
 		return withStageTimeout(new Promise((resolve, reject) => {
 			messageWaiter = {
 				expectedAction: expectedAction,
@@ -648,6 +675,53 @@ function createParentRegistration(options) {
 		return !parentDevice;
 	}
 
+	async function handleInstallerRegistrationRequest(message) {
+		if (!message || message.Action !== dependencies.installerRegistrationAction || !message.Source || message.Source.Role !== 'Installer') {
+			return false;
+		}
+
+		let transactionId = '';
+		try {
+			const payload = message.Payload || {};
+			transactionId = validateInstallerTransactionId(payload.TransactionId);
+			if (isBusy()) {
+				throw buildOperationError('Another Parent Room Registration or Deregistration is already in progress.', 'CC26-INSTALLER-REGISTRATION-BUSY');
+			}
+			installerRegistrationRequestInFlight = true;
+			if (isUnhealthy()) {
+				throw buildOperationError('Parent Room Registration is unavailable while the Companion Device is unhealthy.', 'CC26-INSTALLER-REGISTRATION-UNHEALTHY');
+			}
+			const runtimeCompanionDeviceInformation = await callbacks.getRuntimeCompanionDeviceInformation();
+			if (normalizeSerial(message.Serial) !== normalizeSerial(runtimeCompanionDeviceInformation.serial)) {
+				throw buildOperationError('The registration request does not identify this Companion Device.', 'CC26-INSTALLER-REGISTRATION-COMPANION-MISMATCH');
+			}
+			const context = getRuntimeContext();
+			if (context.mode === 'Paired' && await callbacks.isCompanionDeviceInActiveCall()) {
+				throw buildOperationError('Registering another Parent Room Device is unavailable while this Paired Companion Device is in a call. End the Companion Device call or run Standalone first.', 'CC26-INSTALLER-REGISTRATION-CALL-IN-PROGRESS');
+			}
+			const parent = payload.Parent || {};
+			const credentials = {
+				host: normalizeHost(parent.Host),
+				serial: normalizeSerial(parent.Serial),
+				username: String(parent.Username || '').trim(),
+				password: String(parent.Password || '')
+			};
+			if (!credentials.host || !credentials.serial || !credentials.username || !credentials.password) {
+				throw buildOperationError('The Companion Installer registration request is missing valid Parent Room Device details.', 'CC26-INSTALLER-REGISTRATION-INVALID-REQUEST');
+			}
+			await runRegistration(credentials, {
+				transactionId: transactionId,
+				channel: 'installer',
+				allowOverwrite: payload.AllowOverwrite === true
+			});
+		} catch (error) {
+			reportInstallerRegistrationResult('failed', transactionId, error && error.UserMessage ? error.UserMessage : 'The Parent Room Device could not be registered.');
+		} finally {
+			installerRegistrationRequestInFlight = false;
+		}
+		return true;
+	}
+
 	async function commitRegistration(candidate) {
 		const nextParents = parentDevices.slice();
 		const existingIndex = nextParents.findIndex(device => device.serial === candidate.serial);
@@ -684,12 +758,16 @@ function createParentRegistration(options) {
 			}
 		}
 
+		const failureText = error && error.UserMessage ? error.UserMessage : 'The Parent Room Device could not be registered.';
 		await finishOperation();
+		if (failedOperation && failedOperation.channel === 'installer') {
+			reportInstallerRegistrationResult('failed', failedOperation.transactionId, failureText);
+			return;
+		}
 		if (error && error.code === 'CC26-REGISTRATION-CANCELED') {
 			await showResult('Parent Room Registration Canceled', error.UserMessage || 'Parent Room Registration was canceled.');
 			return;
 		}
-		const failureText = error && error.UserMessage ? error.UserMessage : 'The Parent Room Device could not be registered.';
 		const logGuidance = failedOperation && failedOperation.mayHaveRegistered ? ' Inspect the Parent Room Device macro logs for more details.' : '';
 		await showResult('Parent Room Registration Failed', `${failureText}${logGuidance}`);
 		dependencies.log.warn({ Message: 'Parent Room Registration failed', Code: error && error.code || 'CC26-REGISTRATION-FAILED', Error: error && error.message || 'Unknown registration error', ErrorContext: error && error.Context || {} });
@@ -945,12 +1023,15 @@ function createParentRegistration(options) {
 	}
 
 	async function finishOperation() {
+		const clearInRoomPrompts = usesInRoomRegistrationUi();
 		operation = null;
 		messageWaiter = null;
 		decisionWaiter = null;
 		clearStageTimeouts();
-		await dependencies.companionUi.clearPrompt(dependencies.xapi, FEEDBACK_IDS.progress);
-		await dependencies.companionUi.clearPrompt(dependencies.xapi, FEEDBACK_IDS.overwrite);
+		if (clearInRoomPrompts) {
+			await dependencies.companionUi.clearPrompt(dependencies.xapi, FEEDBACK_IDS.progress);
+			await dependencies.companionUi.clearPrompt(dependencies.xapi, FEEDBACK_IDS.overwrite);
+		}
 	}
 
 	async function showResult(title, text) {
@@ -989,7 +1070,15 @@ function createParentRegistration(options) {
 	}
 
 	function isBusy() {
-		return !!(wizard || operation);
+		return !!(wizard || operation || installerRegistrationRequestInFlight);
+	}
+
+	function isInstallerRegistration() {
+		return !!(operation && operation.kind === 'registration' && operation.channel === 'installer');
+	}
+
+	function usesInRoomRegistrationUi() {
+		return !!(operation && operation.kind === 'registration' && operation.channel !== 'installer');
 	}
 
 	function isProvisioningLocked() {
@@ -1027,6 +1116,31 @@ function createParentRegistration(options) {
 
 	function normalizeSerial(value) {
 		return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+	}
+
+	function validateInstallerTransactionId(value) {
+		const transactionId = String(value || '');
+		if (!/^installer-registration:[A-Za-z0-9:-]{8,200}$/.test(transactionId)) {
+			throw buildOperationError('The Companion Installer registration request has an invalid transaction identifier.', 'CC26-INSTALLER-REGISTRATION-INVALID-TRANSACTION');
+		}
+		return transactionId;
+	}
+
+	function reportInstallerRegistrationResult(status, transactionId, detail, candidate) {
+		const message = status === 'completed'
+			? 'Companion Installer Parent Room Registration completed'
+			: 'Companion Installer Parent Room Registration failed';
+		const outcome = {
+			Message: message,
+			TransactionId: transactionId || 'unavailable',
+			Detail: detail || '',
+			Host: candidate && candidate.host || ''
+		};
+		if (status === 'completed') {
+			dependencies.log.info(outcome);
+		} else {
+			dependencies.log.warn(outcome);
+		}
 	}
 
 	function validateExpectedParentSerial(expectedSerial, observedSerial, host) {
@@ -1078,6 +1192,7 @@ function createParentRegistration(options) {
 		handlePromptResponse,
 		handlePromptCleared,
 		handleMessage,
+		handleInstallerRegistrationRequest,
 		isBusy,
 		isProvisioningLocked
 	};

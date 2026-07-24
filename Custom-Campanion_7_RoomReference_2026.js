@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 23, 2026
- * Version:                 0.1.2.44
+ * Revised:                 July 24, 2026
+ * Version:                 0.1.2.45
  *
  * Description:             Parent Room registration, validation, deregistration, and peripheral-cleanup entry macro used as the install source.
  *                          The numbered source remains inactive on the Companion Device; Parent Room installation renames
