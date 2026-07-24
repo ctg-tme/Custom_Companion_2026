@@ -29,6 +29,8 @@ Check the Release Manifest, [`manifest.json`](../manifest.json), before every de
 
 ### Accounts, network, and browser
 
+Use [Network Requirements](network-requirements.md) for the complete endpoint table, including the downstream services introduced by the optional Simple-WebWidget.
+
 - Use a current browser on an administrator workstation that can reach the Companion Device over HTTPS and secure WebSocket. The hosted installer also needs access to its GitHub Pages site, GitHub release metadata, and release resources.
 - Trust the Companion Device's HTTPS certificate in the same browser before connecting. The installer opens `wss://<companion-host>` and cannot bypass browser certificate validation.
 - Permit HTTPS connectivity, normally TCP 443, from the administrator workstation to the Companion Device and in both directions between the Companion Device and every Parent Room Device.

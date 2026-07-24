@@ -38,6 +38,7 @@ Webex call coordination is implemented. Other call platforms remain on the Paren
 ## Documentation
 
 - [Installation Guide](docs/installation-guide.md) — recommended Companion Installer workflow, manual macro installation, requirements, and validation.
+- [Network Requirements](docs/network-requirements.md) — macro, optional Simple-WebWidget, and Companion Installer endpoints organized by the feature that introduces them.
 - [User Guide](docs/user-guide.md) — everyday operation, Standalone and Paired behavior, PIN protection, Parent Room Registration, and Parent Room Device selection.
 - [Admin Guide](docs/admin-guide.md) — device impact, configuration preservation and editing, registration administration, maintenance, security, recovery, troubleshooting, and acceptance.
 - [Technical Reference](docs/technical-reference.md) — complete runtime architecture, installer behavior, state, communication, and xAPI details.

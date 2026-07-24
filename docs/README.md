@@ -6,6 +6,7 @@ Use this index to choose the document that matches your role and task.
 | --- | --- | --- | --- |
 | [Project README](../README.md) | Everyone | A short explanation of Custom Companion, what makes it useful, and its main limits. | Current |
 | [Installation Guide](installation-guide.md) | Device Administrators | Recommended Companion Installer workflow, manual installation, hardware and software requirements, validation, and troubleshooting. | Current |
+| [Network Requirements](network-requirements.md) | Device Administrators and network teams | Macro core, optional Simple-WebWidget, and Companion Installer endpoints grouped by the feature that introduces them. | Current |
 | [User Guide](user-guide.md) | In-Room Users | Everyday use of Companion Device Select, Standalone, Paired operation, calls, status messages, PIN protection, and Parent Room Registration. | Current |
 | [Admin Guide](admin-guide.md) | Device Administrators | Device impact, configuration preservation and editing, Parent Room Registration, validation, maintenance, security, recovery, and troubleshooting. | Current |
 | [Technical Reference](technical-reference.md) | Developers and maintainers | Detailed runtime architecture, state ownership, communication, xAPI contracts, installer behavior, and implementation limits. | Current |
@@ -17,6 +18,7 @@ Use this index to choose the document that matches your role and task.
 
 - The root README is the approachable project landing page.
 - The Installation Guide is the current procedure for guided and manual deployment.
+- Network Requirements identifies the endpoints needed by the macro core, optional network features, and Companion Installer.
 - The User Guide explains what an In-Room User sees and does.
 - The Admin Guide explains device impact, safe change management, and operational ownership.
 - The Technical Reference records how the implemented solution works.

@@ -5,6 +5,7 @@ This guide is for Device Administrators who plan, configure, validate, maintain,
 Use the related guides for role-specific procedures:
 
 - [Installation Guide](installation-guide.md) — prepare devices, use the Companion Installer, choose an installation type, and complete the initial deployment.
+- [Network Requirements](network-requirements.md) — prepare connectivity for macro core communication, optional Simple-WebWidget services, and the Companion Installer.
 - [User Guide](user-guide.md) — operate Companion Device Select, Standalone and Paired modes, calls, PIN Mode, and Parent Room Registration from the touch interface.
 - [Technical Reference](technical-reference.md) — inspect the implemented architecture, exact xAPI paths, durable state, message routes, retry boundaries, and known source-level limitations.
 
@@ -36,6 +37,8 @@ The [Release Manifest](../manifest.json) is the authority for the selected relea
 - One Parent Room Device-authorized call at a time while Paired
 - Automatic call coordination for Webex calls only
 - External dependency: `Memory-Storage-Functions-V2`
+
+Use [Network Requirements](network-requirements.md) to prepare the endpoints introduced by macro core communication, optional Simple-WebWidget features, and the Companion Installer.
 
 Before deployment, confirm all of the following:
 
