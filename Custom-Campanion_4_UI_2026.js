@@ -21,10 +21,11 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 24, 2026
- * Version:                 1.0.25
+ * Version:                 1.0.26
  *
- * Description:             Companion Device access and hidden panels, PIN/registration/status prompts,
- *                          shared Companion Alert ownership, and Companion WebWidget adapter.
+ * Description:             Companion Device access and hidden panels, custom access-panel icon,
+ *                          PIN/registration/status prompts, shared Companion Alert ownership,
+ *                          and Companion WebWidget adapter.
  *
  * Documentation:           https://github.com/ctg-tme/Custom_Companion_2026/blob/main/docs/technical-reference.md
  *
@@ -66,10 +67,14 @@ const WEB_WIDGET_INFO3_MAX_CHARACTERS = 90;
 let alertOwnershipSequence = 0;
 let currentAlertOwnership = null;
 let alertOwnershipExpiryTimer = null;
+let downloadedIconUrl = '';
+let downloadedIconId = '';
+let pendingIconDownloadUrl = '';
+let pendingIconDownload = null;
 
 /*
  * UI xAPI surface:
- * - Commands: UserInterface.Extensions.Panel.Save/Remove/Open/Close, Widget.SetValue,
+ * - Commands: UserInterface.Extensions.Icon.Download, Panel.Save/Update/Remove/Open/Close, Widget.SetValue,
  *   UserInterface.Message.TextInput.Display/Clear, UserInterface.Message.Prompt.Display/Clear,
  *   and Extensions.WebWidget.Save/Remove.
  * - Read: Status.UserInterface.WebView.
@@ -232,7 +237,7 @@ function buildParentWidgetXml(parentDevice, parentStatus, index) {
 				</Widget>`;
 }
 
-async function savePanel(XAPIObject, parentDevices, parentDeviceStatus, activeParentSerial, pinModeEnabled) {
+async function savePanel(XAPIObject, parentDevices, parentDeviceStatus, activeParentSerial, pinModeEnabled, iconUrl) {
 	await Promise.all([
 		removePanel(XAPIObject, ERROR_PANEL_ID),
 		removePanel(XAPIObject, LEGACY_PANEL_ID)
@@ -241,10 +246,14 @@ async function savePanel(XAPIObject, parentDevices, parentDeviceStatus, activePa
 		XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: ACCESS_PANEL_ID }, buildAccessPanelXml()),
 		XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: PANEL_ID }, buildPanelXml(parentDevices, parentDeviceStatus, activeParentSerial))
 	]);
-	await Promise.all([
+	const panelUpdates = [
 		setSelectedParent(XAPIObject, parentDevices, activeParentSerial),
 		setPinModeFeedback(XAPIObject, pinModeEnabled)
-	]);
+	];
+	if (iconUrl) {
+		panelUpdates.push(fetchIconByUrl(XAPIObject, iconUrl, ACCESS_PANEL_ID));
+	}
+	await Promise.all(panelUpdates);
 }
 
 async function saveErrorPanel(XAPIObject) {
@@ -254,6 +263,70 @@ async function saveErrorPanel(XAPIObject) {
 		removePanel(XAPIObject, PANEL_ID)
 	]);
 	await XAPIObject.Command.UserInterface.Extensions.Panel.Save({ PanelId: ERROR_PANEL_ID }, buildErrorPanelXml());
+}
+
+async function fetchIconByUrl(XAPIObject, iconUrl, panelId) {
+	const normalizedIconUrl = String(iconUrl || '').trim();
+	const normalizedPanelId = String(panelId || '').trim();
+	if (!normalizedIconUrl) {
+		throw { Context: 'iconUrl parameter is undefined', IconUrl: iconUrl };
+	}
+	if (!normalizedPanelId) {
+		throw { Context: 'panelId parameter is undefined', PanelId: panelId };
+	}
+	if (!/^https?:\/\/[^\s]+$/i.test(normalizedIconUrl)) {
+		throw { Context: 'iconUrl parameter must contain a valid HTTP(S) URL', IconUrl: normalizedIconUrl };
+	}
+
+	try {
+		const iconId = await downloadIconByUrl(XAPIObject, normalizedIconUrl);
+		await XAPIObject.Command.UserInterface.Extensions.Panel.Update({
+			Icon: 'Custom',
+			IconId: iconId,
+			PanelId: normalizedPanelId
+		});
+		return { Message: 'Icon Applied', PanelId: normalizedPanelId, IconId: iconId };
+	} catch (error) {
+		throw {
+			Context: 'Failed to fetch or apply custom panel icon',
+			IconUrl: normalizedIconUrl,
+			PanelId: normalizedPanelId,
+			Error: error
+		};
+	}
+}
+
+async function downloadIconByUrl(XAPIObject, iconUrl) {
+	if (downloadedIconUrl === iconUrl && downloadedIconId) {
+		return downloadedIconId;
+	}
+	if (pendingIconDownloadUrl === iconUrl && pendingIconDownload) {
+		return pendingIconDownload;
+	}
+
+	pendingIconDownloadUrl = iconUrl;
+	pendingIconDownload = requestIconDownload(XAPIObject, iconUrl);
+	const currentDownload = pendingIconDownload;
+	try {
+		const iconId = await currentDownload;
+		downloadedIconUrl = iconUrl;
+		downloadedIconId = iconId;
+		return iconId;
+	} finally {
+		if (pendingIconDownload === currentDownload) {
+			pendingIconDownloadUrl = '';
+			pendingIconDownload = null;
+		}
+	}
+}
+
+async function requestIconDownload(XAPIObject, iconUrl) {
+	const response = await XAPIObject.Command.UserInterface.Extensions.Icon.Download({ Url: iconUrl });
+	const iconId = String(response && (response.IconId || response.Id) || '').trim();
+	if (!iconId) {
+		throw { Context: 'Icon download response did not contain an IconId', Response: response };
+	}
+	return iconId;
 }
 
 async function removeErrorPanel(XAPIObject) {
@@ -522,7 +595,7 @@ function buildCompanionWebWidgetUrl(options) {
 		info1: options.mode === 'Standalone' ? 'Operating in Standalone' : `Paired to Parent Room Device:\n${options.parentRoomDeviceName || 'Unknown Parent Room Device'}`,
 		info2: contextConfig.info2 || '',
 		info3: limitWebWidgetInfoText(options.runtimeInfo3),
-		iconUrl: contextConfig.iconUrl || ''
+		iconUrl: contextConfig.iconUrl || webWidgetConfig.defaultIconUrl || ''
 	};
 
 	const weatherConfig = webWidgetConfig.weather || {};

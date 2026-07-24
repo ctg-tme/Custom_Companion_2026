@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 24, 2026
- * Version:                 0.1.2.47
+ * Version:                 0.1.2.48
  *
  * Description:             Inactive Parent Room entry source for registration, validation,
  *                          deregistration, peripheral cleanup, and controller coordination.
