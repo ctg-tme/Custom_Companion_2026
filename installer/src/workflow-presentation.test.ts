@@ -32,6 +32,12 @@ describe('installer workflow presentation', () => {
     expect(source).toContain('Nothing is shown in the Companion Device in-room interface');
     expect(source).toContain("'Complete Setup'");
     expect(source).toContain('Complete setup on the Companion Device');
+    expect(source).toContain('The Companion Device interface is the recommended way to register Parent Room Devices.');
+    expect(source).toContain('Companion Device registration walkthrough');
+    expect(source).toContain('Board registration is recommended.');
+    expect(source).toContain('class="browser-parent-option"');
+    expect(source).toContain('class="button primary" id="finish-setup"');
+    expect(source).not.toContain('Add Parent Room Devices (optional)');
     expect(source).toContain('continueToCompleteSetup()');
     expect(source).toContain('this.companionDevice?.close();');
   });

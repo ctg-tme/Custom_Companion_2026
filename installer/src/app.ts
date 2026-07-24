@@ -4,6 +4,14 @@ import cloudIcon from '@momentum-design/icons/dist/svg/cloud-download-regular.sv
 import deviceIcon from '@momentum-design/icons/dist/svg/device-in-room-filled.svg?raw';
 import settingsIcon from '@momentum-design/icons/dist/svg/settings-regular.svg?raw';
 import warningIcon from '@momentum-design/icons/dist/svg/warning-filled.svg?raw';
+import boardRegistrationOpenConfig from './assets/board-parent-registration/01-open-config.png';
+import boardRegistrationStart from './assets/board-parent-registration/02-start-registration.png';
+import boardRegistrationHost from './assets/board-parent-registration/03-enter-host.png';
+import boardRegistrationSerial from './assets/board-parent-registration/04-enter-serial.png';
+import boardRegistrationUsername from './assets/board-parent-registration/05-enter-username.png';
+import boardRegistrationPassword from './assets/board-parent-registration/06-enter-password.png';
+import boardRegistrationConfirmPassword from './assets/board-parent-registration/07-confirm-password.png';
+import boardRegistrationConfirmRegistration from './assets/board-parent-registration/08-confirm-registration.png';
 import {
   configPathId,
   formatConfigPath,
@@ -62,6 +70,48 @@ const STEPS = ['Introduction', 'Release', 'Connect', 'Configure', 'Installation 
 const TEAM_ICON_URL = 'https://avatars.githubusercontent.com/u/159071680?s=200&v=4';
 const TEAM_GITHUB_URL = 'https://github.com/ctg-tme';
 const CISCO_SAMPLE_CODE_LICENSE_URL = 'https://developer.cisco.com/docs/licenses';
+const BOARD_REGISTRATION_WALKTHROUGH = [
+  {
+    src: boardRegistrationOpenConfig,
+    alt: 'Companion Device Select configuration screen with the Register Parent Room Device control',
+    caption: 'Open Companion Device Select, choose Config, then select Start Registration.',
+  },
+  {
+    src: boardRegistrationStart,
+    alt: 'Register Parent Room Device on-device guidance dialog',
+    caption: 'Review the registration guidance and select Next.',
+  },
+  {
+    src: boardRegistrationHost,
+    alt: 'Parent Room Device Host dialog on the Companion Device',
+    caption: 'Enter the Parent Room Device host name or IP address.',
+  },
+  {
+    src: boardRegistrationSerial,
+    alt: 'Parent Room Device Serial dialog on the Companion Device',
+    caption: 'Enter the expected Parent Room Device serial number.',
+  },
+  {
+    src: boardRegistrationUsername,
+    alt: 'Parent Room Device Username dialog on the Companion Device',
+    caption: 'Enter the Parent Room Device RoomOS username.',
+  },
+  {
+    src: boardRegistrationPassword,
+    alt: 'Parent Room Device Password dialog on the Companion Device',
+    caption: 'Enter the Parent Room Device password.',
+  },
+  {
+    src: boardRegistrationConfirmPassword,
+    alt: 'Confirm Parent Room Device Password dialog on the Companion Device',
+    caption: 'Confirm the Parent Room Device password.',
+  },
+  {
+    src: boardRegistrationConfirmRegistration,
+    alt: 'Register Parent Room Device confirmation dialog on the Companion Device',
+    caption: 'Review the host, serial, and username, then select Register Device.',
+  },
+] as const;
 
 function escapeHtml(value: unknown): string {
   return String(value)
@@ -280,7 +330,7 @@ export class InstallerApp {
       return `<div class="actions split"><button class="button ghost" id="back-installation-type">Back to installation type</button><button class="button primary danger-button" id="begin-install" ${this.localReviewMode ? 'disabled' : ''}>${this.localReviewMode ? 'Install disabled in local review' : 'Install on Companion Device'}</button></div>`;
     }
     if (this.step === 7) {
-      return `<div class="actions split"><button class="button ghost" id="finish-setup" ${this.busy ? 'disabled' : ''}>Finish — install another Companion Device</button><button class="button primary" id="add-parent" ${this.parentRegistrationModalOpen || this.busy ? 'disabled' : ''}>Add Parent</button></div>`;
+      return `<div class="actions finish-actions"><button class="button primary" id="finish-setup" ${this.busy ? 'disabled' : ''}>Finish — install another Companion Device</button></div>`;
     }
     if (this.localReviewMode) {
       return '<div class="actions centered"><button class="button primary" id="dev-preview-complete">Preview complete setup</button></div>';
@@ -549,17 +599,27 @@ export class InstallerApp {
   private renderCompleteSetup(): string {
     const host = this.completionHost || this.adminCredentials.host;
     return `
-      ${this.pageHeader('Step 8 of 8', 'Complete setup on the Companion Device', 'The Custom Companion Macro is installed. Adding Parent Room Devices here is optional; the Companion Device interface remains available too.')}
+      ${this.pageHeader('Step 8 of 8', 'Complete setup on the Companion Device', 'The Custom Companion Macro is installed. Register Parent Room Devices on the Companion Device, or use this browser as an optional administrative alternative.')}
       <section class="panel complete-setup-panel">
         <span class="completion-icon">${checkIcon}</span>
         <div>
           <h2>Continue on ${escapeHtml(host || 'the Companion Device')}</h2>
-          <p>This authenticated installer session remains connected while you are on this page. Select <strong>Add Parent</strong> to register one or more Parent Room Devices here, or complete registration later from the Companion Device interface.</p>
+          <p>This authenticated installer session remains connected while you are on this page. The Companion Device interface is the recommended way to register Parent Room Devices.</p>
           <ol class="completion-steps">
-            <li><strong>Add Parent Room Devices (optional)</strong><span>Use Add Parent as often as needed; each registration is independently verified and confirmed.</span></li>
-            <li><strong>Use the Companion Device interface</strong><span>You can instead add or update Parent Room Devices from the on-device configuration experience.</span></li>
-            <li><strong>Finish when ready</strong><span>Finish disconnects this installer session before you move to another Companion Device.</span></li>
+            <li><strong>Open Companion Device Select</strong><span>From the Board home screen, open Companion Device Select and choose Config.</span></li>
+            <li><strong>Start Parent Room Registration</strong><span>Select Start Registration, then complete the host, expected serial number, username, and password prompts.</span></li>
+            <li><strong>Confirm the registration</strong><span>Review the Parent Room Device identity and select Register Device. The Companion Device verifies the identity before it installs and registers the Parent Room Device.</span></li>
           </ol>
+          <details class="board-registration-guide">
+            <summary><span><strong>Companion Device registration walkthrough</strong><small>Follow the on-device registration screens shown below.</small></span></summary>
+            <ol class="board-registration-walkthrough">
+              ${BOARD_REGISTRATION_WALKTHROUGH.map((step) => `<li><figure><a href="${step.src}" target="_blank" rel="noopener noreferrer"><img src="${step.src}" alt="${step.alt}" loading="lazy"></a><figcaption>${step.caption}</figcaption></figure></li>`).join('')}
+            </ol>
+          </details>
+          <section class="browser-parent-option" aria-labelledby="browser-parent-option-title">
+            <div><span class="eyebrow">Browser alternative</span><h3 id="browser-parent-option-title">Add a Parent from this installer</h3><p>Use the signed-in Device Administrator session to start the same Companion Device-owned registration workflow without using the Board interface. You can add multiple Parent Room Devices this way, but Board registration is recommended.</p></div>
+            <button class="button secondary" id="add-parent" type="button" ${this.parentRegistrationModalOpen || this.busy ? 'disabled' : ''}>Add Parent</button>
+          </section>
         </div>
       </section>`;
   }
