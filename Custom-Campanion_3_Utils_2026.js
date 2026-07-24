@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
 
  * Date Created:            July 09, 2026
- * Revised:                 July 20, 2026
- * Version:                 1.0.1
+ * Revised:                 July 24, 2026
+ * Version:                 1.0.2
  *
  * Description:             Shared structured logging plus soft and hard diagnostic boundaries.
  *
@@ -55,9 +55,35 @@ class Logger {
 const log = new Logger('Custom-Campanion_Utils');
 
 async function softError(options) {
-	const msg = options;
+	const diagnostic = options || {};
+	const msg = {};
+	const keys = Object.keys(diagnostic);
+	for (let index = 0; index < keys.length; index++) {
+		const key = keys[index];
+		msg[key] = key === 'Error' ? summarizeError(diagnostic[key]) : diagnostic[key];
+	}
 
 	log.error(msg);
+}
+
+function summarizeError(error) {
+	if (!error || typeof error !== 'object') {
+		return error || 'Unknown error';
+	}
+	const summary = {};
+	if (error.name) {
+		summary.Name = String(error.name);
+	}
+	if (error.message) {
+		summary.Message = String(error.message);
+	}
+	if (error.code) {
+		summary.Code = String(error.code);
+	}
+	if (error.Context) {
+		summary.Context = error.Context;
+	}
+	return Object.keys(summary).length ? summary : error;
 }
 
 

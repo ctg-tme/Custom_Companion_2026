@@ -21,7 +21,7 @@ or implied.
 
  * Date Created:            July 22, 2026
  * Revised:                 July 24, 2026
- * Version:                 1.0.4
+ * Version:                 1.0.5
  *
  * Description:             Parent Room Registration and Deregistration controller. Owns the
  *                          PIN-authorized wizard, locked provisioning stages, long-hold removal,
@@ -225,7 +225,7 @@ function createParentRegistration(options) {
 		if (event.FeedbackId === FEEDBACK_IDS.host) {
 			const host = normalizeHost(value);
 			if (!host) {
-				await showHostInput('Enter only a valid host name or IP address, without a URL scheme or path.');
+				await showHostInput('Enter a valid host name, IPv4 address, or bracketed IPv6 address without a URL scheme or path.');
 				return true;
 			}
 			wizard.host = host;
@@ -233,9 +233,9 @@ function createParentRegistration(options) {
 			return true;
 		}
 		if (event.FeedbackId === FEEDBACK_IDS.serial) {
-			const serial = normalizeSerial(value);
+			const serial = normalizeExpectedSerialInput(value);
 			if (!serial) {
-				await showSerialInput('Enter the serial number printed on the Parent Room Device or shown in its device information.');
+				await showSerialInput('Enter the Parent Room Device serial number using letters and numbers; spaces and hyphens are optional.');
 				return true;
 			}
 			wizard.serial = serial;
@@ -243,11 +243,12 @@ function createParentRegistration(options) {
 			return true;
 		}
 		if (event.FeedbackId === FEEDBACK_IDS.username) {
-			if (!value.trim()) {
-				await showUsernameInput('Username is required.');
+			const username = normalizeUsername(value);
+			if (!username) {
+				await showUsernameInput('Enter a valid RoomOS username using letters, numbers, periods, underscores, hyphens, or @.');
 				return true;
 			}
-			wizard.username = value.trim();
+			wizard.username = username;
 			await showPasswordInput();
 			return true;
 		}
@@ -266,7 +267,26 @@ function createParentRegistration(options) {
 			return true;
 		}
 
-		await showRegistrationConfirmation();
+		try {
+			await showRegistrationConfirmation();
+		} catch (error) {
+			wizard.password = '';
+			dependencies.utils.softError({
+				Context: 'Failed to display Parent Room Registration confirmation',
+				FeedbackId: FEEDBACK_IDS.confirmPassword,
+				Error: error
+			});
+			try {
+				await showPasswordInput('The registration confirmation could not be displayed. Review the entries and enter the password again.');
+			} catch (recoveryError) {
+				cancelWizard();
+				dependencies.utils.softError({
+					Context: 'Failed to recover Parent Room Registration after the confirmation display failed',
+					FeedbackId: FEEDBACK_IDS.password,
+					Error: recoveryError
+				});
+			}
+		}
 		return true;
 	}
 
@@ -702,8 +722,8 @@ function createParentRegistration(options) {
 			const parent = payload.Parent || {};
 			const credentials = {
 				host: normalizeHost(parent.Host),
-				serial: normalizeSerial(parent.Serial),
-				username: String(parent.Username || '').trim(),
+				serial: normalizeExpectedSerialInput(parent.Serial),
+				username: normalizeUsername(parent.Username),
 				password: String(parent.Password || '')
 			};
 			if (!credentials.host || !credentials.serial || !credentials.username || !credentials.password) {
@@ -1111,11 +1131,86 @@ function createParentRegistration(options) {
 		if (!host || host.indexOf('://') >= 0 || host.indexOf('/') >= 0 || /\s/.test(host) || host.length > 253) {
 			return '';
 		}
-		return host;
+		if (isValidIpv4Address(host) || isValidDnsHostName(host) || isValidBracketedIpv6Address(host)) {
+			return host;
+		}
+		return '';
+	}
+
+	function isValidIpv4Address(host) {
+		const parts = host.split('.');
+		if (parts.length !== 4) {
+			return false;
+		}
+		for (let index = 0; index < parts.length; index++) {
+			if (!/^\d{1,3}$/.test(parts[index]) || Number(parts[index]) > 255) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	function isValidDnsHostName(host) {
+		if (/^[0-9.]+$/.test(host)) {
+			return false;
+		}
+		const labels = host.split('.');
+		for (let index = 0; index < labels.length; index++) {
+			const label = labels[index];
+			if (!label || label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	function isValidBracketedIpv6Address(host) {
+		if (host[0] !== '[' || host[host.length - 1] !== ']') {
+			return false;
+		}
+		const address = host.slice(1, -1);
+		if (!address || !/^[a-f0-9:.]+$/.test(address)) {
+			return false;
+		}
+		if ((address[0] === ':' && address.slice(0, 2) !== '::')
+			|| (address[address.length - 1] === ':' && address.slice(-2) !== '::')
+			|| address.indexOf('::') !== address.lastIndexOf('::')) {
+			return false;
+		}
+		const parts = address.split(':').filter(part => part !== '');
+		let groupCount = parts.length;
+		for (let index = 0; index < parts.length; index++) {
+			const part = parts[index];
+			if (part.indexOf('.') >= 0) {
+				if (index !== parts.length - 1 || !isValidIpv4Address(part)) {
+					return false;
+				}
+				groupCount++;
+			} else if (!/^[a-f0-9]{1,4}$/.test(part)) {
+				return false;
+			}
+		}
+		return address.indexOf('::') >= 0 ? groupCount < 8 : groupCount === 8;
 	}
 
 	function normalizeSerial(value) {
 		return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+	}
+
+	function normalizeExpectedSerialInput(value) {
+		const serialInput = String(value || '').trim();
+		if (!serialInput || serialInput.length > 64 || !/^[A-Za-z0-9 -]+$/.test(serialInput)) {
+			return '';
+		}
+		return normalizeSerial(serialInput);
+	}
+
+	function normalizeUsername(value) {
+		const username = String(value || '').trim();
+		if (!username || username.length > 128 || !/^[A-Za-z0-9._@-]+$/.test(username)) {
+			return '';
+		}
+		return username;
 	}
 
 	function validateInstallerTransactionId(value) {
