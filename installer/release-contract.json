@@ -5,6 +5,7 @@
   "GeneratedStorageMacro": "Custom-Campanion-Storage",
   "InitializationSuccessMessage": "Custom Companion initialized on Companion Device",
   "InitializationStoppedMessage": "Custom Companion initialization stopped on Companion Device",
+  "CompanionInstallerContractVersion": 1,
   "InstallerParentRegistrationAction": "InstallerParentRegistrationRequest",
   "InstallerParentRegistrationSuccessMessage": "Companion Installer Parent Room Registration completed",
   "InstallerParentRegistrationFailureMessage": "Companion Installer Parent Room Registration failed",
@@ -14,5 +15,28 @@
   "InstallerParentDeregistrationAction": "InstallerParentDeregistrationRequest",
   "InstallerParentDeregistrationSuccessMessage": "Companion Installer Parent Room Deregistration completed",
   "InstallerParentDeregistrationPendingMessage": "Companion Installer Parent Room Deregistration pending",
-  "InstallerParentDeregistrationFailureMessage": "Companion Installer Parent Room Deregistration failed"
+  "InstallerParentDeregistrationFailureMessage": "Companion Installer Parent Room Deregistration failed",
+  "InstallerCapabilityContracts": {
+    "installer.parent-deregistration.v1": [
+      "InstallerParentDeregistrationAction",
+      "InstallerParentDeregistrationSuccessMessage",
+      "InstallerParentDeregistrationPendingMessage",
+      "InstallerParentDeregistrationFailureMessage"
+    ],
+    "installer.parent-inventory.v1": [
+      "InstallerParentInventoryAction",
+      "InstallerParentInventorySuccessMessage",
+      "InstallerParentInventoryFailureMessage"
+    ],
+    "installer.parent-registration.v1": [
+      "InstallerParentRegistrationAction",
+      "InstallerParentRegistrationSuccessMessage",
+      "InstallerParentRegistrationFailureMessage"
+    ]
+  },
+  "InstallerCapabilityDependencies": {
+    "installer.parent-deregistration.v1": [
+      "installer.parent-inventory.v1"
+    ]
+  }
 }

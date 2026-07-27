@@ -10,7 +10,7 @@ Use this index to choose the document that matches your role and task.
 | [User Guide](user-guide.md) | In-Room Users | Everyday use of Companion Device Select, Standalone, Paired operation, calls, status messages, PIN protection, and Parent Room Registration. | Current |
 | [Admin Guide](admin-guide.md) | Device Administrators | Device impact, configuration preservation and editing, Parent Room Registration, validation, maintenance, security, recovery, and troubleshooting. | Current |
 | [Technical Reference](technical-reference.md) | Developers and maintainers | Detailed runtime architecture, state ownership, communication, xAPI contracts, installer behavior, and implementation limits. | Current |
-| [Installer Compatibility and Capabilities](installer-capabilities.md) | Developers and maintainers | Accepted manifest compatibility design, release audit, capability catalog, and rules for proposing future capabilities. | Design accepted; implementation pending |
+| [Installer Compatibility and Capabilities](installer-capabilities.md) | Developers and maintainers | Implemented manifest compatibility contract, release audit, capability catalog, and rules for proposing future capabilities. | Current |
 | [Canonical terminology](../CONTEXT.md) | Authors and maintainers | The authoritative language used across the product, UI, logs, and documentation. | Current |
 | [Architecture decisions](adr/) | Developers and maintainers | The reasons behind accepted runtime, installer, identity, registration, and cleanup decisions. | Current |
 | [Installer development](../installer/README.md) | Installer contributors | Local preview, testing, builds, release verification, and installer-specific behavior. | Current |
@@ -23,7 +23,7 @@ Use this index to choose the document that matches your role and task.
 - The User Guide explains what an In-Room User sees and does.
 - The Admin Guide explains device impact, safe change management, and operational ownership.
 - The Technical Reference records how the implemented solution works.
-- Installer Compatibility and Capabilities records the accepted compatibility design separately from current implementation status.
+- Installer Compatibility and Capabilities records the active compatibility contract and its release history.
 - ADRs record why durable architecture and product decisions were made.
 - `CONTEXT.md` defines the canonical terms shared by every document.
 

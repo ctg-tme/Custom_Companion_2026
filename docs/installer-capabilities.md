@@ -1,6 +1,6 @@
 # Companion Installer Compatibility and Capabilities
 
-Status: Accepted design; installer enforcement and manifest metadata are pending implementation.
+Status: Implemented for the local Main Fork (Beta) candidate; hosting requires the verified commit to be pushed.
 
 This document defines how one current Companion Installer can safely install older and newer Custom Companion releases without coupling every runtime release to one exact installer package version.
 
@@ -8,7 +8,7 @@ This document defines how one current Companion Installer can safely install old
 
 The selected release remains the authority for its Config macro. The installer reads and edits the Config source from the same pinned release snapshot as the rest of the numbered macros, so an additive Config option appears only when that selected release contains it. A normal Config addition does not require an Installer Capability.
 
-The Release Manifest will also declare:
+The Release Manifest also declares:
 
 - an **Installer Contract Version** for the release's baseline installation semantics;
 - a **Tested Installer Version** as compatibility evidence, not an exact version lock; and
@@ -21,7 +21,7 @@ Manifest fragment, with unrelated fields omitted:
   "SchemaVersion": 1,
   "CompanionInstaller": {
     "ContractVersion": 1,
-    "TestedVersion": "0.1.16",
+    "TestedVersion": "0.1.18",
     "Capabilities": [
       "installer.parent-deregistration.v1",
       "installer.parent-inventory.v1",
@@ -31,7 +31,7 @@ Manifest fragment, with unrelated fields omitted:
 }
 ```
 
-The installer package version and four-part runtime project version remain independent. `TestedVersion` records the package used for verification; it is not a minimum, maximum, or exact dependency.
+The installer package version and four-part runtime project version remain independent. `TestedVersion` records the package used for verification; it is not a minimum, maximum, or exact dependency during source selection. The build-time Release Contract verifier requires the current manifest value to match the packaged installer so a beta or release cannot be produced with stale verification provenance.
 
 ## Installer preservation policy
 
@@ -55,10 +55,11 @@ The table collapses documentation-only Main snapshots when their runtime and ins
 | Main at `5086449` | `0.1.2.52` | `0.1.14` | Historical beta state | `installer.parent-registration.v1` |
 | Main at `2e45662` | `0.1.2.53` | `0.1.15` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
 | Main at `7354878` | `0.1.2.54` | `0.1.15` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
-| Main from `78ed359` through hosted `3d35c89` | `0.1.2.54` | `0.1.16` | Current hosted beta compatibility state | Registration, Inventory, and Deregistration `v1` |
-| Local `12daea1` | `0.1.2.55` | `0.1.17` | Committed after the hosted snapshot; not yet a published beta | Registration, Inventory, and Deregistration `v1` |
+| Main from `78ed359` through `3d35c89` | `0.1.2.54` | `0.1.16` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
+| Hosted Main at `e8852a1` | `0.1.2.55` | `0.1.17` | Current hosted beta compatibility state | Registration, Inventory, and Deregistration `v1` |
+| Local Main work package | `0.1.2.55` | `0.1.18` | Capability enforcement candidate; not hosted until pushed | Registration, Inventory, and Deregistration `v1` |
 
-Preview `v0.1.2.51` predates the proposed `CompanionInstaller` manifest object. Implementation must include one explicit legacy profile for that immutable tag: Contract Version 1, Tested Installer Version `0.1.14`, and `installer.parent-registration.v1`. Do not infer support from its runtime version, and do not generalize missing compatibility metadata to future manifests. After the migration, any other new manifest without `CompanionInstaller` metadata is invalid.
+Preview `v0.1.2.51` predates the `CompanionInstaller` manifest object. The installer applies one explicit legacy profile only when that tag resolves to commit `be539c292d79197e8303d42b68902c6985cde699`: Contract Version 1, Tested Installer Version `0.1.14`, and `installer.parent-registration.v1`. It does not infer support from the runtime version. Any other manifest without `CompanionInstaller` metadata is invalid.
 
 ## Capability catalog
 
@@ -71,6 +72,8 @@ These are the current release-provided capabilities discovered by auditing the c
 | `installer.parent-deregistration.v1` | Accepts `InstallerParentDeregistrationRequest` and emits the transaction-correlated success, pending, or failure result. | Hide Remove and never send the deregistration request. Inventory may remain read-only when its capability exists. |
 
 Capabilities describe runtime support, not whether a Device Administrator chooses to use a workflow. The installer must check the selected release capability before rendering its control and again before sending its action.
+
+`installer.parent-deregistration.v1` depends on `installer.parent-inventory.v1` because Remove targets a registration selected from Inventory. Manifest validation and release verification reject Deregistration without Inventory; Inventory without Deregistration remains a valid read-only view.
 
 ## Complete installer audit
 
@@ -94,7 +97,7 @@ This classification deliberately avoids a capability flag for every UI feature. 
 
 ## Compatibility behavior
 
-When the design is implemented, source selection must resolve compatibility before any device mutation:
+Source selection resolves compatibility before any device mutation:
 
 1. Validate the Release Manifest and resolve its pinned resources.
 2. Resolve the exact `CompanionInstaller` metadata, or the explicit `v0.1.2.51` legacy profile.
@@ -135,18 +138,19 @@ Use these versioning rules:
 - Never rename or silently remove a published capability.
 - Never infer a capability from the runtime project version, installer package version, Config version, file presence, or a message timeout.
 
-## Release and implementation checklist
+## Release checklist
 
-The initial implementation must update the manifest validator and types, source selection state, Complete Setup rendering and action guards, release verifier, installer tests, current root manifest, installer documentation, and the GitHub Pages snapshot together. It must add the exact `v0.1.2.51` legacy profile and regression tests proving the current installer does not request Inventory or expose Deregistration for that Preview.
+The initial implementation updated the manifest validator and types, source selection state, Complete Setup rendering and action guards, release verifier, installer tests, current root manifest, and installer documentation together. Its exact `v0.1.2.51` legacy profile and regression tests prove that the installer does not request Inventory or expose Deregistration for that Preview.
 
-After implementation, every new or changed Release Manifest must:
+Every new or changed Release Manifest must:
 
 - include `CompanionInstaller.ContractVersion`, `TestedVersion`, and the complete sorted `Capabilities` list;
 - declare only capabilities that the selected runtime actually implements;
+- satisfy capability dependencies recorded in `installer/release-contract.json`;
 - keep `installer/release-contract.json` identifiers synchronized with each declaration;
 - make the Release Contract verifier prove every declared action and terminal result exists in deployable source;
 - add tests for both present and absent capability behavior;
 - update this catalog and release matrix when a new capability is introduced; and
 - record source verification separately from device validation.
 
-Until that implementation lands, the current installer still assumes all current Complete Setup runtime routes. Selecting Preview `v0.1.2.51` with installer `0.1.16` can therefore request unsupported Inventory and wait for a result that the Preview runtime cannot emit. The design is accepted, but capability gating must not be described as active yet.
+For Preview `v0.1.2.51`, Complete Setup exposes Add Parent but does not request Inventory or expose Deregistration. For the current Main Fork manifest, all three declared workflows remain available. Missing capabilities fail closed at both presentation and action boundaries.

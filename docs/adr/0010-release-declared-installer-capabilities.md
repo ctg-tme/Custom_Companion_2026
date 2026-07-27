@@ -22,4 +22,4 @@ Preview `v0.1.2.51` is immutable and predates this metadata. The implemented ins
 - Optional runtime workflows fail closed before a message is sent instead of timing out after installation.
 - Release verification must prove that declared capabilities and their Release Contract identifiers exist in the selected runtime.
 - Existing installers that do not yet understand this metadata still require published capability protocols to remain backwards compatible.
-- The accepted design does not become active until the installer, verifier, tests, and current manifest implement it together.
+- Companion Installer `0.1.18`, its verifier and tests, and the current Main Fork manifest activate this contract together.

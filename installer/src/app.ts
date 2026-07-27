@@ -40,7 +40,7 @@ import {
   legacyMacros,
   type LogClassification,
 } from './install';
-import { validateManifest } from './manifest';
+import { completeSetupCapabilities, validateManifest } from './manifest';
 import { renderMermaidDiagrams } from './mermaid';
 import {
   ParentAdministrationMonitor,
@@ -254,6 +254,10 @@ export class InstallerApp {
     return selectedSource(this.discovery, this.selectedSourceId);
   }
 
+  private currentCompleteSetupCapabilities() {
+    return completeSetupCapabilities(this.snapshot?.manifest);
+  }
+
   private render(): void {
     const pages = [
       this.renderIntroduction(),
@@ -300,9 +304,9 @@ export class InstallerApp {
             <span><a href="${CISCO_SAMPLE_CODE_LICENSE_URL}" target="_blank" rel="noopener noreferrer">Cisco Sample Code License</a> · Credentials remain in this browser session and are cleared when you disconnect.</span>
           </footer>
         </main>
-        ${this.parentRegistrationModalOpen ? this.renderParentRegistrationModal() : ''}
+        ${this.parentRegistrationModalOpen && this.currentCompleteSetupCapabilities().parentRegistration ? this.renderParentRegistrationModal() : ''}
         ${this.disconnectModalOpen ? this.renderDisconnectModal() : ''}
-        ${this.parentDeregistrationTarget ? this.renderParentDeregistrationModal() : ''}
+        ${this.parentDeregistrationTarget && this.currentCompleteSetupCapabilities().parentDeregistration ? this.renderParentDeregistrationModal() : ''}
       </div>`;
     this.bindEvents();
     this.bindReadmeEvents();
@@ -610,6 +614,7 @@ export class InstallerApp {
       ${this.errorNotice()}
       <section class="summary-grid install-summary">
         <div class="summary-item"><small>Installation source</small><strong>${escapeHtml(source?.label ?? '')}</strong><span title="${escapeHtml(this.snapshot?.commitSha ?? '')}">${escapeHtml((this.snapshot?.commitSha ?? '').slice(0, 12))}</span></div>
+        <div class="summary-item"><small>Installer compatibility</small><strong>Contract ${escapeHtml(this.snapshot?.manifest.CompanionInstaller.ContractVersion ?? '')}</strong><span>Tested with installer v${escapeHtml(this.snapshot?.manifest.CompanionInstaller.TestedVersion ?? '')} · ${this.snapshot?.manifest.CompanionInstaller.Capabilities.length ?? 0} capabilities</span></div>
         <div class="summary-item"><small>Target Companion Device</small><strong>${escapeHtml(this.adminCredentials.host)}</strong><span>Serial match confirmed</span></div>
         <div class="summary-item"><small>Files ready</small><strong>${this.preparedResources.length}</strong><span>${this.snapshot?.manifest.Files.length ?? 0} project · ${this.snapshot?.manifest.ExternalDependencies.length ?? 0} external</span></div>
         <div class="summary-item"><small>Installation type</small><strong>${freshInstallation ? 'Fresh Installation — Erase Saved Data' : 'Install or Update — Keep Saved Data'}</strong><span>${freshInstallation ? (storageInstalled ? `${GENERATED_STORAGE_MACRO} will be removed` : 'No generated storage macro was found') : 'Generated storage will be preserved'}</span></div>
@@ -698,6 +703,7 @@ export class InstallerApp {
   }
 
   private renderParentDeregistrationModal(): string {
+    if (!this.currentCompleteSetupCapabilities().parentDeregistration) return '';
     const target = this.parentDeregistrationTarget;
     if (!target) return '';
     const outcome = this.parentDeregistrationOutcome;
@@ -726,6 +732,8 @@ export class InstallerApp {
   }
 
   private renderParentInventory(): string {
+    const capabilities = this.currentCompleteSetupCapabilities();
+    if (!capabilities.parentInventory) return '';
     const registered = this.parentInventory.registered;
     const pending = this.parentInventory.pending;
     const registeredRows = registered.length
@@ -733,7 +741,7 @@ export class InstallerApp {
           <li>
             <span class="parent-inventory-copy"><strong>${escapeHtml(parent.name)}</strong><small>${escapeHtml(parent.host)} · Serial ${escapeHtml(parent.serial)}</small></span>
             ${parent.active ? '<span class="status-badge active">Active</span>' : '<span class="status-badge">Registered</span>'}
-            <button class="button secondary compact-button" type="button" data-remove-parent="${escapeHtml(parent.serial)}" ${this.parentAdministrationBusy || this.localReviewMode ? 'disabled' : ''}>Remove</button>
+            ${capabilities.parentDeregistration ? `<button class="button secondary compact-button" type="button" data-remove-parent="${escapeHtml(parent.serial)}" ${this.parentAdministrationBusy || this.localReviewMode ? 'disabled' : ''}>Remove</button>` : ''}
           </li>`).join('')}</ul>`
       : this.parentInventoryKnownEmpty
         ? '<div class="empty-state known-empty"><strong>No Parent Room Registrations are saved on this Companion Device.</strong><span>Fresh Installation erased the saved Custom Companion state, so there is nothing to fetch. Add a Parent Room Device when ready.</span></div>'
@@ -763,8 +771,9 @@ export class InstallerApp {
 
   private renderCompleteSetup(): string {
     const host = this.completionHost || this.adminCredentials.host;
+    const capabilities = this.currentCompleteSetupCapabilities();
     return `
-      ${this.pageHeader('Step 8 of 8', 'Complete setup on the Companion Device', 'The Custom Companion Macro is installed. Register Parent Room Devices on the Companion Device, or use this browser as an optional administrative alternative.')}
+      ${this.pageHeader('Step 8 of 8', 'Complete setup on the Companion Device', capabilities.parentRegistration ? 'The Custom Companion Macro is installed. Register Parent Room Devices on the Companion Device, or use this browser as an optional administrative alternative.' : 'The Custom Companion Macro is installed. Continue Parent Room Device setup from the Companion Device.')}
       <section class="panel complete-setup-panel">
         <span class="completion-icon">${checkIcon}</span>
         <div>
@@ -784,10 +793,10 @@ export class InstallerApp {
         </div>
       </section>
       ${this.renderParentInventory()}
-      <section class="browser-parent-option" aria-labelledby="browser-parent-option-title">
+      ${capabilities.parentRegistration ? `<section class="browser-parent-option" aria-labelledby="browser-parent-option-title">
         <div><span class="eyebrow">Browser alternative</span><h3 id="browser-parent-option-title">Add a Parent from this installer</h3><p>Use the signed-in Device Administrator session to start the same Companion Device-owned registration workflow without using the Board interface. You can add multiple Parent Room Devices this way, but Board registration is recommended.</p></div>
         <button class="button secondary" id="add-parent" type="button" ${this.parentRegistrationModalOpen || this.busy || this.parentAdministrationBusy ? 'disabled' : ''}>Add Parent</button>
-      </section>`;
+      </section>` : ''}`;
   }
 
   private bindEvents(): void {
@@ -938,7 +947,10 @@ export class InstallerApp {
     try {
       if (targetStep >= 2) await this.ensureLocalReviewState();
       if (targetStep === 7 && this.installationType === 'fresh') {
-        const inventoryPlan = parentInventoryPlanAfterInstallation(this.installationType);
+        const inventoryPlan = parentInventoryPlanAfterInstallation(
+          this.installationType,
+          this.currentCompleteSetupCapabilities().parentInventory,
+        );
         this.parentInventory = inventoryPlan.inventory;
         this.parentInventoryKnownEmpty = !inventoryPlan.shouldRequest;
       }
@@ -1451,7 +1463,10 @@ export class InstallerApp {
     this.macroLogs = [];
     this.error = '';
     this.installError = '';
-    const inventoryPlan = parentInventoryPlanAfterInstallation(this.installationType);
+    const inventoryPlan = parentInventoryPlanAfterInstallation(
+      this.installationType,
+      this.currentCompleteSetupCapabilities().parentInventory,
+    );
     this.parentInventory = inventoryPlan.inventory;
     this.parentInventoryLoading = false;
     this.parentInventoryError = '';
@@ -1462,7 +1477,12 @@ export class InstallerApp {
   }
 
   private async refreshParentInventory(): Promise<void> {
-    if (this.localReviewMode || !this.companionDevice || this.parentAdministrationBusy) return;
+    if (
+      !this.currentCompleteSetupCapabilities().parentInventory
+      || this.localReviewMode
+      || !this.companionDevice
+      || this.parentAdministrationBusy
+    ) return;
     let request: ParentAdministrationRequest;
     try {
       request = createParentInventoryRequest(this.expectedSerial);
@@ -1503,7 +1523,13 @@ export class InstallerApp {
 
   private async beginParentDeregistration(): Promise<void> {
     const target = this.parentDeregistrationTarget;
-    if (!target || !this.companionDevice || this.localReviewMode || this.parentAdministrationBusy) return;
+    if (
+      !this.currentCompleteSetupCapabilities().parentDeregistration
+      || !target
+      || !this.companionDevice
+      || this.localReviewMode
+      || this.parentAdministrationBusy
+    ) return;
     let request: ParentAdministrationRequest;
     try {
       request = createParentDeregistrationRequest(this.expectedSerial, target.serial);
@@ -1546,7 +1572,11 @@ export class InstallerApp {
   }
 
   private openParentRegistration(): void {
-    if ((!this.companionDevice && !this.localReviewMode) || this.busy) return;
+    if (
+      !this.currentCompleteSetupCapabilities().parentRegistration
+      || (!this.companionDevice && !this.localReviewMode)
+      || this.busy
+    ) return;
     this.resetParentRegistrationForm(false);
     this.parentRegistrationModalOpen = true;
     this.render();
@@ -1562,7 +1592,12 @@ export class InstallerApp {
   }
 
   private async beginParentRegistration(): Promise<void> {
-    if (!this.parentRegistrationModalOpen || !this.companionDevice || this.localReviewMode) return;
+    if (
+      !this.currentCompleteSetupCapabilities().parentRegistration
+      || !this.parentRegistrationModalOpen
+      || !this.companionDevice
+      || this.localReviewMode
+    ) return;
     this.parentRegistrationForm = this.captureParentRegistrationForm();
     let request: ParentRegistrationRequest;
     try {

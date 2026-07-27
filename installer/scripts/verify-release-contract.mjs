@@ -6,6 +6,8 @@ import { parse } from 'acorn';
 
 const projectMacroFilePattern = /^Custom-Campanion_[A-Za-z0-9_-]+_2026\.js$/;
 const fourPartVersionPattern = /^\d+(?:\.\d+){3}$/;
+const installerVersionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+const installerCapabilityPattern = /^installer\.[a-z0-9]+(?:-[a-z0-9]+)*\.v[1-9]\d*$/;
 
 function requireString(value, field) {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -122,12 +124,75 @@ export async function verifyReleaseContract(repositoryDirectory) {
   const installerDirectory = join(repositoryDirectory, 'installer');
   const manifest = JSON.parse(await readFile(join(repositoryDirectory, 'manifest.json'), 'utf8'));
   const contract = JSON.parse(await readFile(join(installerDirectory, 'release-contract.json'), 'utf8'));
+  const installerPackage = JSON.parse(await readFile(join(installerDirectory, 'package.json'), 'utf8'));
 
   if (!Array.isArray(manifest.Files) || manifest.Files.length === 0) {
     throw new Error('The root manifest must contain a non-empty Files array.');
   }
   if (!Array.isArray(manifest.ExternalDependencies)) {
     throw new Error('The root manifest must contain an ExternalDependencies array.');
+  }
+  if (!manifest.CompanionInstaller || typeof manifest.CompanionInstaller !== 'object' || Array.isArray(manifest.CompanionInstaller)) {
+    throw new Error('The root manifest must contain CompanionInstaller compatibility metadata.');
+  }
+  const installerContractVersion = contract.CompanionInstallerContractVersion;
+  if (!Number.isInteger(installerContractVersion) || installerContractVersion < 1) {
+    throw new Error('CompanionInstallerContractVersion must be a positive integer.');
+  }
+  if (manifest.CompanionInstaller.ContractVersion !== installerContractVersion) {
+    throw new Error(`The root manifest Installer Contract Version must be ${installerContractVersion}.`);
+  }
+  const installerPackageVersion = requireString(installerPackage.version, 'installer package version');
+  if (!installerVersionPattern.test(installerPackageVersion)) {
+    throw new Error(`Installer package version ${installerPackageVersion} must be semantic.`);
+  }
+  if (manifest.CompanionInstaller.TestedVersion !== installerPackageVersion) {
+    throw new Error(`The root manifest Tested Installer Version must match installer package version ${installerPackageVersion}.`);
+  }
+  const manifestCapabilities = manifest.CompanionInstaller.Capabilities;
+  if (
+    !Array.isArray(manifestCapabilities)
+    || manifestCapabilities.some((capability) => typeof capability !== 'string' || !installerCapabilityPattern.test(capability))
+  ) {
+    throw new Error('The root manifest CompanionInstaller.Capabilities must contain versioned installer capability identifiers.');
+  }
+  if (new Set(manifestCapabilities).size !== manifestCapabilities.length) {
+    throw new Error('The root manifest CompanionInstaller.Capabilities contains duplicate entries.');
+  }
+  const sortedManifestCapabilities = [...manifestCapabilities].sort();
+  if (manifestCapabilities.some((capability, index) => capability !== sortedManifestCapabilities[index])) {
+    throw new Error('The root manifest CompanionInstaller.Capabilities must be sorted.');
+  }
+  const capabilityContracts = contract.InstallerCapabilityContracts;
+  if (!capabilityContracts || typeof capabilityContracts !== 'object' || Array.isArray(capabilityContracts)) {
+    throw new Error('InstallerCapabilityContracts must be an object.');
+  }
+  const contractCapabilities = Object.keys(capabilityContracts);
+  const sortedContractCapabilities = [...contractCapabilities].sort();
+  if (contractCapabilities.some((capability, index) => capability !== sortedContractCapabilities[index])) {
+    throw new Error('InstallerCapabilityContracts keys must be sorted.');
+  }
+  if (
+    manifestCapabilities.length !== contractCapabilities.length
+    || manifestCapabilities.some((capability, index) => capability !== contractCapabilities[index])
+  ) {
+    throw new Error('The root manifest Installer Capabilities must exactly match InstallerCapabilityContracts.');
+  }
+  const capabilityDependencies = contract.InstallerCapabilityDependencies;
+  if (!capabilityDependencies || typeof capabilityDependencies !== 'object' || Array.isArray(capabilityDependencies)) {
+    throw new Error('InstallerCapabilityDependencies must be an object.');
+  }
+  for (const [capability, dependencies] of Object.entries(capabilityDependencies)) {
+    if (!contractCapabilities.includes(capability)) {
+      throw new Error(`InstallerCapabilityDependencies contains an unknown capability: ${capability}.`);
+    }
+    if (!Array.isArray(dependencies)) {
+      throw new Error(`InstallerCapabilityDependencies.${capability} must be an array.`);
+    }
+    const missing = dependencies.filter((dependency) => !manifestCapabilities.includes(dependency));
+    if (missing.length) {
+      throw new Error(`${capability} requires Installer Capabilities: ${missing.join(', ')}.`);
+    }
   }
 
   for (const file of manifest.Files) {
@@ -221,32 +286,17 @@ export async function verifyReleaseContract(repositoryDirectory) {
     }
   }
 
-  const installerParentRegistrationAction = requireString(contract.InstallerParentRegistrationAction, 'InstallerParentRegistrationAction');
-  const installerParentRegistrationSuccessMessage = requireString(contract.InstallerParentRegistrationSuccessMessage, 'InstallerParentRegistrationSuccessMessage');
-  const installerParentRegistrationFailureMessage = requireString(contract.InstallerParentRegistrationFailureMessage, 'InstallerParentRegistrationFailureMessage');
   const allProjectSource = [...sourceByFile.values()].join('\n');
-  for (const value of [
-    installerParentRegistrationAction,
-    installerParentRegistrationSuccessMessage,
-    installerParentRegistrationFailureMessage,
-  ]) {
-    if (!allProjectSource.includes(value)) {
-      throw new Error(`The deployable source does not contain the Installer Parent Room Registration contract value: ${value}`);
+  for (const capability of manifestCapabilities) {
+    const contractFields = capabilityContracts[capability];
+    if (!Array.isArray(contractFields) || contractFields.length === 0) {
+      throw new Error(`${capability} must map to one or more Release Contract fields.`);
     }
-  }
-
-  const installerParentAdministrationValues = [
-    requireString(contract.InstallerParentInventoryAction, 'InstallerParentInventoryAction'),
-    requireString(contract.InstallerParentInventorySuccessMessage, 'InstallerParentInventorySuccessMessage'),
-    requireString(contract.InstallerParentInventoryFailureMessage, 'InstallerParentInventoryFailureMessage'),
-    requireString(contract.InstallerParentDeregistrationAction, 'InstallerParentDeregistrationAction'),
-    requireString(contract.InstallerParentDeregistrationSuccessMessage, 'InstallerParentDeregistrationSuccessMessage'),
-    requireString(contract.InstallerParentDeregistrationPendingMessage, 'InstallerParentDeregistrationPendingMessage'),
-    requireString(contract.InstallerParentDeregistrationFailureMessage, 'InstallerParentDeregistrationFailureMessage'),
-  ];
-  for (const value of installerParentAdministrationValues) {
-    if (!allProjectSource.includes(value)) {
-      throw new Error(`The deployable source does not contain the Installer Parent Room administration contract value: ${value}`);
+    for (const field of contractFields) {
+      const value = requireString(contract[field], `InstallerCapabilityContracts.${capability}.${String(field)}`);
+      if (!allProjectSource.includes(value)) {
+        throw new Error(`The deployable source does not contain the ${capability} Release Contract value: ${value}`);
+      }
     }
   }
 

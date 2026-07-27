@@ -1,5 +1,14 @@
 {
   "SchemaVersion": 1,
+  "CompanionInstaller": {
+    "ContractVersion": 1,
+    "TestedVersion": "0.1.18",
+    "Capabilities": [
+      "installer.parent-deregistration.v1",
+      "installer.parent-inventory.v1",
+      "installer.parent-registration.v1"
+    ]
+  },
   "Files": [
     "Custom-Campanion_1_Main_2026.js",
     "Custom-Campanion_2_Config_2026.js",

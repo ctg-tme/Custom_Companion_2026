@@ -1,9 +1,11 @@
 import { validateManifest } from './manifest';
-import type {
-  InstallResource,
-  ReleaseDiscovery,
-  ReleaseSource,
-  SourceSnapshot,
+import {
+  COMPANION_INSTALLER_CONTRACT_VERSION,
+  INSTALLER_PARENT_REGISTRATION_CAPABILITY,
+  type InstallResource,
+  type ReleaseDiscovery,
+  type ReleaseSource,
+  type SourceSnapshot,
 } from './types';
 
 const OWNER = 'ctg-tme';
@@ -11,6 +13,8 @@ const REPOSITORY = 'Custom_Companion_2026';
 const API_ROOT = `https://api.github.com/repos/${OWNER}/${REPOSITORY}`;
 const RAW_ROOT = `https://raw.githubusercontent.com/${OWNER}/${REPOSITORY}`;
 const REPOSITORY_ROOT = `https://github.com/${OWNER}/${REPOSITORY}`;
+const LEGACY_PREVIEW_TAG = 'v0.1.2.51';
+const LEGACY_PREVIEW_COMMIT_SHA = 'be539c292d79197e8303d42b68902c6985cde699';
 
 interface GitHubRelease {
   id: number;
@@ -128,6 +132,27 @@ function macroName(fileName: string): string {
   return fileName.replace(/\.js$/, '');
 }
 
+export function applyLegacyInstallerCompatibility(
+  value: unknown,
+  source: ReleaseSource,
+  commitSha: string,
+): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.CompanionInstaller !== undefined || source.tagName !== LEGACY_PREVIEW_TAG) return value;
+  if (commitSha !== LEGACY_PREVIEW_COMMIT_SHA) {
+    throw new Error(`${LEGACY_PREVIEW_TAG} no longer resolves to its expected immutable commit.`);
+  }
+  return {
+    ...candidate,
+    CompanionInstaller: {
+      ContractVersion: COMPANION_INSTALLER_CONTRACT_VERSION,
+      TestedVersion: '0.1.14',
+      Capabilities: [INSTALLER_PARENT_REGISTRATION_CAPABILITY],
+    },
+  };
+}
+
 export async function loadSourceSnapshot(source: ReleaseSource, fetcher: typeof fetch = fetch): Promise<SourceSnapshot> {
   let commitSha: string;
   let baseUrl: string;
@@ -142,7 +167,8 @@ export async function loadSourceSnapshot(source: ReleaseSource, fetcher: typeof 
     baseUrl = `${RAW_ROOT}/${commitSha}/`;
   }
 
-  const manifest = validateManifest(await fetchJson(`${baseUrl}manifest.json`, `${source.label} manifest`, fetcher));
+  const manifestValue = await fetchJson(`${baseUrl}manifest.json`, `${source.label} manifest`, fetcher);
+  const manifest = validateManifest(applyLegacyInstallerCompatibility(manifestValue, source, commitSha));
   const projectResources = await Promise.all(
     manifest.Files.map(async (fileName): Promise<InstallResource> => ({
       macroName: macroName(fileName),

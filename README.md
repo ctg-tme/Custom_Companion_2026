@@ -54,4 +54,4 @@ Developers and maintainers should also use the canonical terminology in [CONTEXT
 - One active Parent Room Device per Companion Device
 - One Parent Room Device-authorized call at a time while Paired
 
-The [Release Manifest](manifest.json) is the authority for supported product platforms, installable macros, and external dependencies.
+The [Release Manifest](manifest.json) is the authority for supported product platforms, installable macros, external dependencies, and Companion Installer compatibility.

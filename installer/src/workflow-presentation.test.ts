@@ -28,7 +28,7 @@ describe('installer workflow presentation', () => {
     expect(source).not.toContain("'Register Parent Room Device', 'Complete Setup'");
     expect(source).toContain('id="add-parent"');
     expect(source).toContain('Add Parent');
-    expect(source).toContain('this.parentRegistrationModalOpen ? this.renderParentRegistrationModal()');
+    expect(source).toContain('this.parentRegistrationModalOpen && this.currentCompleteSetupCapabilities().parentRegistration ? this.renderParentRegistrationModal()');
     expect(source).toContain('createParentRegistrationRequest');
     expect(source).toContain('sendParentRegistrationRequest');
     expect(source).toContain('Nothing is shown in the Companion Device in-room interface');
@@ -38,6 +38,7 @@ describe('installer workflow presentation', () => {
     expect(source).toContain('Companion Device registration walkthrough');
     expect(source).toContain('Board registration is recommended.');
     expect(source).toContain('class="browser-parent-option"');
+    expect(source).toContain("capabilities.parentRegistration ? `<section class=\"browser-parent-option\"");
     expect(source).toContain('class="button primary" id="finish-setup"');
     expect(source).not.toContain('Add Parent Room Devices (optional)');
     expect(source).toContain('continueToCompleteSetup()');
@@ -81,6 +82,11 @@ describe('installer workflow presentation', () => {
     expect(source).toContain('Deregister Parent Room Device?');
     expect(source).toContain('No Parent Room Registrations are saved on this Companion Device.');
     expect(source).toContain('parentInventoryPlanAfterInstallation');
+    expect(source).toContain('this.currentCompleteSetupCapabilities().parentInventory');
+    expect(source).toContain('capabilities.parentDeregistration ? `<button');
+    expect(source).toContain('!this.currentCompleteSetupCapabilities().parentDeregistration');
+    expect(source).toContain('!this.currentCompleteSetupCapabilities().parentRegistration');
+    expect(source).toContain('Tested with installer v');
   });
 
   it('offers installer-computer defaults and safe icon previews in Configure', async () => {

@@ -5,6 +5,11 @@ export const CONFIG_MACRO_FILE = releaseContract.ConfigMacroFile;
 export const ROOM_REFERENCE_MACRO_FILE = releaseContract.RoomReferenceMacroFile;
 export const INITIALIZATION_SUCCESS_MESSAGE = releaseContract.InitializationSuccessMessage;
 export const INITIALIZATION_STOPPED_MESSAGE = releaseContract.InitializationStoppedMessage;
+export const COMPANION_INSTALLER_CONTRACT_VERSION = releaseContract.CompanionInstallerContractVersion;
+export const INSTALLER_CAPABILITY_DEPENDENCIES = releaseContract.InstallerCapabilityDependencies;
+export const INSTALLER_PARENT_DEREGISTRATION_CAPABILITY = 'installer.parent-deregistration.v1';
+export const INSTALLER_PARENT_INVENTORY_CAPABILITY = 'installer.parent-inventory.v1';
+export const INSTALLER_PARENT_REGISTRATION_CAPABILITY = 'installer.parent-registration.v1';
 export const INSTALLER_PARENT_REGISTRATION_ACTION = releaseContract.InstallerParentRegistrationAction;
 export const INSTALLER_PARENT_REGISTRATION_SUCCESS_MESSAGE = releaseContract.InstallerParentRegistrationSuccessMessage;
 export const INSTALLER_PARENT_REGISTRATION_FAILURE_MESSAGE = releaseContract.InstallerParentRegistrationFailureMessage;
@@ -25,8 +30,15 @@ export interface ExternalDependency {
   RawUrl: string;
 }
 
+export interface CompanionInstallerManifest {
+  ContractVersion: number;
+  TestedVersion: string;
+  Capabilities: string[];
+}
+
 export interface InstallManifest {
   SchemaVersion: 1;
+  CompanionInstaller: CompanionInstallerManifest;
   Files: string[];
   MinimumRoomOSVersion: string;
   SoftwarePlatform: string[];

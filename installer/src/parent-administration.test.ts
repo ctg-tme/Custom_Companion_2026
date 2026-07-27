@@ -16,13 +16,20 @@ import {
 
 describe('installer Parent Room administration requests', () => {
   it('treats Fresh Installation as a known-empty inventory without a runtime request', () => {
-    expect(parentInventoryPlanAfterInstallation('fresh')).toEqual({
+    expect(parentInventoryPlanAfterInstallation('fresh', true)).toEqual({
       inventory: { registered: [], pending: [] },
       shouldRequest: false,
     });
-    expect(parentInventoryPlanAfterInstallation('preserve')).toEqual({
+    expect(parentInventoryPlanAfterInstallation('preserve', true)).toEqual({
       inventory: { registered: [], pending: [] },
       shouldRequest: true,
+    });
+  });
+
+  it('never requests inventory when the selected release does not declare it', () => {
+    expect(parentInventoryPlanAfterInstallation('preserve', false)).toEqual({
+      inventory: { registered: [], pending: [] },
+      shouldRequest: false,
     });
   });
 

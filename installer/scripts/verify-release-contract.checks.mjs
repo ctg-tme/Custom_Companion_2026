@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { verifyReleaseContract } from './verify-release-contract.mjs';
 
 const version = '1.2.3.4';
+const installerVersion = '0.1.18';
 const contract = {
   MainMacroFile: 'Custom-Campanion_1_Main_2026.js',
   ConfigMacroFile: 'Custom-Campanion_2_Config_2026.js',
@@ -13,6 +14,7 @@ const contract = {
   GeneratedStorageMacro: 'Custom-Campanion-Storage',
   InitializationSuccessMessage: 'Custom Companion initialized on Companion Device',
   InitializationStoppedMessage: 'Custom Companion initialization stopped on Companion Device',
+  CompanionInstallerContractVersion: 1,
   InstallerParentRegistrationAction: 'InstallerParentRegistrationRequest',
   InstallerParentRegistrationSuccessMessage: 'Companion Installer Parent Room Registration completed',
   InstallerParentRegistrationFailureMessage: 'Companion Installer Parent Room Registration failed',
@@ -23,6 +25,29 @@ const contract = {
   InstallerParentDeregistrationSuccessMessage: 'Companion Installer Parent Room Deregistration completed',
   InstallerParentDeregistrationPendingMessage: 'Companion Installer Parent Room Deregistration pending',
   InstallerParentDeregistrationFailureMessage: 'Companion Installer Parent Room Deregistration failed',
+  InstallerCapabilityContracts: {
+    'installer.parent-deregistration.v1': [
+      'InstallerParentDeregistrationAction',
+      'InstallerParentDeregistrationSuccessMessage',
+      'InstallerParentDeregistrationPendingMessage',
+      'InstallerParentDeregistrationFailureMessage',
+    ],
+    'installer.parent-inventory.v1': [
+      'InstallerParentInventoryAction',
+      'InstallerParentInventorySuccessMessage',
+      'InstallerParentInventoryFailureMessage',
+    ],
+    'installer.parent-registration.v1': [
+      'InstallerParentRegistrationAction',
+      'InstallerParentRegistrationSuccessMessage',
+      'InstallerParentRegistrationFailureMessage',
+    ],
+  },
+  InstallerCapabilityDependencies: {
+    'installer.parent-deregistration.v1': [
+      'installer.parent-inventory.v1',
+    ],
+  },
 };
 
 function header(value = version) {
@@ -51,6 +76,11 @@ async function createFixture(overrides = {}) {
 
   const manifest = {
     SchemaVersion: 1,
+    CompanionInstaller: {
+      ContractVersion: 1,
+      TestedVersion: installerVersion,
+      Capabilities: Object.keys(contract.InstallerCapabilityContracts),
+    },
     Files: Object.keys(sources).filter((file) => file !== overrides.extraFile),
     MinimumRoomOSVersion: '11.32.1.1',
     SoftwarePlatform: ['roomos'],
@@ -61,6 +91,7 @@ async function createFixture(overrides = {}) {
   await Promise.all([
     writeFile(join(repositoryDirectory, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8'),
     writeFile(join(installerDirectory, 'release-contract.json'), `${JSON.stringify(contract, null, 2)}\n`, 'utf8'),
+    writeFile(join(installerDirectory, 'package.json'), `${JSON.stringify({ version: installerVersion }, null, 2)}\n`, 'utf8'),
     ...Object.entries(sources).map(([file, source]) => writeFile(join(repositoryDirectory, file), source, 'utf8')),
   ]);
 
@@ -140,7 +171,7 @@ test('rejects Installer Parent Room Registration contract drift', async (t) => {
       ])}`,
     },
   });
-  await assert.rejects(verifyReleaseContract(repositoryDirectory), /Installer Parent Room Registration contract value/i);
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /installer\.parent-registration\.v1 Release Contract value/i);
 });
 
 test('rejects Installer Parent Room administration contract drift', async (t) => {
@@ -155,7 +186,42 @@ test('rejects Installer Parent Room administration contract drift', async (t) =>
       ])}`,
     },
   });
-  await assert.rejects(verifyReleaseContract(repositoryDirectory), /Installer Parent Room administration contract value/i);
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /installer\.parent-(?:inventory|deregistration)\.v1 Release Contract value/i);
+});
+
+test('rejects a Tested Installer Version that does not match the packaged installer', async (t) => {
+  const repositoryDirectory = await withFixture(t);
+  const manifestPath = join(repositoryDirectory, 'manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.CompanionInstaller.TestedVersion = '9.9.9';
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /Tested Installer Version must match/i);
+});
+
+test('rejects a manifest capability absent from the Release Contract catalog', async (t) => {
+  const repositoryDirectory = await withFixture(t);
+  const manifestPath = join(repositoryDirectory, 'manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  manifest.CompanionInstaller.Capabilities.push('installer.unknown-workflow.v1');
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /exactly match InstallerCapabilityContracts/i);
+});
+
+test('rejects a Release Contract capability with an absent dependency', async (t) => {
+  const repositoryDirectory = await withFixture(t);
+  const manifestPath = join(repositoryDirectory, 'manifest.json');
+  const contractPath = join(repositoryDirectory, 'installer', 'release-contract.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const fixtureContract = JSON.parse(await readFile(contractPath, 'utf8'));
+  manifest.CompanionInstaller.Capabilities = ['installer.parent-deregistration.v1'];
+  fixtureContract.InstallerCapabilityContracts = {
+    'installer.parent-deregistration.v1': fixtureContract.InstallerCapabilityContracts['installer.parent-deregistration.v1'],
+  };
+  await Promise.all([
+    writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8'),
+    writeFile(contractPath, `${JSON.stringify(fixtureContract, null, 2)}\n`, 'utf8'),
+  ]);
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /requires Installer Capabilities: installer\.parent-inventory\.v1/i);
 });
 
 test('rejects newline characters in UserInterface Message Title and Text fields', async (t) => {

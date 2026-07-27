@@ -19,10 +19,11 @@ type LogPayload = Record<string, unknown>;
 
 export function parentInventoryPlanAfterInstallation(
   installationType: InstallationType | undefined,
+  inventoryCapabilityAvailable: boolean,
 ): { inventory: ParentInventory; shouldRequest: boolean } {
   return {
     inventory: { registered: [], pending: [] },
-    shouldRequest: installationType !== 'fresh',
+    shouldRequest: inventoryCapabilityAvailable && installationType !== 'fresh',
   };
 }
 
