@@ -21,6 +21,7 @@ async function loadRuntimeModules() {
       create: (options: Record<string, unknown>) => {
         applyRuntimeWebWidget: (mode?: string) => Promise<void>;
         captureStandaloneConfig: (options?: Record<string, unknown>) => Promise<boolean>;
+        setStandaloneUiFeatureConfig: (value: Record<string, unknown>) => void;
       };
     };
   };
@@ -64,7 +65,7 @@ async function createHarness(restoreStandaloneExisting: boolean) {
                   Name: installedWebWidget.name,
                   PanelId: installedWebWidget.panelId,
                   RefreshInterval: installedWebWidget.refreshInterval,
-                  URL: installedWebWidget.url,
+                  ActivityData: installedWebWidget.url,
                 }] : [],
               },
             };
@@ -205,5 +206,24 @@ describe('Paired Environment WebWidget ownership', () => {
       operation: 'Remove',
       params: { PanelId: 'cc26WebWidget' },
     });
+  });
+
+  it('relearns an original WebWidget after an empty snapshot was persisted', async () => {
+    const harness = await createHarness(true);
+    harness.controller.setStandaloneUiFeatureConfig({
+      webWidget: {
+        ...harness.existingWebWidget,
+        url: '',
+      },
+      webWidgetUrl: '',
+    });
+
+    await harness.controller.captureStandaloneConfig({ onlyMissing: true });
+
+    expect(harness.operations.map(({ operation }) => operation)).toEqual(['List']);
+    expect(harness.write).toHaveBeenCalledWith('standalone-ui', expect.objectContaining({
+      webWidget: harness.existingWebWidget,
+      webWidgetUrl: harness.existingWebWidget.url,
+    }));
   });
 });

@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 1.0.31
+ * Version:                 1.0.32
  *
  * Description:             Companion Device access and hidden panels, custom access-panel icon,
  *                          PIN/registration/status prompts, shared Companion Alert ownership,
@@ -731,7 +731,7 @@ function normalizeWebWidget(webWidget) {
 		panelId: webWidget.PanelId || webWidget.PanelID || webWidget.Id || webWidget.ID || WEB_WIDGET_PANEL_ID,
 		name: webWidget.Name || 'Web Widget',
 		refreshInterval: Number(webWidget.RefreshInterval) || WEB_WIDGET_REFRESH_INTERVAL,
-		url: webWidget.Url || webWidget.URL || webWidget.url || ''
+		url: webWidget.ActivityData || webWidget.Url || webWidget.URL || webWidget.url || ''
 	};
 }
 

@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.60
+ * Version:                 0.1.2.61
  *
  * Description:             User-facing configuration for the Custom Companion solution on supported Companion Devices.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -41,7 +41,7 @@ or implied.
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
 
-const projectVersion = '0.1.2.60';
+const projectVersion = '0.1.2.61';
 
 const config = {
   CompanionDeviceInformation: {

@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 20, 2026
  * Revised:                 July 27, 2026
- * Version:                 1.0.8
+ * Version:                 1.0.9
  *
  * Description:             Paired Environment Policy controller for the Custom Companion solution.
  *                          Owns reversible local configuration policy, Companion Web Widget mode,
@@ -663,12 +663,23 @@ function createPairedEnvironment(options) {
 		}
 
 		const context = getRuntimeContext();
-		if (shouldManageWebWidget() && shouldRestoreStandaloneWebWidget() && context.mode === 'Standalone' && standaloneUiFeatureConfig.webWidgetUrl === undefined) {
+		if (shouldManageWebWidget() && shouldRestoreStandaloneWebWidget() && context.mode === 'Standalone' && !getStandaloneWebWidget()) {
+			if (standaloneUiFeatureConfig.webWidget !== undefined || standaloneUiFeatureConfig.webWidgetUrl !== undefined) {
+				delete standaloneUiFeatureConfig.webWidget;
+				delete standaloneUiFeatureConfig.webWidgetUrl;
+				hasUpdates = true;
+				dependencies.log.info({ Message: 'Removed invalid Standalone Web Widget restore memory so capture can retry' });
+			}
 			try {
 				const currentWebWidget = await dependencies.companionUi.getCurrentWebWidget(dependencies.xapi);
-				standaloneUiFeatureConfig.webWidget = currentWebWidget && !dependencies.companionUi.isCompanionWebWidget(currentWebWidget) ? currentWebWidget : null;
-				standaloneUiFeatureConfig.webWidgetUrl = standaloneUiFeatureConfig.webWidget ? standaloneUiFeatureConfig.webWidget.url : '';
-				hasUpdates = true;
+				if (currentWebWidget && !dependencies.companionUi.isCompanionWebWidget(currentWebWidget) && currentWebWidget.url) {
+					standaloneUiFeatureConfig.webWidget = currentWebWidget;
+					standaloneUiFeatureConfig.webWidgetUrl = currentWebWidget.url;
+					hasUpdates = true;
+					dependencies.log.info({ Message: 'Saved original Standalone Web Widget', PanelId: currentWebWidget.panelId });
+				} else if (currentWebWidget && !dependencies.companionUi.isCompanionWebWidget(currentWebWidget)) {
+					dependencies.log.warn({ Message: 'Current Standalone Web Widget was not saved because its inventory URL is unavailable', PanelId: currentWebWidget.panelId || '' });
+				}
 			} catch (error) {
 				dependencies.log.warn({ Message: 'Failed to save original Standalone Web Widget', Error: error.message || error.code || 'Unknown Web Widget inventory error' });
 			}

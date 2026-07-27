@@ -20,7 +20,7 @@ describe('Companion Device UI macro', () => {
             Name: 'Existing WebWidget',
             PanelId: 'existingWebWidget',
             RefreshInterval: 45,
-            URL: 'https://example.test/existing',
+            ActivityData: 'https://example.test/existing',
           },
         ],
       },

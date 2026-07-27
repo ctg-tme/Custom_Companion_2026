@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.60
+ * Version:                 0.1.2.61
  *
  * Description:             Inactive Parent Room entry source for registration, pairing-state
  *                          validation, Registered Companion Devices UI and alerts,
