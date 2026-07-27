@@ -21,6 +21,7 @@ async function loadRuntimeModules() {
       create: (options: Record<string, unknown>) => {
         applyRuntimeWebWidget: (mode?: string) => Promise<void>;
         captureStandaloneConfig: (options?: Record<string, unknown>) => Promise<boolean>;
+        initializeUiFeatureMode: () => Promise<void>;
         setStandaloneUiFeatureConfig: (value: Record<string, unknown>) => void;
       };
     };
@@ -38,6 +39,7 @@ async function createHarness(restoreStandaloneExisting: boolean) {
     url: 'https://example.test/existing',
   };
   let installedWebWidget: WebWidget | null = { ...existingWebWidget };
+  let layoutUpdatedHandler: (() => void) | null = null;
   let mode = 'Standalone';
   const operations: Array<{ operation: string; params?: Record<string, unknown> }> = [];
   const write = vi.fn(async () => undefined);
@@ -45,6 +47,19 @@ async function createHarness(restoreStandaloneExisting: boolean) {
 
   const xapi = {
     Config: {},
+    Event: {
+      UserInterface: {
+        Extensions: {
+          Widget: {
+            LayoutUpdated: {
+              on: (handler: () => void) => {
+                layoutUpdatedHandler = handler;
+              },
+            },
+          },
+        },
+      },
+    },
     Status: {
       Proximity: {},
       UserInterface: {
@@ -137,8 +152,17 @@ async function createHarness(restoreStandaloneExisting: boolean) {
     existingWebWidget,
     getInstalledWebWidget: () => installedWebWidget,
     operations,
+    setInstalledWebWidget: (value: WebWidget | null) => {
+      installedWebWidget = value;
+    },
     setMode: (value: string) => {
       mode = value;
+    },
+    triggerLayoutUpdated: () => {
+      if (!layoutUpdatedHandler) {
+        throw new Error('LayoutUpdated subscription was not registered');
+      }
+      layoutUpdatedHandler();
     },
     warn,
     write,
@@ -225,5 +249,71 @@ describe('Paired Environment WebWidget ownership', () => {
       webWidget: harness.existingWebWidget,
       webWidgetUrl: harness.existingWebWidget.url,
     }));
+  });
+
+  it('tracks an administrator WebWidget change as the current Standalone preference', async () => {
+    const harness = await createHarness(true);
+    const updatedWebWidget: WebWidget = {
+      panelId: 'updatedWebWidget',
+      name: 'Updated WebWidget',
+      refreshInterval: 90,
+      url: 'https://example.test/updated',
+    };
+
+    await harness.controller.initializeUiFeatureMode();
+    harness.write.mockClear();
+    harness.setInstalledWebWidget(updatedWebWidget);
+    harness.triggerLayoutUpdated();
+
+    await vi.waitFor(() => {
+      expect(harness.write).toHaveBeenCalledWith('standalone-ui', expect.objectContaining({
+        webWidget: updatedWebWidget,
+        webWidgetUrl: updatedWebWidget.url,
+      }));
+    });
+
+    harness.setMode('Paired');
+    await harness.controller.applyRuntimeWebWidget('Paired');
+    harness.setMode('Standalone');
+    await harness.controller.applyRuntimeWebWidget('Standalone');
+
+    expect(harness.getInstalledWebWidget()).toEqual(updatedWebWidget);
+  });
+
+  it('does not learn a WebWidget layout change while Paired', async () => {
+    const harness = await createHarness(true);
+
+    await harness.controller.initializeUiFeatureMode();
+    harness.write.mockClear();
+    harness.setMode('Paired');
+    harness.setInstalledWebWidget({
+      panelId: 'pairedWebWidget',
+      name: 'Paired WebWidget',
+      refreshInterval: 30,
+      url: 'https://example.test/paired',
+    });
+    harness.triggerLayoutUpdated();
+
+    expect(harness.write).not.toHaveBeenCalled();
+  });
+
+  it('does not learn the solution-owned WebWidget from a Standalone layout update', async () => {
+    const harness = await createHarness(true);
+
+    await harness.controller.initializeUiFeatureMode();
+    harness.write.mockClear();
+    const listCountBeforeUpdate = harness.operations.filter(({ operation }) => operation === 'List').length;
+    harness.setInstalledWebWidget({
+      panelId: 'cc26WebWidget',
+      name: 'Custom Companion 2026',
+      refreshInterval: 0,
+      url: 'https://example.test/companion',
+    });
+    harness.triggerLayoutUpdated();
+
+    await vi.waitFor(() => {
+      expect(harness.operations.filter(({ operation }) => operation === 'List')).toHaveLength(listCountBeforeUpdate + 1);
+    });
+    expect(harness.write).not.toHaveBeenCalled();
   });
 });

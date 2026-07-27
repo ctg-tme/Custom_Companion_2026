@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 20, 2026
  * Revised:                 July 27, 2026
- * Version:                 1.0.9
+ * Version:                 1.0.10
  *
  * Description:             Paired Environment Policy controller for the Custom Companion solution.
  *                          Owns reversible local configuration policy, Companion Web Widget mode,
@@ -48,7 +48,8 @@ or implied.
  * - Subscriptions: Config paths listed in PAIRED_UI_FEATURE_POLICY and
  *   PAIRED_ENVIRONMENT_CONFIG_POLICY, Config.Video.Input.Connector,
  *   Config.UserInterface.Theme.Name, Status.Proximity.Services.Availability,
- *   Status.Audio.Microphones.Mute, and Status.Audio.Volume.
+ *   Status.Audio.Microphones.Mute, Status.Audio.Volume, and
+ *   Event.UserInterface.Extensions.Widget.LayoutUpdated.
  * - Initial reads: the same configuration paths, Config.Provisioning.Mode,
  *   Config.Video.Input.Connector, Config.UserInterface.Theme.Name,
  *   Status.Proximity.Services.Availability, Status.Audio.Microphones.Mute,
@@ -129,6 +130,7 @@ function createPairedEnvironment(options) {
 		}
 		registerStandaloneUiFeatureSubscriptions();
 		await registerStandaloneEnvironmentSubscriptions();
+		registerStandaloneWebWidgetSubscription();
 		registerUserInterfaceThemeSubscription();
 	}
 
@@ -718,6 +720,47 @@ function createPairedEnvironment(options) {
 		dependencies.log.debug({ Message: 'Saved Standalone UI feature preference', Feature: feature.key, Value: value });
 	}
 
+	function registerStandaloneWebWidgetSubscription() {
+		if (!shouldManageWebWidget() || !shouldRestoreStandaloneWebWidget()) {
+			return;
+		}
+
+		const xapi = dependencies.xapi;
+		const layoutUpdated = xapi && xapi.Event && xapi.Event.UserInterface && xapi.Event.UserInterface.Extensions
+			&& xapi.Event.UserInterface.Extensions.Widget && xapi.Event.UserInterface.Extensions.Widget.LayoutUpdated;
+		if (!layoutUpdated || typeof layoutUpdated.on !== 'function') {
+			dependencies.log.debug({ Message: 'Standalone Web Widget layout subscription unavailable' });
+			return;
+		}
+
+		layoutUpdated.on(() => {
+			handleStandaloneWebWidgetLayoutUpdated().catch(error => {
+				dependencies.utils.softError({ Context: 'Failed to save Standalone Web Widget change', Error: error });
+			});
+		});
+	}
+
+	async function handleStandaloneWebWidgetLayoutUpdated() {
+		if (getRuntimeContext().mode !== 'Standalone') {
+			return;
+		}
+
+		const currentWebWidget = await dependencies.companionUi.getCurrentWebWidget(dependencies.xapi);
+		if (!currentWebWidget || dependencies.companionUi.isCompanionWebWidget(currentWebWidget) || !currentWebWidget.url) {
+			return;
+		}
+
+		const savedWebWidget = getStandaloneWebWidget();
+		if (webWidgetDefinitionsMatch(savedWebWidget, currentWebWidget)) {
+			return;
+		}
+
+		standaloneUiFeatureConfig.webWidget = currentWebWidget;
+		standaloneUiFeatureConfig.webWidgetUrl = currentWebWidget.url;
+		await dependencies.mem.write(dependencies.storageKey, standaloneUiFeatureConfig);
+		dependencies.log.info({ Message: 'Updated Standalone Web Widget preference', PanelId: currentWebWidget.panelId });
+	}
+
 	async function registerStandaloneEnvironmentSubscriptions() {
 		for (let index = 0; index < PAIRED_ENVIRONMENT_CONFIG_POLICY.length; index++) {
 			const configItem = PAIRED_ENVIRONMENT_CONFIG_POLICY[index];
@@ -1081,6 +1124,14 @@ function createPairedEnvironment(options) {
 			};
 		}
 		return null;
+	}
+
+	function webWidgetDefinitionsMatch(first, second) {
+		return !!(first && second
+			&& first.panelId === second.panelId
+			&& first.name === second.name
+			&& first.refreshInterval === second.refreshInterval
+			&& first.url === second.url);
 	}
 
 	function normalizeConfigEventValue(value) {

@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.61
+ * Version:                 0.1.2.62
  *
  * Description:             User-facing configuration for the Custom Companion solution on supported Companion Devices.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -41,7 +41,7 @@ or implied.
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
 
-const projectVersion = '0.1.2.61';
+const projectVersion = '0.1.2.62';
 
 const config = {
   CompanionDeviceInformation: {
@@ -60,7 +60,7 @@ const config = {
       urlOverride: '',                   // Optional WebWidget base URL. Blank selects the built-in https://ctg-tme.github.io/Simple-WebWidget/ fallback.
       CompanionWidget: {
         enabled: true,                   // Enables Custom Companion WebWidget. This widget is based on the Simple-WebWidget solution, allowing for a richer companion experience for the user operating this system.
-        restoreStandaloneExisting: false, // Retains the user's original WebWidget while in Standalone mode, but enables the Companion WebWidget when Paired.
+        restoreStandaloneExisting: false, // Retains and tracks the user's valid WebWidget while in Standalone mode, but enables the Companion WebWidget when Paired.
         weather: {
           mode: false,                   // Shows weather information in the Companion WebWidget.
           latitude: '',                  // Latitude used for Companion WebWidget weather.
