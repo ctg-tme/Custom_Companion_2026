@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 22, 2026
  * Revised:                 July 27, 2026
- * Version:                 1.0.9
+ * Version:                 1.0.10
  *
  * Description:             Parent Room Registration and Deregistration controller. Owns the
  *                          PIN-authorized wizard, locked provisioning stages, long-hold removal,
@@ -477,6 +477,7 @@ function createParentRegistration(options) {
 			allowOverwrite: !!options.allowOverwrite,
 			candidate: null,
 			currentPrompt: null,
+			currentStage: '',
 			mayHaveRegistered: false,
 			configDenied: false,
 			hadExistingRegistration: false,
@@ -565,6 +566,7 @@ function createParentRegistration(options) {
 	}
 
 	async function runLocalStage(title, text, task) {
+		setCurrentStage(title);
 		if (usesInRoomOperationUi()) {
 			setLockedPrompt(title, text, FEEDBACK_IDS.progress, ['Please Wait']);
 			await reopenLockedPrompt();
@@ -573,6 +575,7 @@ function createParentRegistration(options) {
 	}
 
 	async function runDecisionStage(title, text, choices) {
+		setCurrentStage(title);
 		setLockedPrompt(title, text, FEEDBACK_IDS.overwrite, choices);
 		await reopenLockedPrompt();
 		return withStageTimeout(new Promise(resolve => {
@@ -581,6 +584,7 @@ function createParentRegistration(options) {
 	}
 
 	async function runMessageStage(title, text, expectedAction, sendRequest) {
+		setCurrentStage(title);
 		if (usesInRoomOperationUi()) {
 			setLockedPrompt(title, text, FEEDBACK_IDS.progress, ['Please Wait']);
 			await reopenLockedPrompt();
@@ -616,6 +620,12 @@ function createParentRegistration(options) {
 				reject(error);
 			});
 		});
+	}
+
+	function setCurrentStage(title) {
+		if (operation) {
+			operation.currentStage = title || '';
+		}
 	}
 
 	function sendWaitingRequest() {
@@ -853,7 +863,10 @@ function createParentRegistration(options) {
 		const failureText = error && error.UserMessage ? error.UserMessage : 'The Parent Room Device could not be registered.';
 		await finishOperation();
 		if (failedOperation && failedOperation.channel === 'installer') {
-			reportInstallerRegistrationResult('failed', failedOperation.transactionId, failureText);
+			reportInstallerRegistrationResult('failed', failedOperation.transactionId, failureText, failedOperation.candidate, {
+				code: error && error.code || 'CC26-REGISTRATION-FAILED',
+				stage: failedOperation.currentStage
+			});
 			return;
 		}
 		if (error && error.code === 'CC26-REGISTRATION-CANCELED') {
@@ -899,7 +912,8 @@ function createParentRegistration(options) {
 			channel: options.channel || 'in-room',
 			parentDevice: parentDevice,
 			candidate: null,
-			currentPrompt: null
+			currentPrompt: null,
+			currentStage: ''
 		};
 		if (usesInRoomOperationUi()) {
 			cleanupResultNotice = null;
@@ -1036,7 +1050,8 @@ function createParentRegistration(options) {
 		await dependencies.deviceComms.sendMessageCommand(dependencies.xapi, tombstone, 'DeregisterRequest', {
 			TransactionId: tombstone.transactionId,
 			PeripheralId: tombstone.peripheralId,
-			Board: buildCompanionDevicePayload(companionDeviceInformation)
+			Board: buildCompanionDevicePayload(companionDeviceInformation),
+			Config: buildBootstrapConfig()
 		}, buildCompanionDeviceMessageConfig(companionDeviceInformation), dependencies.httpClientConfig);
 	}
 
@@ -1065,8 +1080,16 @@ function createParentRegistration(options) {
 	async function sendParentReadyRequest(parentDevice, companionDeviceInformation, transactionId) {
 		await dependencies.deviceComms.sendMessageCommand(dependencies.xapi, parentDevice, 'ParentReadyRequest', {
 			TransactionId: transactionId,
-			Board: buildCompanionDevicePayload(companionDeviceInformation)
+			Board: buildCompanionDevicePayload(companionDeviceInformation),
+			Config: buildBootstrapConfig()
 		}, buildCompanionDeviceMessageConfig(companionDeviceInformation), dependencies.httpClientConfig);
+	}
+
+	function buildBootstrapConfig() {
+		const parentSyncConfig = callbacks.getParentSyncConfig();
+		return {
+			httpClient: parentSyncConfig && parentSyncConfig.httpClient || {}
+		};
 	}
 
 	async function sendConfigSync(parentDevice, companionDeviceInformation, transactionId) {
@@ -1340,15 +1363,18 @@ function createParentRegistration(options) {
 		}
 	}
 
-	function reportInstallerRegistrationResult(status, transactionId, detail, candidate) {
+	function reportInstallerRegistrationResult(status, transactionId, detail, candidate, diagnostic) {
 		const message = status === 'completed'
 			? dependencies.installerRegistrationSuccessMessage
 			: dependencies.installerRegistrationFailureMessage;
+		const resultDiagnostic = diagnostic || {};
 		const outcome = {
 			Message: message,
 			TransactionId: transactionId || 'unavailable',
 			Detail: detail || '',
-			Host: candidate && candidate.host || ''
+			Host: candidate && candidate.host || '',
+			Stage: resultDiagnostic.stage || '',
+			Code: resultDiagnostic.code || ''
 		};
 		if (status === 'completed') {
 			dependencies.log.info(JSON.stringify(outcome));
@@ -1414,7 +1440,8 @@ function createParentRegistration(options) {
 		if (operation && operation.kind === 'deregistration') {
 			return buildOperationError('The Parent Room Device did not confirm cleanup within 60 seconds.', 'CC26-DEREGISTRATION-TIMEOUT');
 		}
-		return buildOperationError('The current registration stage did not complete within 60 seconds.', 'CC26-REGISTRATION-TIMEOUT');
+		const stage = operation && operation.currentStage || 'The current registration stage';
+		return buildOperationError(`${stage} did not complete within 60 seconds.`, 'CC26-REGISTRATION-TIMEOUT');
 	}
 
 	function getConfigDeniedReason(payload) {

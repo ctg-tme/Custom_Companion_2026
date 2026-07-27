@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.56
+ * Version:                 0.1.2.57
  *
  * Description:             Inactive Parent Room entry source for registration, pairing-state
  *                          validation, Registered Companion Devices UI and alerts,
@@ -65,7 +65,7 @@ const REGISTERED_COMPANION_DEVICES_ICON_URL = 'https://ctg-tme.github.io/Custom_
 const PAIRING_VALIDATION_ATTEMPT_COUNT = 3;
 const PAIRING_VALIDATION_RESPONSE_DELAY_MS = 2000;
 const PAIRING_ALERT_DURATION_SECONDS = 10;
-const HTTP_CLIENT_CONFIG = {
+const HTTP_CLIENT_BASE_CONFIG = {
 	mode: 'On',
 	allowInsecureHTTPS: false,
 	maxConcurrentRequests: 3
@@ -91,7 +91,7 @@ const parentCallCoordinationController = parentCallCoordination.create({
 	log: log,
 	utils: utils,
 	deviceComms: deviceComms,
-	httpClientConfig: HTTP_CLIENT_CONFIG,
+	getHttpClientConfigForCompanion: getHttpClientConfigForCompanion,
 	sendRegistrationResponse: sendRegistrationResponse,
 	normalizeCompanionDeviceRecord: normalizeCompanionDeviceRecord
 });
@@ -99,7 +99,7 @@ const parentCallCoordinationController = parentCallCoordination.create({
 async function init() {
 	try {
 		try {
-			await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG);
+			await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_BASE_CONFIG);
 		} catch (error) {
 			utils.hardError({
 				Code: 'CC26-INIT-HTTPCLIENT',
@@ -292,23 +292,12 @@ async function handleConfigSync(message) {
 		suppressAlert: true,
 		skipPanelRender: true
 	});
-	await applySyncedConfig(syncedConfig);
 	await sendRegistrationResponse('ConfigAccepted', message, companionDeviceRecord, withTransaction(message, {
 		MaxBoards: MAX_REGISTERED_COMPANION_DEVICES,
 		RegisteredBoardCount: registeredCompanionDevices.length
 	}), true);
 	await renderRegisteredCompanionDevicesPanel();
 	log.info({ Message: 'Companion Device configuration synced', Serial: companionDeviceRecord.Serial, Name: companionDeviceRecord.Name, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
-}
-
-async function applySyncedConfig(syncedConfig) {
-	if (syncedConfig && syncedConfig.httpClient) {
-		await deviceComms.initializeHttpClient(xapi, {
-			mode: 'On',
-			allowInsecureHTTPS: syncedConfig.httpClient.allowInsecureHTTPS,
-			maxConcurrentRequests: 3
-		});
-	}
 }
 
 async function validateRegisteredCompanionDevices() {
@@ -697,6 +686,7 @@ async function applyRegisteredCompanionDevicesPanelIcon() {
 async function handleDeregisterRequest(message) {
 	const companionDeviceRecord = normalizeCompanionDeviceRecord(message);
 	const peripheralId = String(message.Payload && message.Payload.PeripheralId || companionDeviceRecord.MacAddress || companionDeviceRecord.Serial || '');
+	const httpClientConfig = getHttpClientConfigForCompanion(companionDeviceRecord.Serial, message);
 
 	await purgeCompanionDevicePeripheral(peripheralId);
 	registeredCompanionDevices = registeredCompanionDevices.filter(companionDevice => companionDevice.Serial !== companionDeviceRecord.Serial);
@@ -711,7 +701,7 @@ async function handleDeregisterRequest(message) {
 	await sendRegistrationResponse('DeregistrationAccepted', message, companionDeviceRecord, withTransaction(message, {
 		Status: 'Deregistered',
 		PeripheralId: peripheralId
-	}), true);
+	}), true, httpClientConfig);
 	await renderRegisteredCompanionDevicesPanel();
 	log.info({ Message: 'Companion Device deregistered from Parent Room Device', Serial: companionDeviceRecord.Serial, PeripheralId: peripheralId, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 }
@@ -803,7 +793,21 @@ function createTransactionId(prefix, serial) {
 	return `${prefix}:${serial}:${Date.now()}`;
 }
 
-async function sendRegistrationResponse(action, inboundMessage, companionDeviceRecord, payload, isAccepted) {
+function getHttpClientConfigForCompanion(serial, inboundMessage) {
+	const inboundConfig = inboundMessage
+		&& inboundMessage.Payload
+		&& inboundMessage.Payload.Config
+		&& inboundMessage.Payload.Config.httpClient;
+	const savedConfig = companionDeviceConfigs[serial] && companionDeviceConfigs[serial].httpClient;
+	const httpClientConfig = inboundConfig || savedConfig || {};
+	return {
+		mode: 'On',
+		allowInsecureHTTPS: httpClientConfig.allowInsecureHTTPS === true,
+		maxConcurrentRequests: 3
+	};
+}
+
+async function sendRegistrationResponse(action, inboundMessage, companionDeviceRecord, payload, isAccepted, requestHttpClientConfig) {
 	const parentIdentity = await Promise.all([
 		getParentSource(),
 		getParentSerial()
@@ -815,13 +819,14 @@ async function sendRegistrationResponse(action, inboundMessage, companionDeviceR
 		username: companionDeviceRecord.Username,
 		password: companionDeviceRecord.Password
 	};
+	const httpClientConfig = requestHttpClientConfig || getHttpClientConfigForCompanion(companionDeviceRecord.Serial, inboundMessage);
 
 	try {
 		await deviceComms.sendMessageCommand(xapi, companionDevice, action, payload, {
 			app: 'Companion Board 2026',
 			serial: parentSerial,
 			source: parentSource
-		}, HTTP_CLIENT_CONFIG);
+		}, httpClientConfig);
 		return true;
 	} catch (error) {
 		if (action === 'ConfigAccepted' || action === 'ConfigDenied') {

@@ -200,6 +200,8 @@ When a protected Webex meeting requires Guest authentication and no matching Mee
 
 RoomOS HTTPClient requests use an internal three-second timeout. The timeout is an implementation policy in DeviceComms, not deployment configuration, so developers can tune it without expanding the administrator-facing configuration surface.
 
+`httpClient.allowInsecureHTTPS` is Companion Device-owned deployment configuration. Parent-to-Companion requests resolve that option from the configuration stored for the specific Companion Device serial. `ParentReadyRequest` carries the same HTTPClient subset as bootstrap data because the Parent Room Device must send `ParentReady` before the full `ConfigSync` can be accepted. The Parent Room runtime's device-wide HTTPClient configuration remains a safe `false` baseline and is not the authority when several Companion Devices have different certificate policies.
+
 Repeatable periodic parent identity, call-status, and heartbeat requests are coalesced by parent and operation while an equivalent request is queued or in flight. All other state-changing requests are admitted FIFO and are never coalesced.
 
 The shared HTTP queue has an internal global capacity of 50 pending requests. When full, the new request fails immediately with a stable administrator-facing transport code; an already queued request is never evicted. Queue capacity is an internal DeviceComms policy rather than deployment configuration.

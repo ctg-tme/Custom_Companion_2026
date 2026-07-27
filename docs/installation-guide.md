@@ -159,7 +159,7 @@ Edit only the Deployment Configuration values in `Custom-Campanion_2_Config_2026
 | `CompanionDeviceInformation.password` | Existing Companion Device Callback Credentials password. The source value is blank and must be supplied. |
 | `pinMode.defaults.enabled` | `true` or `false`. This initializes PIN Mode only when no saved PIN Mode record exists. |
 | `pinMode.defaults.pin` | A quoted 4-8 digit PIN. Do not treat it as an administrator or recovery credential. |
-| `httpClient.allowInsecureHTTPS` | The default `false` requires trusted device certificates and matching host names in both directions. Set `true` only when the deployment explicitly accepts untrusted device certificates. |
+| `httpClient.allowInsecureHTTPS` | The default `false` requires trusted device certificates and matching host names in both directions. Set `true` only when the deployment explicitly accepts untrusted device certificates. The Parent Room runtime uses this Companion Device-owned value for callbacks to that Companion Device, including `ParentReady`. |
 | `UserInterface.WebWidget` | Review the enabled state, optional URL override, restoration policy, weather location and unit, time zone, mode-specific `userGuidance`, and icon URLs. Weather and time default disabled with blank location/time-zone values. |
 
 Each literal Config value has a trailing source definition that the Companion Installer displays as field help. Preserve these comments and use valid JavaScript string escaping for every value. Never paste a configuration file containing real credentials into a ticket, chat, or source commit.
@@ -235,7 +235,7 @@ Command acceptance, file presence, and macro activation do not by themselves pro
 | Initialization stops at Companion Device Callback Credentials | Set all three `CompanionDeviceInformation` fields to the callback host, username, and password. For manual installation, verify the account, certificate trust, and bidirectional HTTPS path separately before restarting. |
 | Initialization stops at HTTPClient or memory | Confirm the Macro Runtime and HTTPClient configuration can be changed, the dependency exists under its exact name, and the administrator diagnostic identifies no permissions or storage failure. |
 | Companion Device Select is replaced by Companion Device Unavailable | Read the hard-error diagnostic, correct the prerequisite or required xAPI path, then restart the Macro Runtime. |
-| Parent Room Registration fails | Confirm host syntax, expected serial, Parent Room Device credentials and permissions, HTTPS reachability in both directions, available registration capacity, and the transaction's macro logs. |
+| Parent Room Registration fails | Confirm host syntax, expected serial, Parent Room Device credentials and permissions, HTTPS reachability in both directions, available registration capacity, and the transaction's macro logs. The terminal installer result identifies the failed stage, stable code, and verified Parent Room Device host; `Waiting for Parent Room Runtime` usually indicates that the Parent could not return `ParentReady`, including a callback certificate-policy mismatch. |
 | WebWidget is absent or incomplete | Confirm it is enabled, its URL and icon resources are reachable from the Companion Device, and the configured weather and time values are valid. |
 | Upgrade loses saved rooms or PIN state | Confirm whether `Custom-Campanion-Storage` was removed. Only Install or Update — Keep Saved Data preserves it; a deleted storage macro cannot be reconstructed by the installer. |
 

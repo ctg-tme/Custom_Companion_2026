@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 20, 2026
- * Revised:                 July 24, 2026
- * Version:                 1.0.6
+ * Revised:                 July 27, 2026
+ * Version:                 1.0.7
  *
  * Description:             Parent Call Coordination controller for the Custom Companion solution.
  *                          Owns Parent Room Device call and BYOD detection, participant admission,
@@ -67,7 +67,8 @@ function createParentCallCoordination(options) {
 	const log = dependencies.log;
 	const utils = dependencies.utils;
 	const deviceComms = dependencies.deviceComms;
-	const HTTP_CLIENT_CONFIG = dependencies.httpClientConfig;
+	const getHttpClientConfigForCompanion = dependencies.getHttpClientConfigForCompanion
+		|| (() => dependencies.httpClientConfig);
 	const sendRegistrationResponse = dependencies.sendRegistrationResponse;
 	const normalizeCompanionDeviceRecord = dependencies.normalizeCompanionDeviceRecord;
 	const now = typeof dependencies.now === 'function' ? dependencies.now : Date.now;
@@ -504,7 +505,7 @@ function createParentCallCoordination(options) {
 			host: companionDevice.Host,
 			username: companionDevice.Username,
 			password: companionDevice.Password
-		}, HTTP_CLIENT_CONFIG);
+		}, getHttpClientConfigForCompanion(companionDevice.Serial));
 	}
 
 	function doesCompanionDeviceIdentityMatchParentCall(companionDeviceIdentity) {

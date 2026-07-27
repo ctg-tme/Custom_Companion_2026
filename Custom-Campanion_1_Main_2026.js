@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.56
+ * Version:                 0.1.2.57
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -1001,6 +1001,9 @@ function getRuntimeInfo3Text() {
 
 async function sendParentReadyRequest(parentDevice, companionDeviceInformation) {
 	await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.parentReadyRequest, {
+		Config: {
+			httpClient: config.httpClient
+		},
 		Board: {
 			Username: companionDeviceInformation.username,
 			Password: companionDeviceInformation.password
