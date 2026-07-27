@@ -86,6 +86,22 @@ After a completed work package changes one or more deployable numbered runtime m
 
 Installer-only, documentation-only, and analysis-only work does not trigger this deployment. A Companion Device runtime restart may still execute the solution's existing Companion Device-owned Parent Room provisioning against registered Parent Room Devices; do not replace or bypass that runtime boundary with direct Workbench deployment to `parent-1-eq` or `parent-2-prog2` without a new explicit request.
 
+## Installation-test teardown
+
+An installation-test teardown is a lab maintenance workflow that removes Custom Companion from explicitly authorized devices so a later installation test starts without project macros, generated storage, or project-owned UI. It is broader than the product's **Fresh Installation — Erase Saved Data** choice, which targets one Companion Device and installs a selected release in the same workflow.
+
+Before deactivating or removing any Custom Companion macro, deleting `Custom-Campanion-Storage`, removing project-owned UI, changing HTTPClient configuration, or restarting the Macro Runtime:
+
+1. Invoke `$roomos-websocket`, reuse the shared Workbench, resolve every exact target alias, and inventory the installed macros and UI Extensions. Never infer a broadcast target.
+2. Read `Status.SystemUnit.State.NumberOfActiveCalls` on every target. Stop if any target has an active call.
+3. While the existing runtime is still intact, return `board-device` to Standalone through Companion Device Select. Subscribe to `Event.Macros.Log` before the selection and wait for the exact completion message `Companion Device transitioned to Standalone`; the disappearance of `Switching to Standalone` and the WebWidget text `Operating in Standalone` are supporting UI evidence, not substitutes for the completion log.
+4. Stop without destructive cleanup if Standalone cannot be selected, the runtime is unavailable or Unhealthy, the completion message cannot be observed, or preference restoration reports an error. Ask the user to recover or reset the Companion Device manually. Never treat zero active calls, a saved `activeParentSerial`, selected-widget feedback, or a deactivation command as proof that the Standalone transition completed.
+5. Re-read active-call state immediately before the first mutation. Then preview the exact teardown plan and apply it only under the user's explicit authorization.
+
+After those gates pass, deactivate the project entry macros first, remove only observed project-owned UI, remove the exact project macro sets and generated storage, and apply any explicitly requested HTTPClient configuration last. Preserve unrelated macros and UI, retained non-project experiments, and shared generic dependencies such as `Memory-Storage-Functions-V2` unless the user separately authorizes their exact removal. Do not restart the Macro Runtime merely to complete a teardown when doing so would restart unrelated active macros.
+
+Verify the final macro inventory, UI Extensions list, and requested configuration values on every target. Report command acceptance separately from observed post-change state, remove only subscriptions created by the teardown session, and leave no device credentials or generated-storage contents in files, logs, screenshots, or chat.
+
 ## Agent skills
 
 ### Issue tracker
