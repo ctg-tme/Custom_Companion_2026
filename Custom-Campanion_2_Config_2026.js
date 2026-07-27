@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.55
+ * Version:                 0.1.2.56
  *
  * Description:             User-facing configuration for the Custom Companion solution on supported Companion Devices.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -41,52 +41,50 @@ or implied.
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
 
+const projectVersion = '0.1.2.56';
+
 const config = {
-  version: '0.1.2.55',
-  CompanionBoardInformation: {
-    host: '0.0.0.0',
-    username: '',
-    password: ''
+  CompanionDeviceInformation: {
+    host: '',                            // The Host Address or IP of this device. This is passed to Parent Room Devices in order to facilitate back-and-forth communication.
+    username: 'custom-companion',        // The Username to this device. This is passed to Parent Room Devices in order to facilitate back-and-forth communication. We recommend setting up a new user named `custom-companion` for this role to assist with the audit log when troubleshooting.
+    password: ''                         // The Password to this device. This is passed to Parent Room Devices in order to facilitate back-and-forth communication.
   },
-  // These values initialize PIN Mode only when saved PIN Mode state does not exist.
-  // After initialization, use the Companion Device Select Config page in the Device UI
-  // to enable or disable PIN Mode and to edit the current PIN.
   pinMode: {
     defaults: {
-      enabled: true,
-      pin: '0000'
+      enabled: true,                     // Enables PIN Mode when its durable state is first initialized. It does not override changes made using the Companion Device UI.
+      pin: '0000'                        // Default PIN. Must be 4–8 digits. This is the initial PIN set on a new installation.
     }
   },
   httpClient: {
-    allowInsecureHTTPS: true
+    allowInsecureHTTPS: false            // Permits HTTPS connections whose certificates RoomOS does not trust, including typical device self-signed certificates.
   },
   UserInterface: {
     WebWidget: {
-      urlOverride: '',
+      urlOverride: '',                   // Optional WebWidget base URL. Blank selects the built-in https://ctg-tme.github.io/Simple-WebWidget/ fallback.
       CompanionWidget: {
-        enabled: true,
-        restoreStandaloneExisting: false,
+        enabled: true,                   // Enables Custom Companion WebWidget. This widget is based on the Simple-WebWidget solution, allowing for a richer companion experience for the user operating this system.
+        restoreStandaloneExisting: false, // Retains the user's original WebWidget while in Standalone mode, but enables the Companion WebWidget when Paired.
         weather: {
-          mode: true,
-          latitude: '42.35843',
-          longitude: '-71.05977',
-          temperatureUnit: 'fahrenheit'
+          mode: false,                   // Shows weather information in the Companion WebWidget.
+          latitude: '',                  // Latitude used for Companion WebWidget weather.
+          longitude: '',                 // Longitude used for Companion WebWidget weather.
+          temperatureUnit: 'fahrenheit'  // Weather temperature display unit.
         },
         time: {
-          mode: true,
-          timeZone: 'America/New_York'
+          mode: false,                   // Shows time information in the Companion WebWidget.
+          timeZone: ''                   // IANA time zone used by the Companion WebWidget.
         },
         Standalone: {
-          info2: 'Use Companion Device Select to register or select a Parent Room Device.',
-          iconUrl: 'https://ctg-tme.github.io/Custom_Companion_2026/icons/custom-companion-512.png'
+          userGuidance: 'Use Companion Device Select to register or select a Parent Room Device.', // Directs the user where to interact with this solution. Leave blank to remove.
+          iconUrl: 'https://ctg-tme.github.io/Custom_Companion_2026/icons/custom-companion-512.png' // WebWidget image shown in Standalone.
         },
         Paired: {
-          info2: 'Use Companion Device Select to choose Standalone or another Parent Room Device.',
-          iconUrl: 'https://ctg-tme.github.io/Custom_Companion_2026/icons/custom-companion-512.png'
+          userGuidance: 'Use Companion Device Select to choose Standalone or another Parent Room Device.', // Directs the user where to interact with this solution while Paired. Leave blank to remove.
+          iconUrl: 'https://ctg-tme.github.io/Custom_Companion_2026/icons/custom-companion-512.png' // WebWidget image shown while Paired.
         }
       }
     }
   }
 };
 
-export { config };
+export { config, projectVersion };

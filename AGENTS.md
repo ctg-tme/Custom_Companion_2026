@@ -47,7 +47,7 @@ Before changing anything:
 
 Versioning happens after implementation and documentation are complete, immediately before final verification:
 
-- Runtime work increments the final component of the four-part project version once per completed work package. Keep the Main header, Config header, `config.version`, and RoomReference header synchronized.
+- Runtime work increments the final component of the four-part project version once per completed work package. Keep the Main header, Config header, exported `projectVersion`, and RoomReference header synchronized.
 - Increment a helper/domain macro header only when that file's implementation changes.
 - Installer work increments `installer/package.json` and `installer/package-lock.json` together once per completed work package.
 - Work spanning runtime and installer deliverables updates both version sets.

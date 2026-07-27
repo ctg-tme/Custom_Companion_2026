@@ -21,7 +21,7 @@ Manifest fragment, with unrelated fields omitted:
   "SchemaVersion": 1,
   "CompanionInstaller": {
     "ContractVersion": 1,
-    "TestedVersion": "0.1.18",
+    "TestedVersion": "0.1.19",
     "Capabilities": [
       "installer.parent-deregistration.v1",
       "installer.parent-inventory.v1",
@@ -56,8 +56,9 @@ The table collapses documentation-only Main snapshots when their runtime and ins
 | Main at `2e45662` | `0.1.2.53` | `0.1.15` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
 | Main at `7354878` | `0.1.2.54` | `0.1.15` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
 | Main from `78ed359` through `3d35c89` | `0.1.2.54` | `0.1.16` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
-| Hosted Main at `e8852a1` | `0.1.2.55` | `0.1.17` | Current hosted beta compatibility state | Registration, Inventory, and Deregistration `v1` |
-| Local Main work package | `0.1.2.55` | `0.1.18` | Capability enforcement candidate; not hosted until pushed | Registration, Inventory, and Deregistration `v1` |
+| Main at `e8852a1` | `0.1.2.55` | `0.1.17` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
+| Main from `eafe180` through `0bfbfa5` | `0.1.2.55` | `0.1.18` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
+| Main after this work package | `0.1.2.56` | `0.1.19` | Current Main Fork source | Registration, Inventory, and Deregistration `v1` |
 
 Preview `v0.1.2.51` predates the `CompanionInstaller` manifest object. The installer applies one explicit legacy profile only when that tag resolves to commit `be539c292d79197e8303d42b68902c6985cde699`: Contract Version 1, Tested Installer Version `0.1.14`, and `installer.parent-registration.v1`. It does not infer support from the runtime version. Any other manifest without `CompanionInstaller` metadata is invalid.
 
@@ -83,7 +84,7 @@ Most installer behaviors do not belong in the manifest capability list.
 | --- | --- | --- |
 | Release discovery, ordering, Preview/Beta labels, beta acknowledgement, and commit-pinned resource loading | Installer-native plus Contract Version 1 | These select and preserve a source snapshot; they do not call an optional runtime workflow. |
 | Manifest validation, supported product and minimum RoomOS checks, external resource loading, and stable Main/Config anchors | Contract Version 1 | These are baseline installation semantics. |
-| Recursive Config parsing, generated Config review, locked runtime version and Companion Device host, and required callback paths | Contract Version 1, with fields sourced from Config | The selected Config source already determines which ordinary options exist. |
+| Recursive Config parsing, source-comment definitions, generated Config review, selected Project Version presentation, locked Companion Device host, and required callback paths | Contract Version 1, with fields sourced from Config | The selected Config source already determines which ordinary options exist. Definitions are optional for older releases, and the Project Version is source metadata rather than Deployment Configuration. |
 | Browser location, browser time zone, and HTTP/HTTPS icon preview | Installer-native and Config-presence-derived | These conveniences are shown only when the selected Config contains the relevant group or field. |
 | Callback credential authentication and Companion Device Identity Confirmation | Contract Version 1 | These are baseline safety gates rather than optional runtime features. |
 | Installed macro inventory, Install or Update, Fresh Installation, generated storage handling, Legacy Project Macro classification, and optional legacy purge | Contract Version 1 | These define the mutation and preservation model of installation. |
@@ -136,7 +137,7 @@ Use these versioning rules:
 - Create `.v2` when an existing action, payload, terminal result, trust boundary, or user-visible semantic is no longer backwards compatible.
 - Keep `.v1` operational while the same Contract Version promises it.
 - Never rename or silently remove a published capability.
-- Never infer a capability from the runtime project version, installer package version, Config version, file presence, or a message timeout.
+- Never infer a capability from the runtime Project Version, installer package version, file presence, or a message timeout.
 
 ## Release checklist
 

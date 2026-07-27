@@ -150,19 +150,19 @@ The current dependency source is [Memory-Storage-Functions-V2](https://raw.githu
 
 ### 2. Configure the Companion Device
 
-Edit only the deployment values in `Custom-Campanion_2_Config_2026.js`. Do not change `config.version`.
+Edit only the Deployment Configuration values in `Custom-Campanion_2_Config_2026.js`. Do not change the exported `projectVersion`.
 
 | Configuration | Manual value |
 | --- | --- |
-| `CompanionBoardInformation.host` | Companion Device host name or IP address reachable from every Parent Room Device, without `https://` or a path. The tracked `0.0.0.0` value is an unset placeholder and must be replaced. |
-| `CompanionBoardInformation.username` | Existing Companion Device Callback Credentials username. |
-| `CompanionBoardInformation.password` | Existing Companion Device Callback Credentials password. |
+| `CompanionDeviceInformation.host` | Companion Device host name or IP address reachable from every Parent Room Device, without `https://` or a path. The source value is blank and must be supplied. |
+| `CompanionDeviceInformation.username` | Existing Companion Device Callback Credentials username. The source default is `custom-companion`. |
+| `CompanionDeviceInformation.password` | Existing Companion Device Callback Credentials password. The source value is blank and must be supplied. |
 | `pinMode.defaults.enabled` | `true` or `false`. This initializes PIN Mode only when no saved PIN Mode record exists. |
 | `pinMode.defaults.pin` | A quoted 4-8 digit PIN. Do not treat it as an administrator or recovery credential. |
-| `httpClient.allowInsecureHTTPS` | Keep `true` for the usual RoomOS self-signed certificate deployment. Set `false` only when device certificates and trust are already managed for every device-to-device connection. |
-| `UserInterface.WebWidget` | Review the enabled state, optional URL override, restoration policy, weather location and unit, time zone, mode text, and icon URLs. |
+| `httpClient.allowInsecureHTTPS` | The default `false` requires trusted device certificates and matching host names in both directions. Set `true` only when the deployment explicitly accepts untrusted device certificates. |
+| `UserInterface.WebWidget` | Review the enabled state, optional URL override, restoration policy, weather location and unit, time zone, mode-specific `userGuidance`, and icon URLs. Weather and time default disabled with blank location/time-zone values. |
 
-Use valid JavaScript string escaping for every value. Never paste a configuration file containing real credentials into a ticket, chat, or source commit.
+Each literal Config value has a trailing source definition that the Companion Installer displays as field help. Preserve these comments and use valid JavaScript string escaping for every value. Never paste a configuration file containing real credentials into a ticket, chat, or source commit.
 
 ### 3. Prepare the Macro Editor
 
@@ -186,7 +186,7 @@ Use valid JavaScript string escaping for every value. Never paste a configuratio
    - `Custom-Campanion_2_Config_2026` through `Custom-Campanion_15_ParentRegistration_2026`
    - `Custom-Campanion_7_RoomReference_2026`, which is the source later installed on Parent Room Devices as `Custom-Campanion_Room_2026`
 6. Open the Macro Console, then activate `Custom-Campanion_1_Main_2026`.
-7. Wait for `Custom Companion initialized on Companion Device`. Main verifies that `CompanionBoardInformation.host`, `.username`, and `.password` are configured before enabling the solution; a missing field or the `0.0.0.0` host placeholder stops initialization with `CC26-INIT-CALLBACK-CREDENTIALS`. If initialization stops, leave the helper macros inactive, inspect the full diagnostic, correct the named prerequisite, and restart the Macro Runtime only after the fault is understood.
+7. Wait for `Custom Companion initialized on Companion Device`. Main verifies that `CompanionDeviceInformation.host`, `.username`, and `.password` are configured before enabling the solution; a missing field stops initialization with `CC26-INIT-CALLBACK-CREDENTIALS`. If initialization stops, leave the helper macros inactive, inspect the full diagnostic, correct the named prerequisite, and restart the Macro Runtime only after the fault is understood.
 
 Do not manually install the Parent Room package. During Parent Room Registration, the Companion Device copies the required source to the Parent Room Device, renames the entry macro to `Custom-Campanion_Room_2026`, activates only that Parent Room entry, and restarts the Parent Room Macro Runtime.
 
@@ -232,7 +232,7 @@ Command acceptance, file presence, and macro activation do not by themselves pro
 | Installer cannot connect | Open the Companion Device HTTPS page in the same browser and trust its certificate; confirm the host, administrator credentials, local network path, and secure WebSocket access. |
 | Installer rejects compatibility | Confirm the expected serial, exact product platform, and RoomOS version against the selected release manifest. |
 | Main reports an import or JavaScript error | Confirm all 15 numbered macros and `Memory-Storage-Functions-V2` came from the intended source set, retain exact names, and are saved before Main is activated. |
-| Initialization stops at Companion Device Callback Credentials | Set all three `CompanionBoardInformation` fields to the callback host, username, and password. For manual installation, verify the account and bidirectional HTTPS path separately before restarting. |
+| Initialization stops at Companion Device Callback Credentials | Set all three `CompanionDeviceInformation` fields to the callback host, username, and password. For manual installation, verify the account, certificate trust, and bidirectional HTTPS path separately before restarting. |
 | Initialization stops at HTTPClient or memory | Confirm the Macro Runtime and HTTPClient configuration can be changed, the dependency exists under its exact name, and the administrator diagnostic identifies no permissions or storage failure. |
 | Companion Device Select is replaced by Companion Device Unavailable | Read the hard-error diagnostic, correct the prerequisite or required xAPI path, then restart the Macro Runtime. |
 | Parent Room Registration fails | Confirm host syntax, expected serial, Parent Room Device credentials and permissions, HTTPS reachability in both directions, available registration capacity, and the transaction's macro logs. |

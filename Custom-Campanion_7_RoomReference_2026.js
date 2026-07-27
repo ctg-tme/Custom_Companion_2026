@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.55
+ * Version:                 0.1.2.56
  *
  * Description:             Inactive Parent Room entry source for registration, pairing-state
  *                          validation, Registered Companion Devices UI and alerts,
@@ -67,7 +67,7 @@ const PAIRING_VALIDATION_RESPONSE_DELAY_MS = 2000;
 const PAIRING_ALERT_DURATION_SECONDS = 10;
 const HTTP_CLIENT_CONFIG = {
 	mode: 'On',
-	allowInsecureHTTPS: true,
+	allowInsecureHTTPS: false,
 	maxConcurrentRequests: 3
 };
 const STANDBY_SYNC_DEBOUNCE_MS = 250;

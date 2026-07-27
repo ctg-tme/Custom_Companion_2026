@@ -92,6 +92,9 @@ describe('installer workflow presentation', () => {
   it('offers installer-computer defaults and safe icon previews in Configure', async () => {
     const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
 
+    expect(source).toContain('Selected installation source');
+    expect(source).toContain('Version ${escapeHtml(selectedVersion)}');
+    expect(source).toContain('leaf.description');
     expect(source).toContain('id="use-computer-location"');
     expect(source).toContain('Use Computer Location');
     expect(source).toContain('id="use-computer-time-zone"');

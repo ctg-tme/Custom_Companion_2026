@@ -6,7 +6,7 @@ import test from 'node:test';
 import { verifyReleaseContract } from './verify-release-contract.mjs';
 
 const version = '1.2.3.4';
-const installerVersion = '0.1.18';
+const installerVersion = '0.1.19';
 const contract = {
   MainMacroFile: 'Custom-Campanion_1_Main_2026.js',
   ConfigMacroFile: 'Custom-Campanion_2_Config_2026.js',
@@ -68,7 +68,7 @@ async function createFixture(overrides = {}) {
 
   const sources = {
     [contract.MainMacroFile]: `${header()}${runtimeContractSource()}`,
-    [contract.ConfigMacroFile]: `${header()}const config = { version: '${version}' };\nexport { config };\n`,
+    [contract.ConfigMacroFile]: `${header()}const projectVersion = '${version}';\nconst config = {};\nexport { config, projectVersion };\n`,
     [contract.RoomReferenceMacroFile]: `${header()}export const roomReference = true;\n`,
     ...overrides.sources,
   };
@@ -131,10 +131,19 @@ test('rejects a deployable root macro missing from the Release Manifest', async 
 test('rejects unsynchronized runtime project versions', async (t) => {
   const repositoryDirectory = await withFixture(t, {
     sources: {
-      [contract.ConfigMacroFile]: `${header('9.9.9.9')}const config = { version: '${version}' };\nexport { config };\n`,
+      [contract.ConfigMacroFile]: `${header('9.9.9.9')}const projectVersion = '${version}';\nconst config = {};\nexport { config, projectVersion };\n`,
     },
   });
   await assert.rejects(verifyReleaseContract(repositoryDirectory), /versions are not synchronized/i);
+});
+
+test('rejects a Config macro without an exported Project Version dependency', async (t) => {
+  const repositoryDirectory = await withFixture(t, {
+    sources: {
+      [contract.ConfigMacroFile]: `${header()}const projectVersion = '${version}';\nconst config = {};\nexport { config };\n`,
+    },
+  });
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /does not export projectVersion/i);
 });
 
 test('rejects unresolved relative macro imports', async (t) => {

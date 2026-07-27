@@ -109,17 +109,16 @@ The administrator-facing source configuration is in `Custom-Campanion_2_Config_2
 
 | Config path | Purpose | Administration guidance |
 | --- | --- | --- |
-| `version` | Release-wide project version used by runtime and release verification. | Release-owned. Do not edit it independently. |
-| `CompanionBoardInformation.host` | Companion Device callback host distributed to Parent Room Devices. | Replace the tracked `0.0.0.0` placeholder with an address reachable from every Parent Room Device. The Companion Installer injects the connected Companion Device host automatically. Update it if network addressing changes. |
-| `CompanionBoardInformation.username` and `.password` | Existing local Companion Device Callback Credentials. | Both values are required. Create or update the account first. Initialization stops if any callback field is missing or blank. Protect the Config macro because these values are stored in source. |
+| `CompanionDeviceInformation.host` | Companion Device callback host distributed to Parent Room Devices. | It is blank in source and must be an address reachable from every Parent Room Device. The Companion Installer injects the connected Companion Device host automatically. Update it if network addressing changes. |
+| `CompanionDeviceInformation.username` and `.password` | Existing local Companion Device Callback Credentials. | Username defaults to `custom-companion`; password is blank. Both credentials and the host are required. Create or update the account first. Initialization stops if a required callback field is blank. Protect the Config macro because these values are stored in source. |
 | `pinMode.defaults.enabled` and `.pin` | Bootstrap state used only when no durable PIN Mode record exists. | The PIN must contain 4–8 digits. These values do not replace a healthy current PIN after initialization. |
-| `httpClient.allowInsecureHTTPS` | Sets RoomOS `HttpClient AllowInsecureHTTPS` and the request option used for device-to-device HTTPS. | `true` permits certificates that RoomOS does not trust. Set `false` only after confirming the complete certificate chain and host names in both directions. |
+| `httpClient.allowInsecureHTTPS` | Sets RoomOS `HttpClient AllowInsecureHTTPS` and the request option used for device-to-device HTTPS. | Defaults to `false` in both runtime directions. Keep it `false` with trusted certificates and matching host names; set `true` only when explicitly accepting untrusted device certificates. |
 | `UserInterface.WebWidget.urlOverride` | Replaces the built-in Simple-WebWidget base URL. | Leave empty for the release default. Validate any custom page on every supported display. |
 | `UserInterface.WebWidget.CompanionWidget.enabled` | Enables solution management of the Companion WebWidget. | Disable only if the deployment does not need the widget or its runtime status field. |
 | `restoreStandaloneExisting` | Restores the WebWidget captured before Paired mode while Standalone. | Configure the intended existing WebWidget before its first Standalone capture. The original is saved as durable internal state, not continuously rediscovered. |
-| `weather`, `time`, `Standalone`, and `Paired` fields | Configure widget weather, clock, status copy, and mode-specific WebWidget images. | Use valid coordinates, temperature unit, IANA time zone, text, and reachable HTTPS image URLs. During installation, Weather and Time may copy one-time values from the Installer Computer, and both mode-specific `iconUrl` fields show a browser preview. The URLs are prefilled with the release image and may be edited independently. Runtime owns heading, theme, `info1`, `info3`, and `hideSettings`. |
+| `weather`, `time`, `Standalone`, and `Paired` fields | Configure widget weather, clock, user guidance, and mode-specific WebWidget images. | Weather and time default disabled with blank location/time-zone values. Use valid coordinates, temperature unit, IANA time zone, text, and reachable HTTPS image URLs when enabling them. During installation, Weather and Time may copy one-time values from the Installer Computer, and both mode-specific `iconUrl` fields show a browser preview. The URLs are prefilled with the release image and may be edited independently. Runtime owns heading, theme, `info1`, `info3`, and `hideSettings`; `userGuidance` maps to the widget's `info2` display slot. |
 
-The current PIN, registered Parent Room Devices, active selection, Pending Deregistrations, and saved Standalone preferences are not base configuration. Manage them through the supported UI and runtime workflows, not by editing Config.
+The exported `projectVersion`, current PIN, registered Parent Room Devices, active selection, Pending Deregistrations, and saved Standalone preferences are not Deployment Configuration. The Companion Installer shows the selected source's Project Version separately. Manage durable state through the supported UI and runtime workflows, not by editing Config.
 
 ### Edit Config after installation
 
@@ -127,7 +126,7 @@ The preferred time to edit deployment configuration is during Install or Update 
 
 1. Return the Companion Device to Standalone and confirm there are no active calls.
 2. Open the device Macro Editor and keep `Custom-Campanion_2_Config_2026` inactive.
-3. Change only the intended values. Preserve the object structure, macro filename, imports, compatibility field names, and release-owned `version`.
+3. Change only the intended values. Preserve the object structure, inline definitions, macro filename, imports, compatibility field names, and release-owned `projectVersion`.
 4. If callback host or credentials are changing, make the account and network changes first.
 5. Save Config.
 6. Restart the Macro Runtime so Main reloads the imported values.
@@ -343,7 +342,7 @@ Treat macro and storage access as privileged:
 
 Use distinct installer and callback accounts where operationally practical so audit activity is attributable. Apply least privilege only after verifying that the account can perform every required runtime callback operation. Rotate credentials in a controlled Standalone maintenance window, update Config or the affected Parent Room Registration, restart safely, and verify both communication directions.
 
-`httpClient.allowInsecureHTTPS: true` is convenient for self-signed device certificates but weakens certificate validation for RoomOS HTTPClient. Prefer managed certificates and `false` where the deployment can support them.
+`httpClient.allowInsecureHTTPS` defaults to `false` on both Companion Device and Parent Room runtimes. This requires trusted certificate chains and matching host names for device-to-device HTTPS. Setting it to `true` supports typical self-signed device certificates but weakens RoomOS HTTPClient certificate validation and should be an explicit deployment decision.
 
 ## 11. Recovery boundaries and known limitations
 
@@ -376,7 +375,7 @@ Record each result with device serial, product platform, RoomOS version, project
 
 - Companion Device has the complete Release Manifest macro set and only Main is active.
 - Companion Device emits the expected initialization-complete message without unresolved warnings.
-- Config contains the intended callback, HTTPClient, PIN default, and WebWidget values.
+- Config contains the intended callback, HTTPClient, PIN default, WebWidget values, and source-owned field definitions.
 - Existing Standalone governed configurations have been recorded and captured.
 - Companion Device Select renders and PIN Mode behaves as intended.
 - Each Parent Room Registration completes with the expected serial and correct capacity.

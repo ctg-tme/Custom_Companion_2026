@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.55
+ * Version:                 0.1.2.56
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -54,7 +54,7 @@ or implied.
 
 import xapi from 'xapi';
 import { MemoryStorage } from './Memory-Storage-Functions-V2';
-import { config } from './Custom-Campanion_2_Config_2026';
+import { config, projectVersion } from './Custom-Campanion_2_Config_2026';
 import { utils } from './Custom-Campanion_3_Utils_2026';
 import { companionUi } from './Custom-Campanion_4_UI_2026';
 import { companionState } from './Custom-Campanion_5_State_2026';
@@ -281,7 +281,7 @@ const parentRegistrationController = parentRegistration.create({
 	pendingStorageKey: companionState.PENDING_DEREGISTRATIONS_STORAGE_KEY,
 	httpClientConfig: HTTP_CLIENT_CONFIG,
 	installConfig: PARENT_INSTALL_CONFIG,
-	configVersion: config.version,
+	configVersion: projectVersion,
 	peripheralType: PERIPHERAL_TYPE,
 	initialHeartbeatTimeout: INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS,
 	installerRegistrationAction: MESSAGE_CONFIG.routes.installerParentRegistration,
@@ -374,14 +374,14 @@ async function init() {
 		}
 
 		companionState.warnIfCredentialsAreStored(parentDevices, log);
-		log.info({ Message: 'Custom Companion initialized on Companion Device', Version: config.version, ActiveParentRoomDevice: companionDeviceState.activeParent.name });
+		log.info({ Message: 'Custom Companion initialized on Companion Device', Version: projectVersion, ActiveParentRoomDevice: companionDeviceState.activeParent.name });
 	} catch (error) {
 		await handleInitializationFailure(error);
 	}
 }
 
 function validateCompanionDeviceCallbackConfiguration() {
-	const callbackConfiguration = config.CompanionBoardInformation;
+	const callbackConfiguration = config.CompanionDeviceInformation;
 	const requiredFields = ['host', 'username', 'password'];
 	const invalidFields = [];
 
@@ -390,7 +390,7 @@ function validateCompanionDeviceCallbackConfiguration() {
 		const value = callbackConfiguration && callbackConfiguration[field];
 		const normalizedValue = typeof value === 'string' ? value.trim() : '';
 		if (!normalizedValue || (field === 'host' && normalizedValue === '0.0.0.0')) {
-			invalidFields.push(`CompanionBoardInformation.${field}`);
+			invalidFields.push(`CompanionDeviceInformation.${field}`);
 		}
 	}
 
@@ -399,7 +399,7 @@ function validateCompanionDeviceCallbackConfiguration() {
 			Code: 'CC26-INIT-CALLBACK-CREDENTIALS',
 			Component: 'CompanionDeviceMain',
 			Context: 'Companion Device Callback Credentials configuration is incomplete',
-			Remediation: 'Set config.CompanionBoardInformation.host, username, and password to an existing Companion Device callback account, then restart the Macro Runtime.',
+			Remediation: 'Set config.CompanionDeviceInformation.host, username, and password to an existing Companion Device callback account, then restart the Macro Runtime.',
 			InvalidConfigurationFields: invalidFields
 		});
 	}
@@ -544,7 +544,7 @@ async function connectPeripheralToOnlineParents() {
 		parentDeviceStatus: parentDeviceStatus,
 		findParentDeviceByHost: findParentDeviceByHost,
 		companionDeviceInformation: getConfiguredCompanionDeviceInformation(),
-		configVersion: config.version,
+		configVersion: projectVersion,
 		peripheralType: PERIPHERAL_TYPE,
 		httpClientConfig: HTTP_CLIENT_CONFIG,
 		initialHeartbeatTimeout: INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS,
@@ -1119,8 +1119,8 @@ function getPairingStateForParentSerial(parentSerial) {
 
 function getParentSyncConfig() {
 	return {
-		version: config.version,
-		CompanionBoardInformation: config.CompanionBoardInformation,
+		version: projectVersion,
+		CompanionDeviceInformation: config.CompanionDeviceInformation,
 		httpClient: config.httpClient,
 		UserInterface: config.UserInterface
 	};
@@ -1157,7 +1157,7 @@ function getCompanionPeripheralId() {
 }
 
 function getConfiguredCompanionDeviceInformation() {
-	const companionDeviceInformation = config.CompanionBoardInformation || {};
+	const companionDeviceInformation = config.CompanionDeviceInformation || {};
 
 	return {
 		host: companionDeviceInformation.host || '',

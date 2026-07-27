@@ -8,20 +8,21 @@ function leaf(path: Array<string | number>): ConfigLeaf {
 
 describe('Config presentation', () => {
   it('turns implementation keys into user-facing labels', () => {
+    expect(humanizeConfigSegment('CompanionDeviceInformation')).toBe('Companion Device Information');
     expect(humanizeConfigSegment('CompanionBoardInformation')).toBe('Companion Device Information');
     expect(humanizeConfigSegment('urlOverride')).toBe('URL Override');
     expect(humanizeConfigSegment('pin')).toBe('PIN');
-    expect(humanizeConfigSegment('info2')).toBe('Info 2');
+    expect(humanizeConfigSegment('userGuidance')).toBe('User Guidance');
     expect(humanizeConfigSegment(0)).toBe('Item 1');
   });
 
-  it('humanizes compatibility and mode keys in the review-only configuration summary', () => {
+  it('humanizes current mode keys in the review-only configuration summary', () => {
     const source = {
-      CompanionBoardInformation: { host: 'companion.example.com' },
+      CompanionDeviceInformation: { host: 'companion.example.com' },
       UserInterface: {
         WebWidget: {
-          Standalone: { info2: 'Visible Standalone copy' },
-          Paired: { info2: 'Visible Paired copy' },
+          Standalone: { userGuidance: 'Visible Standalone copy' },
+          Paired: { userGuidance: 'Visible Paired copy' },
         },
       },
     };
@@ -30,12 +31,12 @@ describe('Config presentation', () => {
       'Companion Device Information': { Host: 'companion.example.com' },
       'User Interface': {
         'Web Widget': {
-          Standalone: { 'Info 2': 'Visible Standalone copy' },
-          Paired: { 'Info 2': 'Visible Paired copy' },
+          Standalone: { 'User Guidance': 'Visible Standalone copy' },
+          Paired: { 'User Guidance': 'Visible Paired copy' },
         },
       },
     });
-    expect(source).toHaveProperty('CompanionBoardInformation');
+    expect(source).toHaveProperty('CompanionDeviceInformation');
   });
 
   it('builds a heading hierarchy from nested object paths', () => {

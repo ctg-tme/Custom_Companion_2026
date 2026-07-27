@@ -86,6 +86,19 @@ const TEAM_GITHUB_URL = 'https://github.com/ctg-tme';
 const CISCO_SAMPLE_CODE_LICENSE_URL = 'https://developer.cisco.com/docs/licenses';
 const WEATHER_CONFIG_PATH = 'UserInterface.WebWidget.CompanionWidget.weather';
 const TIME_CONFIG_PATH = 'UserInterface.WebWidget.CompanionWidget.time';
+const COMPANION_DEVICE_INFORMATION_GROUPS = ['CompanionDeviceInformation', 'CompanionBoardInformation'];
+
+function isCompanionDeviceInformationField(path: string, field: 'host' | 'username' | 'password'): boolean {
+  return COMPANION_DEVICE_INFORMATION_GROUPS.some((group) => path === `${group}.${field}`);
+}
+
+function companionDeviceInformationLeaf(
+  document: ConfigDocument | undefined,
+  field: 'host' | 'username' | 'password',
+): ConfigLeaf | undefined {
+  return document?.leaves.find((leaf) => isCompanionDeviceInformationField(formatConfigPath(leaf.path), field));
+}
+
 const BOARD_REGISTRATION_WALKTHROUGH = [
   {
     src: boardRegistrationOpenConfig,
@@ -461,7 +474,9 @@ export class InstallerApp {
 
   private renderCompatibility(): string {
     if (!this.compatibility || !this.snapshot) return '';
+    const selectedVersion = this.currentSource()?.version ?? 'Unavailable';
     return `<div class="verification-grid">
+      <div><span>${checkIcon}</span><small>Custom Companion</small><strong>Version ${escapeHtml(selectedVersion)}</strong><em>Selected installation source</em></div>
       <div><span>${checkIcon}</span><small>Serial number</small><strong>Match confirmed</strong></div>
       <div><span>${checkIcon}</span><small>Product platform</small><strong>${escapeHtml(this.compatibility.productPlatform)}</strong></div>
       <div><span>${checkIcon}</span><small>RoomOS</small><strong>${escapeHtml(this.compatibility.roomOsVersion)}</strong><em>Minimum ${escapeHtml(this.snapshot.manifest.MinimumRoomOSVersion)}</em></div>
@@ -492,10 +507,14 @@ export class InstallerApp {
       : leaf.lockedReason === 'companion-device-host'
         ? 'Filled from the Companion Device address used during sign-in.'
         : '';
+    const help = [leaf.description, note]
+      .filter((item): item is string => Boolean(item))
+      .map((item) => `<small>${escapeHtml(item)}</small>`)
+      .join('');
     const preview = path.endsWith('.iconUrl') && typeof value === 'string'
       ? this.renderIconPreview(id, label, value)
       : '';
-    return `<label class="config-field"><span>${escapeHtml(label)}${locked ? '<mark>Installer controlled</mark>' : ''}</span>${control}${note ? `<small>${escapeHtml(note)}</small>` : ''}${preview}</label>`;
+    return `<label class="config-field"><span>${escapeHtml(label)}${locked ? '<mark>Installer controlled</mark>' : ''}</span>${control}${help}${preview}</label>`;
   }
 
   private renderIconPreview(id: string, label: string, value: string): string {
@@ -613,7 +632,7 @@ export class InstallerApp {
       ${this.pageHeader('Step 6 of 8', 'Review before installing', 'All source files have passed preflight. The next action begins forward-only changes on the connected Companion Device.')}
       ${this.errorNotice()}
       <section class="summary-grid install-summary">
-        <div class="summary-item"><small>Installation source</small><strong>${escapeHtml(source?.label ?? '')}</strong><span title="${escapeHtml(this.snapshot?.commitSha ?? '')}">${escapeHtml((this.snapshot?.commitSha ?? '').slice(0, 12))}</span></div>
+        <div class="summary-item"><small>Installation source</small><strong>${escapeHtml(source?.label ?? '')}</strong><span title="${escapeHtml(this.snapshot?.commitSha ?? '')}">Version ${escapeHtml(source?.version ?? 'Unavailable')} · ${escapeHtml((this.snapshot?.commitSha ?? '').slice(0, 12))}</span></div>
         <div class="summary-item"><small>Installer compatibility</small><strong>Contract ${escapeHtml(this.snapshot?.manifest.CompanionInstaller.ContractVersion ?? '')}</strong><span>Tested with installer v${escapeHtml(this.snapshot?.manifest.CompanionInstaller.TestedVersion ?? '')} · ${this.snapshot?.manifest.CompanionInstaller.Capabilities.length ?? 0} capabilities</span></div>
         <div class="summary-item"><small>Target Companion Device</small><strong>${escapeHtml(this.adminCredentials.host)}</strong><span>Serial match confirmed</span></div>
         <div class="summary-item"><small>Files ready</small><strong>${this.preparedResources.length}</strong><span>${this.snapshot?.manifest.Files.length ?? 0} project · ${this.snapshot?.manifest.ExternalDependencies.length ?? 0} external</span></div>
@@ -1016,8 +1035,8 @@ export class InstallerApp {
     this.configValues = setLockedInstallerValues(this.configDocument, this.configValues, this.adminCredentials.host);
     for (const leaf of this.configDocument.leaves) {
       const path = formatConfigPath(leaf.path);
-      if (path === 'CompanionBoardInformation.username') this.configValues.set(configPathId(leaf.path), 'custom-companion');
-      if (path === 'CompanionBoardInformation.password') this.configValues.set(configPathId(leaf.path), 'review-only');
+      if (isCompanionDeviceInformationField(path, 'username')) this.configValues.set(configPathId(leaf.path), 'custom-companion');
+      if (isCompanionDeviceInformationField(path, 'password')) this.configValues.set(configPathId(leaf.path), 'review-only');
     }
     this.preparedResources = this.snapshot.resources.map((resource) => ({ ...resource }));
     if (!this.installed.length) {
@@ -1136,7 +1155,7 @@ export class InstallerApp {
       this.configValues = new Map(this.configDocument.leaves.map((leaf) => [configPathId(leaf.path), leaf.value]));
       this.configValues = setLockedInstallerValues(this.configDocument, this.configValues, this.adminCredentials.host);
       for (const leaf of this.configDocument.leaves) {
-        if (formatConfigPath(leaf.path) === 'CompanionBoardInformation.username' && !this.configValues.get(configPathId(leaf.path))) {
+        if (isCompanionDeviceInformationField(formatConfigPath(leaf.path), 'username') && !this.configValues.get(configPathId(leaf.path))) {
           this.configValues.set(configPathId(leaf.path), 'custom-companion');
         }
       }
@@ -1159,8 +1178,8 @@ export class InstallerApp {
       const path = formatConfigPath(leaf.path);
       const element = [...this.root.querySelectorAll<HTMLInputElement>('[data-config-id]')]
         .find((candidate) => candidate.dataset.configId === configPathId(leaf.path));
-      if (path === 'CompanionBoardInformation.username' && element) element.value = this.adminCredentials.username;
-      if (path === 'CompanionBoardInformation.password' && element) element.value = this.adminCredentials.password;
+      if (isCompanionDeviceInformationField(path, 'username') && element) element.value = this.adminCredentials.username;
+      if (isCompanionDeviceInformationField(path, 'password') && element) element.value = this.adminCredentials.password;
     }
   }
 
@@ -1285,12 +1304,10 @@ export class InstallerApp {
 
   private callbackCredentials(values: Map<string, ConfigValue>): CompanionDeviceCredentials {
     if (!this.configDocument) throw new Error('The Config macro is unavailable.');
-    const get = (path: string) => {
-      const leaf = this.configDocument?.leaves.find((item) => formatConfigPath(item.path) === path);
-      return leaf ? values.get(configPathId(leaf.path)) : undefined;
-    };
-    const username = get('CompanionBoardInformation.username');
-    const password = get('CompanionBoardInformation.password');
+    const usernameLeaf = companionDeviceInformationLeaf(this.configDocument, 'username');
+    const passwordLeaf = companionDeviceInformationLeaf(this.configDocument, 'password');
+    const username = usernameLeaf ? values.get(configPathId(usernameLeaf.path)) : undefined;
+    const password = passwordLeaf ? values.get(configPathId(passwordLeaf.path)) : undefined;
     if (typeof username !== 'string' || !username || typeof password !== 'string' || !password) {
       throw new Error('Enter the existing Companion Device callback username and password in Companion Device Information.');
     }

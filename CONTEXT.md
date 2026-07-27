@@ -96,6 +96,14 @@ _Avoid_: package manifest, file listing
 The build-time agreement that keeps a release's manifest, deployable source, stable installer anchors, synchronized runtime project version, imports, initialization messages, and declared Installer Capabilities consistent before an installation snapshot can be packaged.
 _Avoid_: Manifest only, installer assumptions
 
+**Project Version**:
+The developer-owned four-part version that identifies one synchronized Custom Companion runtime source set. It is installation-source metadata rather than Deployment Configuration.
+_Avoid_: Config version, Installer package version
+
+**Deployment Configuration**:
+The release-provided settings a Device Administrator may review or change for one installed Custom Companion runtime. Project Version and durable runtime state are not Deployment Configuration.
+_Avoid_: Developer dependency, saved state
+
 **Installer Contract Version**:
 The compatibility generation of the baseline agreement between a Release Manifest and the Companion Installer. It changes only when fundamental installation semantics are no longer backwards compatible.
 _Avoid_: Installer package version, runtime project version

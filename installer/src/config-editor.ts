@@ -8,6 +8,13 @@ type SyntaxNode = {
   [key: string]: unknown;
 };
 
+type SyntaxComment = {
+  type: 'Line' | 'Block';
+  value: string;
+  start: number;
+  end: number;
+};
+
 export function configPathId(path: Array<string | number>): string {
   return path.map((part) => String(part).replaceAll('~', '~0').replaceAll('/', '~1')).join('/');
 }
@@ -25,11 +32,33 @@ function propertyName(node: SyntaxNode): string {
 function lockedReason(path: Array<string | number>): ConfigLeaf['lockedReason'] {
   const last = path.at(-1);
   if (typeof last === 'string' && last.toLowerCase() === 'version') return 'version';
-  if (path.length === 2 && path[0] === 'CompanionBoardInformation' && path[1] === 'host') return 'companion-device-host';
+  if (
+    path.length === 2
+    && (path[0] === 'CompanionDeviceInformation' || path[0] === 'CompanionBoardInformation')
+    && path[1] === 'host'
+  ) return 'companion-device-host';
   return undefined;
 }
 
-function evaluateNode(node: SyntaxNode, path: Array<string | number>, leaves: ConfigLeaf[]): ConfigValue {
+function trailingDescription(source: string, comments: SyntaxComment[], node: SyntaxNode): string | undefined {
+  const lineEnd = source.indexOf('\n', node.end);
+  const boundary = lineEnd === -1 ? source.length : lineEnd;
+  const comment = comments.find((candidate) =>
+    candidate.type === 'Line'
+    && candidate.start >= node.end
+    && candidate.start < boundary
+    && /^[\s,]*$/.test(source.slice(node.end, candidate.start)));
+  const description = comment?.value.trim();
+  return description || undefined;
+}
+
+function evaluateNode(
+  node: SyntaxNode,
+  path: Array<string | number>,
+  leaves: ConfigLeaf[],
+  source: string,
+  comments: SyntaxComment[],
+): ConfigValue {
   if (node.type === 'Literal') {
     const value = node.value;
     if (value !== null && !['string', 'number', 'boolean'].includes(typeof value)) {
@@ -41,6 +70,8 @@ function evaluateNode(node: SyntaxNode, path: Array<string | number>, leaves: Co
       start: node.start,
       end: node.end,
     };
+    const description = trailingDescription(source, comments, node);
+    if (description) leaf.description = description;
     const reason = lockedReason(path);
     if (reason) leaf.lockedReason = reason;
     leaves.push(leaf);
@@ -55,7 +86,7 @@ function evaluateNode(node: SyntaxNode, path: Array<string | number>, leaves: Co
     }
     return elements.map((element, index) => {
       if (!element) throw new Error(`Sparse arrays are unsupported at ${formatConfigPath(path)}.`);
-      return evaluateNode(element, [...path, index], leaves);
+      return evaluateNode(element, [...path, index], leaves, source, comments);
     });
   }
 
@@ -71,7 +102,7 @@ function evaluateNode(node: SyntaxNode, path: Array<string | number>, leaves: Co
         throw new Error(`Unsupported config property at ${formatConfigPath(path)}.`);
       }
       const key = propertyName(property.key as SyntaxNode);
-      result[key] = evaluateNode(property.value as SyntaxNode, [...path, key], leaves);
+      result[key] = evaluateNode(property.value as SyntaxNode, [...path, key], leaves, source, comments);
     }
     return result;
   }
@@ -80,7 +111,12 @@ function evaluateNode(node: SyntaxNode, path: Array<string | number>, leaves: Co
 }
 
 export function parseConfigDocument(source: string): ConfigDocument {
-  const program = parse(source, { ecmaVersion: 'latest', sourceType: 'module' }) as unknown as { body: SyntaxNode[] };
+  const comments: SyntaxComment[] = [];
+  const program = parse(source, {
+    ecmaVersion: 'latest',
+    onComment: comments,
+    sourceType: 'module',
+  }) as unknown as { body: SyntaxNode[] };
   let configNode: SyntaxNode | undefined;
 
   for (const statement of program.body) {
@@ -98,7 +134,7 @@ export function parseConfigDocument(source: string): ConfigDocument {
   }
 
   const leaves: ConfigLeaf[] = [];
-  const value = evaluateNode(configNode, [], leaves);
+  const value = evaluateNode(configNode, [], leaves, source, comments);
   if (!value || Array.isArray(value) || typeof value !== 'object') {
     throw new Error('The config value must be an object.');
   }

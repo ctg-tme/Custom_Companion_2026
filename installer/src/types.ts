@@ -101,6 +101,7 @@ export interface ConfigLeaf {
   value: ConfigValue;
   start: number;
   end: number;
+  description?: string;
   lockedReason?: 'version' | 'companion-device-host';
 }
 
