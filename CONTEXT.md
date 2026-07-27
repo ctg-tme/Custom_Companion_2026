@@ -2,12 +2,6 @@
 
 This context defines the canonical language for people interacting with or maintaining the Custom Companion solution.
 
-## Live Repository Release Control
-
-Custom Companion is live. Local commits of completed, verified, scoped work are permitted, but publishing code remains user-controlled. An agent must not run `git push`, push a tag or branch, or otherwise publish local commits unless the user explicitly requests that push in the current task. Requests to implement, verify, commit, close out, or prepare a deployment do not imply push permission, and any earlier standing push authorization is revoked.
-
-The user may push a commit themselves. A post-push lab deployment may begin only after the exact required commit is confirmed on the configured upstream; otherwise work stops at the local commit and reports both push and deployment as pending.
-
 ## Language
 
 **Companion Device**:
