@@ -52,12 +52,12 @@ Use this workflow after moving the Companion Device into a room:
 2. Stay on **Select Parent Room Device**.
 3. Find the room you want to use.
    - An available Parent Room Device is shown by name.
-   - An unavailable entry is labeled `[name] Offline` and cannot be selected.
-4. Tap the available Parent Room Device.
+   - An entry labeled `[name] Offline` did not pass the latest availability check, but it remains selectable so Custom Companion can test it again.
+4. Tap the Parent Room Device you want to use.
 5. Wait while **Connecting to Parent Room Device** is displayed. Custom Companion verifies the saved device identity and prepares Paired mode.
 6. Confirm that the room button is active and the Companion Web Widget says the Companion Device is paired to that Parent Room Device.
 
-Custom Companion can make up to five connection attempts. If the selection fails, it does not return to the previously selected Parent Room Device. The Companion Device enters Standalone and displays `Unable to connect to [device]. Running Standalone.`
+Custom Companion can make up to five connection attempts. If the selection fails, it does not return to the previously selected Parent Room Device. The Companion Device enters Standalone, shows **Unable to Pair**, and displays `Unable to pair with [device]; it may be offline. Running Standalone.`
 
 ### Respond to the standby prompt
 
@@ -222,9 +222,9 @@ The shared Parent Room macros remain installed because other Companion Devices m
 
 | Message or condition | What it means | What to do |
 | --- | --- | --- |
-| `[name] Offline` | The saved Parent Room Device did not pass the latest availability check. | Use another available Parent Room Device or run Standalone. Contact a Device Administrator if it should be online. |
+| `[name] Offline` | The saved Parent Room Device did not pass the latest availability check. | Tap it once to run a fresh connection check, use another Parent Room Device, or run Standalone. Contact a Device Administrator if it should be online. |
 | `Connecting to [device] — attempt N of 5` | Custom Companion is verifying the selected Parent Room Device. | Wait for the attempts to finish. |
-| `Unable to connect to [device]. Running Standalone.` | Selection failed and the previous selection was not restored. | Continue in Standalone or ask a Device Administrator to check the Parent Room Device and network. |
+| `Unable to pair with [device]; it may be offline. Running Standalone.` | Selection failed and the previous selection was not restored. | Continue in Standalone or ask a Device Administrator to check the Parent Room Device and network. |
 | `[device] is temporarily unavailable. Your call will continue.` | Call Preservation is maintaining an active call during a Parent Connectivity interruption. | Continue or use End Call. The device returns to normal Paired operation if communication recovers. |
 | `Start calls from the Parent Room Device.` | A call was started directly from the Companion Device while Paired. | Start the call from the Parent Room Device, or select Standalone to call locally. |
 | `Enter the meeting password manually on this Companion Device.` | A protected Webex meeting needs a password that could not be resolved from the room booking. | Enter the meeting password on the Companion Device. |

@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 09, 2026
- * Revised:                 July 24, 2026
- * Version:                 0.1.2.51
+ * Revised:                 July 27, 2026
+ * Version:                 0.1.2.52
  *
  * Description:             Inactive Parent Room entry source for registration, validation,
  *                          deregistration, peripheral cleanup, and controller coordination.

@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 20, 2026
- * Revised:                 July 24, 2026
- * Version:                 1.0.3
+ * Revised:                 July 27, 2026
+ * Version:                 1.0.4
  *
  * Description:             Parent Connectivity controller for the Custom Companion solution.
  *                          Owns Parent Room Device identity refresh, serial-verified retries,
@@ -377,7 +377,7 @@ function createParentConnectivity(options) {
 
 		callPreservationActive = false;
 		const parentRoomDeviceName = getParentDisplayName(parentDevice);
-		await setInfo(`Unable to connect to ${parentRoomDeviceName}. Running Standalone.`, policy.failureInfoMs);
+		await setInfo(`Unable to pair with ${parentRoomDeviceName}; it may be offline. Running Standalone.`, policy.failureInfoMs);
 		if (callbacks.onUnavailableFallback) {
 			await callbacks.onUnavailableFallback(parentDevice);
 		}

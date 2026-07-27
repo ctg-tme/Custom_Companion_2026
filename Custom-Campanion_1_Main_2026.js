@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 09, 2026
- * Revised:                 July 24, 2026
- * Version:                 0.1.2.51
+ * Revised:                 July 27, 2026
+ * Version:                 0.1.2.52
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -924,8 +924,8 @@ async function handleRuntimeHardFailure(diagnostic) {
 async function showSelectedParentOfflinePrompt(parentDevice) {
 	const parentRoomDeviceName = parentDevice.name || parentDevice.host || 'Selected Parent Room Device';
 	await xapi.Command.UserInterface.Message.Prompt.Display({
-		Title: 'Parent Room Device Unavailable',
-		Text: `${parentRoomDeviceName} is unavailable. This Companion Device is now running Standalone.`,
+		Title: 'Unable to Pair',
+		Text: `${parentRoomDeviceName} is offline or unavailable. This Companion Device is running Standalone.`,
 		FeedbackId: PARENT_UNAVAILABLE_PROMPT_ID,
 		Duration: 10
 	});

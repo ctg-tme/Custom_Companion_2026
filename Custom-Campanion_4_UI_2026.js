@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 09, 2026
- * Revised:                 July 24, 2026
- * Version:                 1.0.27
+ * Revised:                 July 27, 2026
+ * Version:                 1.0.28
  *
  * Description:             Companion Device access and hidden panels, custom access-panel icon,
  *                          PIN/registration/status prompts, shared Companion Alert ownership,
@@ -218,12 +218,11 @@ function buildParentRowsXml(parentDevices, parentDeviceStatus) {
 
 function buildParentWidgetXml(parentDevice, parentStatus, index) {
 	const parentName = parentDevice.name || parentDevice.host || `Parent Room Device ${index + 1}`;
-	const offlineWidgetId = `${PARENT_ROOM_DEVICE_SELECTION_PAGE_ID}~ParentRoomDeviceOffline~${index}`;
 	const selectWidgetId = `${PARENT_ROOM_DEVICE_SELECTION_PAGE_ID}~ParentRoomDeviceSelect~${index}`;
 
 	if (!parentStatus || !parentStatus.online) {
 		return `<Widget>
-					<WidgetId>${offlineWidgetId}</WidgetId>
+					<WidgetId>${selectWidgetId}</WidgetId>
 					<Name>${escapeXml(parentName)} Offline</Name>
 					<Type>Button</Type>
 					<Options>size=4</Options>
@@ -739,7 +738,7 @@ function isParentRegistrationWidget(widgetId) {
 
 function isParentDeviceWidget(widgetId) {
 	const parsed = parseWidgetId(widgetId);
-	return parsed.panelId === PANEL_ID && parsed.pageId === 'SelectParentRoomDevice' && (parsed.action === 'ParentRoomDeviceSelect' || parsed.action === 'ParentRoomDeviceOffline');
+	return parsed.panelId === PANEL_ID && parsed.pageId === 'SelectParentRoomDevice' && parsed.action === 'ParentRoomDeviceSelect';
 }
 
 function isProtectedPanelPage(pageId) {
