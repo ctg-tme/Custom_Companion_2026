@@ -65,7 +65,7 @@ The optional **Use Computer Location** and **Use Computer Time Zone** controls u
 
 `{release-tag}`, `{commit-sha}`, `{resource}`, and `{companion-device-host}` are resolved from the selected release and administrator input. The installer connects directly to the Companion Device and never opens its own direct connection to a Parent Room Device.
 
-Browser trust for `wss://{companion-device-host}` and RoomOS HTTPClient trust are independent. Opening the Companion Device HTTPS page can establish trust for the installer browser, but it does not install a RoomOS CA or validate either direction of the device-to-device paths above. After the WSS session is connected, installer preflight reads and reports the Companion Device HTTPClient Trust Posture without changing it.
+Browser trust for `wss://{companion-device-host}` and RoomOS HTTPClient trust are independent. Opening the Companion Device HTTPS page can establish trust for the installer browser, but it does not install a RoomOS CA or validate either direction of the device-to-device paths above. After the WSS session is connected, installer preflight reads the Companion Device HTTPClient Trust Posture, subscribes to `HttpClient AllowInsecureHTTPS`, and keeps the report current without changing either HTTPClient configuration.
 
 ## Scope Notes
 

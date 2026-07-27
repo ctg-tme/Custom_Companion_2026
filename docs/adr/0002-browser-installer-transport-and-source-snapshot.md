@@ -11,7 +11,7 @@ The Companion Installer must be hosted as a static GitHub Pages site, connect di
 
 Use the browser build of JSXAPI to connect directly to the Companion Device over secure WebSocket. The Device Administrator must first trust the Companion Device's certificate in the browser. The installer never connects to a Parent Room Device; the installed Companion Device runtime remains responsible for Parent Room provisioning.
 
-Browser trust establishes only the installer-to-Companion Device WSS boundary. After sign-in, installer preflight separately reads the administrator-owned RoomOS HTTPClient Trust Posture used for device-to-device traffic and never changes it. See [ADR 0011](0011-administrator-owned-httpclient-trust-posture.md).
+Browser trust establishes only the installer-to-Companion Device WSS boundary. After sign-in, installer preflight separately reads the administrator-owned RoomOS HTTPClient Trust Posture used for device-to-device traffic, subscribes to `HttpClient AllowInsecureHTTPS` for the connected session, and never changes it. See [ADR 0011](0011-administrator-owned-httpclient-trust-posture.md).
 
 Resolve all source resources from one commit SHA before installation so an evolving branch cannot produce a mixed-version deployment. List every published source version in this order: stable releases from newest to oldest, prereleases labeled Preview, then `main` labeled Main Fork (Beta) with its source version. Draft releases are excluded. Default to the newest stable release; if none exists, default to the newest Preview; if no published release exists, default to Main Fork (Beta).
 

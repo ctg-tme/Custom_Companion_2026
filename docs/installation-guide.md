@@ -4,7 +4,7 @@
 
 Use the [Companion Installer Web Application](https://ctg-tme.github.io/Custom_Companion_2026/) whenever it is available to your organization. It is the recommended installation path because it:
 
-- selects one versioned source snapshot and checks every required resource before changing a device;
+- presents whole-solution and selected-release prerequisites, then selects one versioned source snapshot and checks every required resource before changing a device;
 - verifies the expected Companion Device serial number, supported product platform, and minimum RoomOS version;
 - validates the Installer Credentials and Companion Device Callback Credentials;
 - makes **Install or Update — Keep Saved Data** and **Fresh Installation — Erase Saved Data** consequences explicit;
@@ -39,7 +39,7 @@ Use [Network Requirements](network-requirements.md) for the complete endpoint ta
 - Before installation or Parent Room Registration, a Device Administrator must set `xConfiguration HttpClient Mode: On` on every participating Companion Device and Parent Room Device. Custom Companion reads this prerequisite and never changes it.
 - Choose one administrator-owned HTTPClient Trust Posture per sending device:
   - Production: `xConfiguration HttpClient AllowInsecureHTTPS: False`. Install the remote device's issuing CA in RoomOS and use a requested FQDN or IP address present in the remote certificate SAN in both directions.
-  - Lab: `xConfiguration HttpClient AllowInsecureHTTPS: True`. This permits untrusted or self-signed certificates for every qualifying HTTPClient destination on that sending device, not only Custom Companion peers.
+  - Lab or deployments without trusted, host-matching endpoint certificates: `xConfiguration HttpClient AllowInsecureHTTPS: True`. This permits untrusted or self-signed certificates for every qualifying HTTPClient destination on that sending device, not only Custom Companion peers.
 - Treat browser WSS trust and RoomOS HTTPClient trust as separate paths. Accepting the Companion Device certificate in the installer browser does not install a CA on either RoomOS device or prove device-to-device certificate validation.
 - Record the expected serial number for the Companion Device and for each Parent Room Device before installation.
 - Prepare an administrator account on the Companion Device for Installer Credentials. RoomOS restricts macro save and activation to an administrator role.
@@ -67,19 +67,19 @@ Protect all device credentials and any backup of generated storage. Do not place
 ## Install with the Companion Installer
 
 1. Open the [Companion Installer Web Application](https://ctg-tme.github.io/Custom_Companion_2026/).
-2. Review the project introduction, then choose the newest appropriate stable release. Acknowledge the warning if you intentionally select Main Fork (Beta).
-3. Enter the Companion Device host address, expected serial number, and Installer Credentials.
+2. Review the project introduction and the whole-solution prerequisites on Release, then choose the newest appropriate stable release. Acknowledge the warning if you intentionally select Main Fork (Beta). Select **Review selected release**, inspect its manifest-derived minimum RoomOS version, software and product platforms, and external macro dependencies, then continue to connection.
+3. On Connect, confirm the reminder to set `xConfiguration HttpClient Mode: On` before sign-in and the trust-posture guidance. Then enter the Companion Device host address, expected serial number, and Installer Credentials.
 4. If sign-in fails because of certificate trust, open the Companion Device HTTPS page from the installer, accept the browser warning according to your organization's policy, and try again.
 5. Confirm that the installer reports a matching serial number, supported product family, and supported RoomOS version.
    - The installer checks normalized product names exactly first. If no exact match exists, a product name containing `Desk` or `Board Pro` passes when the selected Release Manifest declares that family.
    - For any other product, the installer remains blocked until the Device Administrator explicitly acknowledges the unsupported-device exploration warning. The acknowledgement lasts only for that browser session, remains visible through Review, and does not establish support.
    - During this signed-in preflight, the installer reads `HttpClient Mode` and `HttpClient AllowInsecureHTTPS` without changing them. If Mode is not `On`, installation stops before any mutation with `Set xConfiguration HttpClient Mode to On, then reconnect.`
-   - Review the reported **HTTPClient Trust Posture**. Under strict validation, confirm that the installer host becomes a callback host that matches the Companion Device certificate SAN and that every Parent Room Device trusts its issuing CA.
+   - After preflight, the installer subscribes to `HttpClient AllowInsecureHTTPS` and keeps the reported **HTTPClient Trust Posture** current until Disconnect. Under strict validation, confirm that the installer host becomes a callback host that matches the Companion Device certificate SAN and that every Parent Room Device trusts its issuing CA.
    - The verified connection is locked to one Companion Device. To change devices, select **Disconnect**, confirm the safeguard dialog, and reconnect. The selected release remains prepared, while credentials and device-derived state are cleared.
 6. Configure the Companion Device runtime:
    - enter the existing Companion Device Callback Credentials;
    - keep a distinct callback account unless your deployment deliberately reuses the installer account;
-   - review PIN Mode defaults and Companion WebWidget settings; HTTPClient trust is administrator-owned RoomOS configuration rather than Deployment Configuration;
+   - review PIN Mode defaults and Companion WebWidget settings; Standalone and Paired **User Guidance** use multiline text boxes, while HTTPClient trust is administrator-owned RoomOS configuration rather than Deployment Configuration;
    - select **Use Computer Location** to copy the Installer Computer's latitude and longitude after granting browser location permission, or enter the coordinates manually;
    - select **Use Computer Time Zone** to copy the Installer Computer's current IANA time zone, or enter it manually;
    - verify each Standalone and Paired `iconUrl` in the image preview; and
@@ -104,7 +104,7 @@ Protect all device credentials and any backup of generated storage. Do not place
 10. On Complete Setup:
     - review **Parent Room Registrations** and **Pending Deregistrations** already stored on the Companion Device;
     - after Fresh Installation, confirm the known-empty message; generated storage was erased, so the installer does not issue an unnecessary initial inventory request;
-    - use **Add Parent** zero or more times to start Installer Parent Room Registration;
+    - use **Add Parent** zero or more times to start Installer Parent Room Registration; its modal repeats `HttpClient Mode` and strict/permissive certificate guidance for both devices;
     - use **Remove** and confirm the safeguard dialog to start Installer Parent Room Deregistration; or
     - leave Parent Room administration for the Companion Device interface.
 11. Select **Finish** to disconnect the authenticated installer session.

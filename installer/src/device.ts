@@ -6,6 +6,7 @@ import {
 } from './manifest';
 import type {
   DeviceCompatibility,
+  HttpClientTrustPosture,
   InstalledMacro,
   InstallManifest,
 } from './types';
@@ -78,6 +79,34 @@ function scalarString(value: unknown): string {
   throw new Error('The Companion Device returned an unexpected status value.');
 }
 
+export function httpClientTrustPosture(value: unknown): HttpClientTrustPosture {
+  const httpClientAllowsInsecureHTTPS = scalarString(value).toLowerCase() === 'true';
+  return {
+    httpClientAllowsInsecureHTTPS,
+    httpClientTrustPosture: httpClientAllowsInsecureHTTPS
+      ? 'Untrusted/self-signed certificates permitted'
+      : 'Strict certificate validation',
+  };
+}
+
+export async function monitorHttpClientTrustPosture(
+  xapi: CompanionDeviceXapi,
+  onChange: (posture: HttpClientTrustPosture) => void,
+): Promise<() => void> {
+  const unsubscribe = xapi.config.on('HttpClient AllowInsecureHTTPS', (value: unknown) => {
+    onChange(httpClientTrustPosture(value));
+  });
+  try {
+    await unsubscribe.registration;
+    onChange(httpClientTrustPosture(await xapi.config.get('HttpClient AllowInsecureHTTPS')));
+    return unsubscribe;
+  } catch (error) {
+    unsubscribe();
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Unable to monitor xConfiguration HttpClient AllowInsecureHTTPS. ${detail}`);
+  }
+}
+
 export async function validateConnectedCompanionDevice(
   xapi: CompanionDeviceXapi,
   manifest: InstallManifest,
@@ -105,7 +134,7 @@ export async function validateConnectedCompanionDevice(
   if (httpClientMode !== 'On') {
     throw new Error('Set xConfiguration HttpClient Mode to On, then reconnect.');
   }
-  const httpClientAllowsInsecureHTTPS = scalarString(httpClientAllowInsecureHTTPSValue).toLowerCase() === 'true';
+  const trustPosture = httpClientTrustPosture(httpClientAllowInsecureHTTPSValue);
   return {
     roomOsVersion,
     productPlatform,
@@ -115,10 +144,7 @@ export async function validateConnectedCompanionDevice(
     deskSeriesWarning: isDeskSeries(productPlatform),
     activeCalls: Number.isFinite(activeCalls) ? activeCalls : 0,
     httpClientMode: 'On',
-    httpClientAllowsInsecureHTTPS,
-    httpClientTrustPosture: httpClientAllowsInsecureHTTPS
-      ? 'Untrusted/self-signed certificates permitted'
-      : 'Strict certificate validation',
+    ...trustPosture,
   };
 }
 

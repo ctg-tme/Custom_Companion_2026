@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 describe('Momentum Design assets', () => {
   it('loads the Momentum Webex token layers and packaged icons', async () => {
     const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { dependencies: Record<string, string> };
+    const indexSource = await readFile(new URL('../index.html', import.meta.url), 'utf8');
     const mainSource = await readFile(new URL('./main.ts', import.meta.url), 'utf8');
     const appSource = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
     const mermaidSource = await readFile(new URL('./mermaid.ts', import.meta.url), 'utf8');
@@ -11,6 +12,7 @@ describe('Momentum Design assets', () => {
     expect(packageJson.dependencies['@momentum-design/tokens']).toBeTruthy();
     expect(packageJson.dependencies['@momentum-design/icons']).toBeTruthy();
     expect(packageJson.dependencies.mermaid).toBeTruthy();
+    expect(indexSource).toContain('<link rel="icon" type="image/png" href="./icons/custom-companion-512.png" />');
     expect(mainSource).toContain('@momentum-design/tokens/dist/css/core/complete.css');
     expect(mainSource).toContain('@momentum-design/tokens/dist/css/theme/webex/light-stable.css');
     expect(mainSource).toContain('@momentum-design/tokens/dist/css/typography/complete.css');

@@ -78,7 +78,12 @@ export interface SourceSnapshot {
   resources: InstallResource[];
 }
 
-export interface DeviceCompatibility {
+export interface HttpClientTrustPosture {
+  httpClientAllowsInsecureHTTPS: boolean;
+  httpClientTrustPosture: 'Strict certificate validation' | 'Untrusted/self-signed certificates permitted';
+}
+
+export interface DeviceCompatibility extends HttpClientTrustPosture {
   roomOsVersion: string;
   productPlatform: string;
   serialMatches: boolean;
@@ -87,8 +92,6 @@ export interface DeviceCompatibility {
   deskSeriesWarning: boolean;
   activeCalls: number;
   httpClientMode: 'On';
-  httpClientAllowsInsecureHTTPS: boolean;
-  httpClientTrustPosture: 'Strict certificate validation' | 'Untrusted/self-signed certificates permitted';
 }
 
 export interface InstalledMacro {

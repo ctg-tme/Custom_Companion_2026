@@ -21,7 +21,7 @@ Manifest fragment, with unrelated fields omitted:
   "SchemaVersion": 1,
   "CompanionInstaller": {
     "ContractVersion": 1,
-    "TestedVersion": "0.1.22",
+    "TestedVersion": "0.1.23",
     "Capabilities": [
       "installer.parent-deregistration.v1",
       "installer.parent-inventory.v1",
@@ -61,7 +61,7 @@ The table collapses documentation-only Main snapshots when their runtime and ins
 | Main at `847b805` | `0.1.2.56` | `0.1.19` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
 | Main at `b083f09` | `0.1.2.56` | `0.1.20` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
 | Main at `f4e5007` | `0.1.2.57` | `0.1.20` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
-| Main after this work package | `0.1.2.58` | `0.1.22` | Current Main Fork source | Registration, Inventory, and Deregistration `v1` |
+| Main after this work package | `0.1.2.58` | `0.1.23` | Current Main Fork source | Registration, Inventory, and Deregistration `v1` |
 
 Preview `v0.1.2.51` predates the `CompanionInstaller` manifest object. The installer applies one explicit legacy profile only when that tag resolves to commit `be539c292d79197e8303d42b68902c6985cde699`: Contract Version 1, Tested Installer Version `0.1.14`, and `installer.parent-registration.v1`. It does not infer support from the runtime version. Any other manifest without `CompanionInstaller` metadata is invalid.
 
@@ -90,7 +90,7 @@ Most installer behaviors do not belong in the manifest capability list.
 | Recursive Config parsing, source-comment definitions, generated Config review, selected Project Version presentation, locked Companion Device host, and required callback paths | Contract Version 1, with fields sourced from Config | The selected Config source already determines which ordinary options exist. Definitions are optional for older releases, and the Project Version is source metadata rather than Deployment Configuration. |
 | Browser location, browser time zone, and HTTP/HTTPS icon preview | Installer-native and Config-presence-derived | These conveniences are shown only when the selected Config contains the relevant group or field. |
 | Callback credential authentication and Companion Device Identity Confirmation | Contract Version 1 | These are baseline safety gates rather than optional runtime features. |
-| Read-only `HttpClient Mode` prerequisite and HTTPClient Trust Posture reporting | Installer-native preflight within Contract Version 1 | Mode blocks before mutation and posture reporting changes no selected-runtime action or result. The source-driven Config parser continues to expose the legacy field only for older releases that contain it. |
+| Read-only `HttpClient Mode` prerequisite and live HTTPClient Trust Posture reporting | Installer-native preflight and connected-session subscription within Contract Version 1 | Mode blocks before mutation; the `AllowInsecureHTTPS` subscription changes no selected-runtime action or result. The source-driven Config parser continues to expose the legacy field only for older releases that contain it. |
 | Installed macro inventory, Install or Update, Fresh Installation, generated storage handling, Legacy Project Macro classification, and optional legacy purge | Contract Version 1 | These define the mutation and preservation model of installation. |
 | Macro deactivation, save, activation, Macro Runtime restart, log subscription, initialization classification, waiting, and retry controls | Contract Version 1 | These are the baseline forward-only install and verification protocol. |
 | Installer Parent Room Registration | `installer.parent-registration.v1` | It sends an optional runtime action and waits for runtime-owned terminal results. |

@@ -26,6 +26,7 @@ import { computerLocation, computerTimeZone, iconPreviewUrl } from './computer-d
 import {
   connectToCompanionDevice,
   listInstalledMacros,
+  monitorHttpClientTrustPosture,
   normalizeCompanionDeviceHost,
   normalizeSerial,
   validateCallbackCredentials,
@@ -63,6 +64,7 @@ import {
   type ConfigLeaf,
   type ConfigValue,
   type DeviceCompatibility,
+  type HttpClientTrustPosture,
   type InitializationOutcome,
   type InstallResource,
   type InstallationType,
@@ -193,6 +195,7 @@ export class InstallerApp {
   private adminCredentials: CompanionDeviceCredentials = { host: '', username: '', password: '' };
   private expectedSerial = '';
   private compatibility?: DeviceCompatibility;
+  private httpClientTrustPostureSubscription?: () => void;
   private unsupportedProductConfirmed = false;
   private installed: InstalledMacro[] = [];
   private configDocument?: ConfigDocument;
@@ -266,6 +269,10 @@ export class InstallerApp {
 
   private currentSource(): ReleaseSource | undefined {
     return selectedSource(this.discovery, this.selectedSourceId);
+  }
+
+  private selectedSourceIsPrepared(): boolean {
+    return this.snapshot?.source.id === this.selectedSourceId && Boolean(this.configDocument);
   }
 
   private currentCompleteSetupCapabilities() {
@@ -365,7 +372,12 @@ export class InstallerApp {
         return '<div class="actions split"><button class="button ghost" id="back-introduction">Back to introduction</button><button class="button primary" id="source-continue">Return to connection</button></div>';
       }
       const disabled = !this.discovery || this.busy || (source?.kind === 'main' && !this.betaAcknowledged);
-      return `<div class="actions split"><button class="button ghost" id="back-introduction">Back to introduction</button><button class="button primary" id="source-continue" ${disabled ? 'disabled' : ''}>${this.busy ? '<span class="spinner inverse"></span>Preparing source…' : 'Continue'}</button></div>`;
+      const label = this.busy
+        ? '<span class="spinner inverse"></span>Preparing source…'
+        : this.selectedSourceIsPrepared()
+          ? 'Continue to connection'
+          : 'Review selected release';
+      return `<div class="actions split"><button class="button ghost" id="back-introduction">Back to introduction</button><button class="button primary" id="source-continue" ${disabled ? 'disabled' : ''}>${label}</button></div>`;
     }
     if (this.step === 2) {
       if (this.companionDevice) {
@@ -430,12 +442,45 @@ export class InstallerApp {
       </section>`;
   }
 
+  private renderSolutionPrerequisites(): string {
+    return `
+      <section class="panel release-prerequisites" aria-labelledby="solution-prerequisites-title">
+        <div class="panel-heading"><span class="heading-icon warning-color">${warningIcon}</span><div><h2 id="solution-prerequisites-title">Solution prerequisites</h2><p>Prepare these requirements for the Companion Device and every Parent Room Device that will participate in this deployment.</p></div></div>
+        <ul class="prerequisite-list">
+          <li><strong>Enable device-to-device HTTP.</strong><span>Set <code>xConfiguration HttpClient Mode: On</code> on every participating device before connecting or starting Parent Room Registration. The installer and runtime verify this setting but never change it.</span></li>
+          <li><strong>Choose the certificate posture on each sending device.</strong><span>Use <code>HttpClient AllowInsecureHTTPS: False</code> with trusted issuing CAs and requested hosts present in certificate SANs. If you are not provisioning trusted, host-matching endpoint certificates, set it to <code>True</code> and accept that this permits untrusted or self-signed certificates device-wide.</span></li>
+          <li><strong>Prepare both network directions.</strong><span>The Installer Computer must reach the Companion Device over HTTPS/WSS, the Companion Device must reach each Parent Room Device over HTTPS, and every Parent Room Device must reach the Companion callback host over HTTPS. Browser certificate trust does not configure RoomOS HTTPClient trust.</span></li>
+          <li><strong>Prepare identity, access, and a maintenance window.</strong><span>Record expected serials, create the required installer, callback, and Parent Room accounts, enable Macro Runtime, and avoid installation or registration while affected devices have active calls.</span></li>
+        </ul>
+      </section>`;
+  }
+
+  private renderSelectedReleaseRequirements(): string {
+    if (!this.selectedSourceIsPrepared() || !this.snapshot) {
+      return `<div class="notice warning release-requirements-pending"><span>${warningIcon}</span><div><strong>Selected-release requirements are not loaded yet</strong><p>Select Review selected release to validate its manifest and show its minimum RoomOS version, supported Companion Device products, and external macro dependencies before connection.</p></div></div>`;
+    }
+    const manifest = this.snapshot.manifest;
+    const externalDependencies = manifest.ExternalDependencies.length
+      ? manifest.ExternalDependencies.map((dependency) => `<code>${escapeHtml(dependency.Name)}</code>`).join(', ')
+      : 'None declared';
+    return `
+      <section class="panel selected-release-requirements" aria-labelledby="selected-release-requirements-title">
+        <div class="panel-heading"><span class="heading-icon">${cloudIcon}</span><div><h2 id="selected-release-requirements-title">Selected-release requirements</h2><p>These values were read from the prepared ${escapeHtml(this.snapshot.source.label)} Release Manifest.</p></div></div>
+        <dl class="release-requirements-grid">
+          <div><dt>Minimum RoomOS</dt><dd>${escapeHtml(manifest.MinimumRoomOSVersion)}</dd></div>
+          <div><dt>Software platform</dt><dd>${escapeHtml(manifest.SoftwarePlatform.join(', '))}</dd></div>
+          <div><dt>Supported Companion Device products</dt><dd>${escapeHtml(manifest.ProductPlatform.join(', '))}</dd></div>
+          <div><dt>External macro dependencies</dt><dd>${externalDependencies}</dd></div>
+        </dl>
+      </section>`;
+  }
+
   private renderRelease(): string {
     const source = this.currentSource();
     const loading = !this.discovery;
     const sourceLocked = Boolean(this.companionDevice);
     return `
-      ${this.pageHeader('Step 2 of 8', 'Choose an installation source', 'Published releases are the safest choice. Main Fork is available as a versioned Beta snapshot of this Pages build.')}
+      ${this.pageHeader('Step 2 of 8', 'Choose an installation source', 'Review the whole-solution prerequisites and the requirements declared by the selected release before connecting to a Companion Device.')}
       ${this.errorNotice()}
       <section class="panel source-panel">
         <div class="panel-heading"><span class="heading-icon">${cloudIcon}</span><div><h2>Release channel</h2><p>Stable releases appear first, followed by Preview builds and the versioned Main Fork (Beta).</p></div></div>
@@ -454,17 +499,21 @@ export class InstallerApp {
               <label class="check-row"><input id="beta-ack" type="checkbox" ${this.betaAcknowledged ? 'checked' : ''}><span><strong>I understand Main Fork is a Beta source</strong><small>Version ${escapeHtml(source.version ?? 'unavailable')} may be incomplete and can change with the next Pages deployment.</small></span></label>
             </div>` : ''}
         `}
-      </section>`;
+      </section>
+      ${this.renderSolutionPrerequisites()}
+      ${this.renderSelectedReleaseRequirements()}`;
   }
 
   private renderConnect(): string {
     const connected = Boolean(this.companionDevice);
     const locked = connected ? 'disabled' : '';
     return `
-      ${this.pageHeader('Step 3 of 8', 'Connect to the Companion Device', 'Sign in with the Companion Device administrator account used only for installation. If certificate trust blocks sign-in, a recovery link appears after the failed attempt.')}
+      ${this.pageHeader('Step 3 of 8', 'Connect to the Companion Device', 'Confirm the RoomOS HTTPClient prerequisite first, then sign in with the Companion Device administrator account used only for installation.')}
       ${this.errorNotice()}
+      <div class="notice warning connect-httpclient-prerequisite"><span>${warningIcon}</span><div><strong>Before connecting, set xConfiguration HttpClient Mode to On</strong><p>Enable it on this Companion Device and every intended Parent Room Device. If trusted, host-matching endpoint certificates are not provisioned, also set <code>HttpClient AllowInsecureHTTPS: True</code> on each participating device. These are Device Administrator-owned, device-wide settings; the installer never changes them.</p></div></div>
       ${connected ? `<div class="notice success"><span>${checkIcon}</span><div><strong>Connected to this Companion Device</strong><p>The verified connection is locked to prevent multiple simultaneous device sessions. Disconnect before connecting to another Companion Device.</p></div></div>` : ''}
       ${connected ? this.renderCompatibility() : ''}
+      ${connected ? this.renderHttpClientTrustPosture() : ''}
       ${this.renderUnsupportedProductWarning(true)}
       <section class="panel connect-panel">
         <div class="panel-heading"><span class="heading-icon">${deviceIcon}</span><div><h2>Companion Device connection</h2><p>Enter the device identity and administrator credentials. The serial comparison confirms the intended device before installation.</p></div></div>
@@ -505,12 +554,30 @@ export class InstallerApp {
 
   private renderHttpClientTrustPosture(): string {
     if (!this.compatibility) return '';
-    const strict = !this.compatibility.httpClientAllowsInsecureHTTPS;
     return `
-      <section class="panel">
-        <div class="panel-heading"><span class="heading-icon">${certificateIcon}</span><div><h2>HTTPClient Trust Posture</h2><p><strong>${escapeHtml(this.compatibility.httpClientTrustPosture)}</strong>. This device-wide posture is owned by the Device Administrator and applies to every Custom Companion HTTP request sent by this Companion Device. The installer reads it but never changes it.</p></div></div>
-        ${strict ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Trusted, host-matching certificates are required</strong><p>The installer sign-in host becomes the Companion callback host and must match the Companion Device certificate SAN. An IP address is valid only when it is present as an IP SAN. Every Parent Room Device must trust the issuing CA chain.</p></div></div>` : ''}
+      <section class="panel httpclient-posture-panel">
+        <div class="panel-heading"><span class="heading-icon">${certificateIcon}</span><div><h2>HTTPClient Trust Posture</h2><p><strong data-httpclient-posture-label>${escapeHtml(this.compatibility.httpClientTrustPosture)}</strong>. This Device Administrator-owned setting applies to every Custom Companion HTTP request sent by this Companion Device. The installer monitors it while connected and never changes it.</p></div></div>
+        <div data-httpclient-posture-guidance>${this.renderHttpClientTrustPostureGuidance()}</div>
       </section>`;
+  }
+
+  private renderHttpClientTrustPostureGuidance(): string {
+    if (!this.compatibility) return '';
+    if (this.compatibility.httpClientAllowsInsecureHTTPS) {
+      return `<div class="notice success"><span>${checkIcon}</span><div><strong>Current setting: AllowInsecureHTTPS=True</strong><p>Untrusted or self-signed endpoint certificates are permitted by this Companion Device. Use this posture only when trusted, host-matching endpoint certificates are not provisioned and the broader device-wide effect is accepted.</p></div></div>`;
+    }
+    return `<div class="notice warning"><span>${warningIcon}</span><div><strong>Current setting: AllowInsecureHTTPS=False</strong><p>The installer sign-in host becomes the Companion callback host and must match the Companion Device certificate SAN. An IP address is valid only when present as an IP SAN, and every Parent Room Device must trust the issuing CA chain. If trusted, host-matching endpoint certificates are not provisioned, set <code>HttpClient AllowInsecureHTTPS: True</code> before installation and Parent Room Registration.</p></div></div>`;
+  }
+
+  private applyHttpClientTrustPosture(posture: HttpClientTrustPosture): void {
+    if (!this.compatibility) return;
+    Object.assign(this.compatibility, posture);
+    for (const element of this.root.querySelectorAll<HTMLElement>('[data-httpclient-posture-label]')) {
+      element.textContent = posture.httpClientTrustPosture;
+    }
+    for (const element of this.root.querySelectorAll<HTMLElement>('[data-httpclient-posture-guidance]')) {
+      element.innerHTML = this.renderHttpClientTrustPostureGuidance();
+    }
   }
 
   private renderConfigField(leaf: ConfigLeaf): string {
@@ -521,6 +588,7 @@ export class InstallerApp {
     const label = humanizeConfigSegment(leaf.path.at(-1) ?? 'Configuration');
     const password = /(password|secret|token)/i.test(key);
     const locked = Boolean(leaf.lockedReason);
+    const multilineString = typeof value === 'string' && key.toLowerCase() === 'userguidance';
     let control: string;
     if (typeof value === 'boolean') {
       control = `<label class="toggle"><input data-config-id="${escapeHtml(id)}" data-value-type="boolean" type="checkbox" ${value ? 'checked' : ''} ${locked ? 'disabled' : ''}><span></span><em>${value ? 'Enabled' : 'Disabled'}</em></label>`;
@@ -528,6 +596,8 @@ export class InstallerApp {
       control = `<input data-config-id="${escapeHtml(id)}" data-value-type="number" type="number" value="${escapeHtml(value)}" ${locked ? 'readonly' : ''}>`;
     } else if (value === null || typeof value === 'object') {
       control = `<textarea data-config-id="${escapeHtml(id)}" data-value-type="json" rows="3" ${locked ? 'readonly' : ''}>${escapeHtml(JSON.stringify(value, null, 2))}</textarea>`;
+    } else if (multilineString) {
+      control = `<textarea data-config-id="${escapeHtml(id)}" data-value-type="string" rows="4" ${locked ? 'readonly' : ''}>${escapeHtml(value)}</textarea>`;
     } else {
       const iconUrlInput = path.endsWith('.iconUrl') ? ` data-icon-url-input="${escapeHtml(id)}"` : '';
       control = `<input data-config-id="${escapeHtml(id)}" data-value-type="string"${iconUrlInput} type="${password ? 'password' : 'text'}" value="${escapeHtml(value)}" ${locked ? 'readonly' : ''} ${password ? 'autocomplete="new-password"' : ''}>`;
@@ -544,7 +614,7 @@ export class InstallerApp {
     const preview = path.endsWith('.iconUrl') && typeof value === 'string'
       ? this.renderIconPreview(id, label, value)
       : '';
-    return `<label class="config-field"><span>${escapeHtml(label)}${locked ? '<mark>Installer controlled</mark>' : ''}</span>${control}${help}${preview}</label>`;
+    return `<label class="config-field ${multilineString ? 'multiline-config-field' : ''}"><span>${escapeHtml(label)}${locked ? '<mark>Installer controlled</mark>' : ''}</span>${control}${help}${preview}</label>`;
   }
 
   private renderIconPreview(id: string, label: string, value: string): string {
@@ -667,7 +737,7 @@ export class InstallerApp {
         <div class="summary-item"><small>Installation source</small><strong>${escapeHtml(source?.label ?? '')}</strong><span title="${escapeHtml(this.snapshot?.commitSha ?? '')}">Version ${escapeHtml(source?.version ?? 'Unavailable')} · ${escapeHtml((this.snapshot?.commitSha ?? '').slice(0, 12))}</span></div>
         <div class="summary-item"><small>Installer compatibility</small><strong>Contract ${escapeHtml(this.snapshot?.manifest.CompanionInstaller.ContractVersion ?? '')}</strong><span>Tested with installer v${escapeHtml(this.snapshot?.manifest.CompanionInstaller.TestedVersion ?? '')} · ${this.snapshot?.manifest.CompanionInstaller.Capabilities.length ?? 0} capabilities</span></div>
         <div class="summary-item"><small>Target Companion Device</small><strong>${escapeHtml(this.adminCredentials.host)}</strong><span>${escapeHtml(this.compatibility?.productPlatform ?? 'Product unavailable')} · ${this.unsupportedProductConfirmed ? 'Exploration bypass acknowledged' : 'Supported product family'}</span></div>
-        <div class="summary-item"><small>HTTPClient Trust Posture</small><strong>${escapeHtml(this.compatibility?.httpClientTrustPosture ?? 'Unavailable')}</strong><span>Administrator-owned device-wide setting</span></div>
+        <div class="summary-item"><small>HTTPClient Trust Posture</small><strong data-httpclient-posture-label>${escapeHtml(this.compatibility?.httpClientTrustPosture ?? 'Unavailable')}</strong><span>Administrator-owned device-wide setting · monitored live</span></div>
         <div class="summary-item"><small>Files ready</small><strong>${this.preparedResources.length}</strong><span>${this.snapshot?.manifest.Files.length ?? 0} project · ${this.snapshot?.manifest.ExternalDependencies.length ?? 0} external</span></div>
         <div class="summary-item"><small>Installation type</small><strong>${freshInstallation ? 'Fresh Installation — Erase Saved Data' : 'Install or Update — Keep Saved Data'}</strong><span>${freshInstallation ? (storageInstalled ? `${GENERATED_STORAGE_MACRO} will be removed` : 'No generated storage macro was found') : 'Generated storage will be preserved'}</span></div>
       </section>
@@ -723,7 +793,7 @@ export class InstallerApp {
         <section class="parent-registration-dialog" role="dialog" aria-modal="true" aria-labelledby="parent-registration-title">
           <button class="dialog-close" id="close-parent-registration" type="button" aria-label="Close Parent Room Device registration" ${canClose ? '' : 'disabled'}>Close</button>
           <div class="panel-heading"><span class="heading-icon">${deviceIcon}</span><div><span class="eyebrow">Optional setup</span><h2 id="parent-registration-title">Add Parent Room Device</h2><p>Use the signed-in Device Administrator session to start the existing Parent Room Registration workflow. Nothing is shown in the Companion Device in-room interface.</p></div></div>
-          <div class="notice warning"><span>${certificateIcon}</span><div><strong>Verify Parent Room Device trust before registration</strong><p>The Parent host must match the Parent certificate SAN, and the Companion Device must trust its issuing CA chain when strict validation is active. The installer never connects to or changes the Parent Room Device directly.</p></div></div>
+          <div class="notice warning parent-httpclient-prerequisite"><span>${certificateIcon}</span><div><strong>Configure HTTPClient on both devices before registration</strong><p>Set <code>HttpClient Mode: On</code> on the Companion Device and Parent Room Device. Current connected Companion Device posture: <b data-httpclient-posture-label>${escapeHtml(this.compatibility?.httpClientTrustPosture ?? 'Unavailable')}</b>. With <code>AllowInsecureHTTPS: False</code>, each requested host must match the remote certificate SAN and each sending device must trust the remote issuing CA. If trusted, host-matching endpoint certificates are not provisioned, set <code>HttpClient AllowInsecureHTTPS: True</code> on both devices and accept its device-wide effect. The installer never connects to or changes the Parent Room Device directly.</p></div></div>
           ${this.errorNotice()}
           ${outcomeNotice}
           <form id="parent-registration-form" class="parent-registration-form">
@@ -869,6 +939,10 @@ export class InstallerApp {
     this.byId('source-select')?.addEventListener('change', (event) => {
       this.selectedSourceId = (event.target as HTMLSelectElement).value;
       this.betaAcknowledged = false;
+      this.snapshot = undefined;
+      this.configDocument = undefined;
+      this.configValues.clear();
+      this.preparedResources = [];
       this.error = '';
       this.render();
     });
@@ -879,6 +953,11 @@ export class InstallerApp {
     this.byId('source-continue')?.addEventListener('click', () => {
       if (this.localReviewMode) void this.navigateLocalReview(2);
       else if (this.companionDevice) {
+        this.step = 2;
+        this.error = '';
+        this.render();
+      }
+      else if (this.selectedSourceIsPrepared()) {
         this.step = 2;
         this.error = '';
         this.render();
@@ -1130,7 +1209,6 @@ export class InstallerApp {
       const configResource = this.snapshot.resources.find((resource) => resource.fileName === CONFIG_MACRO_FILE);
       if (!configResource) throw new Error(`The source does not include ${CONFIG_MACRO_FILE}.`);
       this.configDocument = parseConfigDocument(configResource.content);
-      this.step = 2;
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
@@ -1198,6 +1276,10 @@ export class InstallerApp {
       this.compatibility = await validateConnectedCompanionDevice(this.companionDevice, this.snapshot.manifest, this.expectedSerial);
       if (!this.compatibility.serialMatches) throw new Error('Serial number mismatch. No files were changed, and the serial read from the Companion Device was not displayed.');
       if (!this.compatibility.roomOsSupported) throw new Error(`RoomOS ${this.compatibility.roomOsVersion} is below the required ${this.snapshot.manifest.MinimumRoomOSVersion}.`);
+      this.httpClientTrustPostureSubscription = await monitorHttpClientTrustPosture(
+        this.companionDevice,
+        (posture) => this.applyHttpClientTrustPosture(posture),
+      );
       this.installed = await listInstalledMacros(this.companionDevice);
       this.configValues = new Map(this.configDocument.leaves.map((leaf) => [configPathId(leaf.path), leaf.value]));
       this.configValues = setLockedInstallerValues(this.configDocument, this.configValues, this.adminCredentials.host);
@@ -1208,6 +1290,8 @@ export class InstallerApp {
       }
       this.step = this.compatibility.productSupported ? 3 : 2;
     } catch (error) {
+      this.httpClientTrustPostureSubscription?.();
+      this.httpClientTrustPostureSubscription = undefined;
       this.companionDevice?.close();
       this.companionDevice = undefined;
       this.compatibility = undefined;
@@ -1478,6 +1562,8 @@ export class InstallerApp {
 
   private disconnectDevice(): void {
     if (!this.companionDevice) return;
+    this.httpClientTrustPostureSubscription?.();
+    this.httpClientTrustPostureSubscription = undefined;
     this.monitor?.close();
     this.monitor = undefined;
     this.parentRegistrationMonitor?.close();
@@ -1747,6 +1833,8 @@ export class InstallerApp {
   }
 
   private reset(): void {
+    this.httpClientTrustPostureSubscription?.();
+    this.httpClientTrustPostureSubscription = undefined;
     this.monitor?.close();
     this.monitor = undefined;
     this.parentRegistrationMonitor?.close();

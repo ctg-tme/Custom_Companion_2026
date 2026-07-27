@@ -22,7 +22,7 @@ Custom Companion is designed around mobility, reversibility, and clear ownership
 - **Shared rooms stay shareable.** One Parent Room Device can support registrations from up to three Companion Devices.
 - **Standalone still feels like Standalone.** The solution captures supported preferences before applying its Paired behavior and restores those exact values later.
 - **Temporary network trouble does not automatically end a call.** Call Preservation keeps an active call available while the solution tries to reconnect to the selected Parent Room Device.
-- **Installation is guided and guarded.** The browser-based Companion Installer verifies the target Companion Device and offers an explicit choice between preserving or resetting saved Custom Companion state.
+- **Installation is guided and guarded.** The browser-based Companion Installer presents solution-wide and selected-release prerequisites, verifies the target Companion Device, and offers an explicit choice between preserving or resetting saved Custom Companion state.
 - **Parent Room changes remain Companion Device-owned.** The installer targets only the Companion Device; the Companion Device verifies and provisions registered Parent Room Devices.
 
 ## A typical experience
@@ -50,6 +50,7 @@ Developers and maintainers should also use the canonical terminology in [CONTEXT
 
 - Minimum RoomOS version: `11.32.1.1`
 - `HttpClient Mode` must be `On` on every participating device; Custom Companion verifies but never changes the Device Administrator-owned HTTPClient Trust Posture
+- When trusted, host-matching endpoint certificates are not provisioned, `HttpClient AllowInsecureHTTPS` must be `True` on each participating sending device; this permits untrusted or self-signed certificates device-wide
 - Up to 6 registered Parent Room Devices per Companion Device
 - Up to 3 registered Companion Devices per Parent Room Device
 - One active Parent Room Device per Companion Device

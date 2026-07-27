@@ -24,11 +24,40 @@ describe('installer workflow presentation', () => {
     expect(deviceSource).toContain('Set xConfiguration HttpClient Mode to On, then reconnect.');
     expect(deviceSource).toContain("xapi.config.get('HttpClient Mode')");
     expect(deviceSource).toContain("xapi.config.get('HttpClient AllowInsecureHTTPS')");
+    expect(deviceSource).toContain("xapi.config.on('HttpClient AllowInsecureHTTPS'");
     expect(deviceSource).not.toContain("xapi.config.set('HttpClient");
     expect(appSource).toContain('HTTPClient Trust Posture');
-    expect(appSource).toContain('The installer reads it but never changes it.');
+    expect(appSource).toContain('The installer monitors it while connected and never changes it.');
+    expect(appSource).toContain('Before connecting, set xConfiguration HttpClient Mode to On');
+    expect(appSource).toContain('data-httpclient-posture-label');
+    expect(appSource).toContain('httpClientTrustPostureSubscription');
     expect(appSource).toContain('Certificate trust may be blocking sign-in');
     expect(appSource).toContain('Open Companion Device certificate page');
+  });
+
+  it('shows whole-solution and selected-release prerequisites before connection', async () => {
+    const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
+
+    expect(source).toContain('Solution prerequisites');
+    expect(source).toContain('Selected-release requirements');
+    expect(source).toContain('Review selected release');
+    expect(source).toContain('manifest.MinimumRoomOSVersion');
+    expect(source).toContain('manifest.ProductPlatform.join');
+    expect(source).toContain('manifest.ExternalDependencies');
+    expect(source).toContain('If you are not provisioning trusted, host-matching endpoint certificates');
+  });
+
+  it('uses multiline User Guidance controls and repeats HTTPClient prerequisites for Parent registration', async () => {
+    const [source, styles] = await Promise.all([
+      readFile(new URL('./app.ts', import.meta.url), 'utf8'),
+      readFile(new URL('./styles.css', import.meta.url), 'utf8'),
+    ]);
+
+    expect(source).toContain("key.toLowerCase() === 'userguidance'");
+    expect(source).toContain('data-value-type="string" rows="4"');
+    expect(source).toContain('Configure HTTPClient on both devices before registration');
+    expect(source).toContain('set <code>HttpClient AllowInsecureHTTPS: True</code> on both devices');
+    expect(styles).toMatch(/\.multiline-config-field\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/s);
   });
 
   it('requires an explicit administrator acknowledgement to explore an unsupported product', async () => {

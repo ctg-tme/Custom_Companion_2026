@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { InstallManifest } from './types';
-import { validateConnectedCompanionDevice } from './device';
+import {
+  monitorHttpClientTrustPosture,
+  validateConnectedCompanionDevice,
+} from './device';
 
 const manifest: InstallManifest = {
   SchemaVersion: 1,
@@ -9,7 +12,7 @@ const manifest: InstallManifest = {
   ProductPlatform: ['Board Pro'],
   CompanionInstaller: {
     ContractVersion: 1,
-    TestedVersion: '0.1.22',
+    TestedVersion: '0.1.23',
     Capabilities: [],
   },
   Files: [],
@@ -78,5 +81,41 @@ describe('Companion Device HTTPClient preflight', () => {
     )).rejects.toThrow('Set xConfiguration HttpClient Mode to On, then reconnect.');
     expect(harness.configSet).not.toHaveBeenCalled();
     expect(harness.command).not.toHaveBeenCalled();
+  });
+
+  it('subscribes to AllowInsecureHTTPS, refreshes the current value, and reports later changes', async () => {
+    let listener: ((value: unknown) => void) | undefined;
+    const unsubscribe = Object.assign(vi.fn(), {
+      registration: Promise.resolve({ Id: 17 }),
+    });
+    const configGet = vi.fn(async () => 'False');
+    const configOn = vi.fn((_path: string, callback: (value: unknown) => void) => {
+      listener = callback;
+      return unsubscribe;
+    });
+    const onChange = vi.fn();
+
+    const closeMonitor = await monitorHttpClientTrustPosture({
+      config: {
+        get: configGet,
+        on: configOn,
+      },
+    } as never, onChange);
+
+    expect(configOn).toHaveBeenCalledWith('HttpClient AllowInsecureHTTPS', expect.any(Function));
+    expect(configGet).toHaveBeenCalledWith('HttpClient AllowInsecureHTTPS');
+    expect(onChange).toHaveBeenLastCalledWith({
+      httpClientAllowsInsecureHTTPS: false,
+      httpClientTrustPosture: 'Strict certificate validation',
+    });
+
+    listener?.({ Value: 'True' });
+    expect(onChange).toHaveBeenLastCalledWith({
+      httpClientAllowsInsecureHTTPS: true,
+      httpClientTrustPosture: 'Untrusted/self-signed certificates permitted',
+    });
+
+    closeMonitor();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 });
