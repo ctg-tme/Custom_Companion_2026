@@ -275,6 +275,18 @@ export class InstallerApp {
     return this.snapshot?.source.id === this.selectedSourceId && Boolean(this.configDocument);
   }
 
+  private prepareSelectedSourceIfNeeded(): void {
+    if (
+      this.step !== 1
+      || !this.discovery
+      || this.companionDevice
+      || this.busy
+      || this.error
+      || this.selectedSourceIsPrepared()
+    ) return;
+    void this.prepareSource();
+  }
+
   private currentCompleteSetupCapabilities() {
     return completeSetupCapabilities(this.snapshot?.manifest);
   }
@@ -332,6 +344,7 @@ export class InstallerApp {
     this.bindEvents();
     this.bindReadmeEvents();
     void renderMermaidDiagrams(this.root);
+    this.prepareSelectedSourceIfNeeded();
   }
 
   private bindReadmeEvents(): void {
@@ -371,12 +384,17 @@ export class InstallerApp {
       if (this.companionDevice) {
         return '<div class="actions split"><button class="button ghost" id="back-introduction">Back to introduction</button><button class="button primary" id="source-continue">Return to connection</button></div>';
       }
-      const disabled = !this.discovery || this.busy || (source?.kind === 'main' && !this.betaAcknowledged);
+      const prepared = this.selectedSourceIsPrepared();
+      const retryAvailable = !prepared && Boolean(this.error);
+      const disabled = !this.discovery
+        || this.busy
+        || (!prepared && !retryAvailable)
+        || (prepared && source?.kind === 'main' && !this.betaAcknowledged);
       const label = this.busy
         ? '<span class="spinner inverse"></span>Preparing source…'
-        : this.selectedSourceIsPrepared()
-          ? 'Continue to connection'
-          : 'Review selected release';
+        : retryAvailable
+          ? 'Retry loading selected release'
+          : 'Continue to connection';
       return `<div class="actions split"><button class="button ghost" id="back-introduction">Back to introduction</button><button class="button primary" id="source-continue" ${disabled ? 'disabled' : ''}>${label}</button></div>`;
     }
     if (this.step === 2) {
@@ -447,17 +465,19 @@ export class InstallerApp {
       <section class="panel release-prerequisites" aria-labelledby="solution-prerequisites-title">
         <div class="panel-heading"><span class="heading-icon warning-color">${warningIcon}</span><div><h2 id="solution-prerequisites-title">Solution prerequisites</h2><p>Prepare these requirements for the Companion Device and every Parent Room Device that will participate in this deployment.</p></div></div>
         <ul class="prerequisite-list">
-          <li><strong>Enable device-to-device HTTP.</strong><span>Set <code>xConfiguration HttpClient Mode: On</code> on every participating device before connecting or starting Parent Room Registration. The installer and runtime verify this setting but never change it.</span></li>
-          <li><strong>Choose the certificate posture on each sending device.</strong><span>Use <code>HttpClient AllowInsecureHTTPS: False</code> with trusted issuing CAs and requested hosts present in certificate SANs. If you are not provisioning trusted, host-matching endpoint certificates, set it to <code>True</code> and accept that this permits untrusted or self-signed certificates device-wide.</span></li>
-          <li><strong>Prepare both network directions.</strong><span>The Installer Computer must reach the Companion Device over HTTPS/WSS, the Companion Device must reach each Parent Room Device over HTTPS, and every Parent Room Device must reach the Companion callback host over HTTPS. Browser certificate trust does not configure RoomOS HTTPClient trust.</span></li>
-          <li><strong>Prepare identity, access, and a maintenance window.</strong><span>Record expected serials, create the required installer, callback, and Parent Room accounts, enable Macro Runtime, and avoid installation or registration while affected devices have active calls.</span></li>
+          <li><strong>Enable device-to-device HTTP.</strong><span>Set <code>HttpClient Mode: On</code> on every Companion and Parent Room Device. The installer and runtime verify but never change it.</span></li>
+          <li><strong>Choose the certificate posture.</strong><span>Use <code>AllowInsecureHTTPS: False</code> only with trusted CAs and host/SAN matching. Otherwise use <code>True</code>, accepting device-wide untrusted or self-signed certificates.</span></li>
+          <li><strong>Prepare both network directions.</strong><span>Allow HTTPS/WSS from the Installer Computer to the Companion Device and HTTPS both ways between Companion and Parent Room Devices. Browser trust does not configure RoomOS trust.</span></li>
+          <li><strong>Prepare identity and a maintenance window.</strong><span>Record serials, create installer, callback, and Parent Room accounts, enable Macro Runtime, and schedule work when affected devices have no active calls.</span></li>
         </ul>
       </section>`;
   }
 
   private renderSelectedReleaseRequirements(): string {
     if (!this.selectedSourceIsPrepared() || !this.snapshot) {
-      return `<div class="notice warning release-requirements-pending"><span>${warningIcon}</span><div><strong>Selected-release requirements are not loaded yet</strong><p>Select Review selected release to validate its manifest and show its minimum RoomOS version, supported Companion Device products, and external macro dependencies before connection.</p></div></div>`;
+      return this.busy
+        ? '<div class="loading-row release-requirements-loading"><span class="spinner"></span>Loading selected-release requirements…</div>'
+        : '';
     }
     const manifest = this.snapshot.manifest;
     const externalDependencies = manifest.ExternalDependencies.length
@@ -485,13 +505,15 @@ export class InstallerApp {
       <section class="panel source-panel">
         <div class="panel-heading"><span class="heading-icon">${cloudIcon}</span><div><h2>Release channel</h2><p>Stable releases appear first, followed by Preview builds and the versioned Main Fork (Beta).</p></div></div>
         ${loading ? '<div class="loading-row"><span class="spinner"></span>Checking GitHub releases…</div>' : `
-          <label class="field"><span>Installation source</span>
-            <select id="source-select" ${this.busy || sourceLocked ? 'disabled' : ''}>
-              ${this.discovery?.unreachableReason ? `<option disabled>Releases unreachable — repository may be private</option>` : ''}
-              ${this.discovery?.sources.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === this.selectedSourceId ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}
-            </select>
-          </label>
-          ${source ? `<a class="resource-link" href="${escapeHtml(source.resourceUrl)}" target="_blank" rel="noopener noreferrer"><span>${cloudIcon}</span><span><strong>View ${escapeHtml(source.label)}</strong><small>${escapeHtml(source.resourceUrl)}</small></span></a>` : ''}
+          <div class="release-source-options">
+            <label class="field"><span>Installation source</span>
+              <select id="source-select" ${this.busy || sourceLocked ? 'disabled' : ''}>
+                ${this.discovery?.unreachableReason ? `<option disabled>Releases unreachable — repository may be private</option>` : ''}
+                ${this.discovery?.sources.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === this.selectedSourceId ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}
+              </select>
+            </label>
+            ${source ? `<a class="resource-link" href="${escapeHtml(source.resourceUrl)}" target="_blank" rel="noopener noreferrer"><span>${cloudIcon}</span><span><strong>View ${escapeHtml(source.label)}</strong><small>${escapeHtml(source.resourceUrl)}</small></span></a>` : ''}
+          </div>
           ${sourceLocked ? '<div class="notice success"><span>${checkIcon}</span><div><strong>Installation source locked for this connection</strong><p>Disconnect from the Companion Device before selecting a different release.</p></div></div>' : ''}
           ${this.discovery?.unreachableReason ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Published releases could not be listed</strong><p>${escapeHtml(this.discovery.unreachableReason)} Main Fork (Beta) remains available from this Pages build.</p></div></div>` : ''}
           ${source?.kind === 'main' ? `
@@ -931,7 +953,11 @@ export class InstallerApp {
     this.byId('dev-reset')?.addEventListener('click', () => this.reset());
     this.byId('dev-preview-installation-type')?.addEventListener('click', () => void this.navigateLocalReview(4));
     this.byId('dev-preview-complete')?.addEventListener('click', () => void this.navigateLocalReview(7));
-    this.byId('start-installer')?.addEventListener('click', () => { this.step = 1; this.error = ''; this.render(); });
+    this.byId('start-installer')?.addEventListener('click', () => {
+      this.step = 1;
+      this.error = '';
+      this.render();
+    });
     for (const control of this.root.querySelectorAll<HTMLButtonElement>('[data-workflow-step]')) {
       control.addEventListener('click', () => this.navigateBackward(Number(control.dataset.workflowStep)));
     }

@@ -4,7 +4,7 @@ Static GitHub Pages installer for deploying a selected Custom Companion release 
 
 The selected release supplies its own Config macro, so ordinary Config fields are release-specific. Optional browser-to-runtime workflows use the active [Companion Installer Compatibility and Capabilities](../docs/installer-capabilities.md) contract. The current manifest declares Registration, Inventory, and Deregistration. Published Preview `v0.1.2.51` receives an exact Registration-only legacy profile, so the installer does not request Inventory or expose Deregistration for that runtime.
 
-The Release page presents whole-solution prerequisites before source preparation. After the selected source snapshot is validated, it remains on Release and adds the manifest-derived minimum RoomOS version, software and product platforms, and external macro dependencies. The Device Administrator then continues to Connect with those requirements visible first.
+The Release page presents whole-solution prerequisites and automatically prepares the default source when the page opens. Changing the selection immediately prepares that source instead. After the selected snapshot is validated, Release adds the manifest-derived minimum RoomOS version, software and product platforms, and external macro dependencies. A failed automatic load leaves a retry action; Main Fork (Beta) acknowledgement still gates continuation to Connect.
 
 ## Local preview
 

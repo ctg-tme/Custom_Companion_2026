@@ -648,28 +648,54 @@ h2 {
 }
 
 .source-panel {
-  max-width: 720px;
+  padding: 18px 20px;
+}
+
+.source-panel .panel-heading {
+  margin-bottom: 14px;
+}
+
+.release-source-options {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.release-source-options .field {
+  margin-bottom: 0;
+}
+
+.release-source-options .resource-link {
+  margin-top: 0;
 }
 
 .release-prerequisites,
 .selected-release-requirements {
-  margin-top: 20px;
+  margin-top: 12px;
+  padding: 18px 20px;
 }
 
-.release-requirements-pending {
-  margin-top: 20px;
+.release-prerequisites .panel-heading,
+.selected-release-requirements .panel-heading {
+  margin-bottom: 14px;
+}
+
+.release-requirements-loading {
+  margin-top: 12px;
 }
 
 .prerequisite-list {
   display: grid;
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .prerequisite-list li {
-  padding: 14px 16px;
+  padding: 10px 12px;
   border-left: 3px solid var(--mds-color-theme-outline-theme-normal, #1170cf);
   border-radius: 8px;
   background: var(--mds-color-theme-background-solid-secondary-normal, #f7f7f7);
@@ -689,14 +715,18 @@ h2 {
 
 .release-requirements-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns:
+    minmax(120px, 0.7fr)
+    minmax(120px, 0.7fr)
+    minmax(260px, 1.8fr)
+    minmax(180px, 1fr);
+  gap: 8px;
   margin: 0;
 }
 
 .release-requirements-grid > div {
   min-width: 0;
-  padding: 14px 16px;
+  padding: 10px 12px;
   border: 1px solid var(--mds-color-theme-outline-primary-normal, #00000033);
   border-radius: 10px;
   background: var(--mds-color-theme-background-solid-secondary-normal, #f7f7f7);
@@ -2226,6 +2256,8 @@ input[type='radio'] {
   .verification-grid,
   .summary-grid,
   .summary-grid.install-summary,
+  .release-source-options,
+  .prerequisite-list,
   .release-requirements-grid,
   .installation-type-grid,
   .config-grid {

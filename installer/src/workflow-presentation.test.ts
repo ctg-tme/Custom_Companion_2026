@@ -36,15 +36,26 @@ describe('installer workflow presentation', () => {
   });
 
   it('shows whole-solution and selected-release prerequisites before connection', async () => {
-    const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
+    const [source, styles] = await Promise.all([
+      readFile(new URL('./app.ts', import.meta.url), 'utf8'),
+      readFile(new URL('./styles.css', import.meta.url), 'utf8'),
+    ]);
 
     expect(source).toContain('Solution prerequisites');
     expect(source).toContain('Selected-release requirements');
-    expect(source).toContain('Review selected release');
+    expect(source).not.toContain('Review selected release');
+    expect(source).toContain('Loading selected-release requirements');
+    expect(source).toContain('this.prepareSelectedSourceIfNeeded();');
+    expect(source).toMatch(/private prepareSelectedSourceIfNeeded\(\): void \{[\s\S]*this\.step !== 1[\s\S]*void this\.prepareSource\(\)/);
+    expect(source).toContain('Retry loading selected release');
+    expect(source).toContain("(prepared && source?.kind === 'main' && !this.betaAcknowledged)");
     expect(source).toContain('manifest.MinimumRoomOSVersion');
     expect(source).toContain('manifest.ProductPlatform.join');
     expect(source).toContain('manifest.ExternalDependencies');
-    expect(source).toContain('If you are not provisioning trusted, host-matching endpoint certificates');
+    expect(source).toContain('Use <code>AllowInsecureHTTPS: False</code> only with trusted CAs and host/SAN matching');
+    expect(styles).toMatch(/\.release-source-options\s*\{[^}]*grid-template-columns:/s);
+    expect(styles).toMatch(/\.prerequisite-list\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
+    expect(styles).toMatch(/\.release-prerequisites,\s*\.selected-release-requirements\s*\{[^}]*padding:\s*18px 20px/s);
   });
 
   it('uses multiline User Guidance controls and repeats HTTPClient prerequisites for Parent registration', async () => {

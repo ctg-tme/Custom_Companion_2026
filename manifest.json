@@ -2,7 +2,7 @@
   "SchemaVersion": 1,
   "CompanionInstaller": {
     "ContractVersion": 1,
-    "TestedVersion": "0.1.23",
+    "TestedVersion": "0.1.24",
     "Capabilities": [
       "installer.parent-deregistration.v1",
       "installer.parent-inventory.v1",

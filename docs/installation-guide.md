@@ -67,7 +67,7 @@ Protect all device credentials and any backup of generated storage. Do not place
 ## Install with the Companion Installer
 
 1. Open the [Companion Installer Web Application](https://ctg-tme.github.io/Custom_Companion_2026/).
-2. Review the project introduction and the whole-solution prerequisites on Release, then choose the newest appropriate stable release. Acknowledge the warning if you intentionally select Main Fork (Beta). Select **Review selected release**, inspect its manifest-derived minimum RoomOS version, software and product platforms, and external macro dependencies, then continue to connection.
+2. Review the project introduction and the whole-solution prerequisites on Release. The default source prepares automatically; choosing another source immediately prepares it instead. Inspect the resulting manifest-derived minimum RoomOS version, software and product platforms, and external macro dependencies. Acknowledge the warning if you intentionally select Main Fork (Beta), then continue to connection.
 3. On Connect, confirm the reminder to set `xConfiguration HttpClient Mode: On` before sign-in and the trust-posture guidance. Then enter the Companion Device host address, expected serial number, and Installer Credentials.
 4. If sign-in fails because of certificate trust, open the Companion Device HTTPS page from the installer, accept the browser warning according to your organization's policy, and try again.
 5. Confirm that the installer reports a matching serial number, supported product family, and supported RoomOS version.

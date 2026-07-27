@@ -12,7 +12,7 @@ const manifest: InstallManifest = {
   ProductPlatform: ['Board Pro'],
   CompanionInstaller: {
     ContractVersion: 1,
-    TestedVersion: '0.1.23',
+    TestedVersion: '0.1.24',
     Capabilities: [],
   },
   Files: [],
