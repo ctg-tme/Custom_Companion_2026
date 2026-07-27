@@ -6,7 +6,7 @@ import test from 'node:test';
 import { verifyReleaseContract } from './verify-release-contract.mjs';
 
 const version = '1.2.3.4';
-const installerVersion = '0.1.19';
+const installerVersion = '0.1.20';
 const contract = {
   MainMacroFile: 'Custom-Campanion_1_Main_2026.js',
   ConfigMacroFile: 'Custom-Campanion_2_Config_2026.js',

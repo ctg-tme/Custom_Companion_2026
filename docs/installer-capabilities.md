@@ -21,7 +21,7 @@ Manifest fragment, with unrelated fields omitted:
   "SchemaVersion": 1,
   "CompanionInstaller": {
     "ContractVersion": 1,
-    "TestedVersion": "0.1.19",
+    "TestedVersion": "0.1.20",
     "Capabilities": [
       "installer.parent-deregistration.v1",
       "installer.parent-inventory.v1",
@@ -58,7 +58,8 @@ The table collapses documentation-only Main snapshots when their runtime and ins
 | Main from `78ed359` through `3d35c89` | `0.1.2.54` | `0.1.16` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
 | Main at `e8852a1` | `0.1.2.55` | `0.1.17` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
 | Main from `eafe180` through `0bfbfa5` | `0.1.2.55` | `0.1.18` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
-| Main after this work package | `0.1.2.56` | `0.1.19` | Current Main Fork source | Registration, Inventory, and Deregistration `v1` |
+| Main at `847b805` | `0.1.2.56` | `0.1.19` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
+| Main after this work package | `0.1.2.56` | `0.1.20` | Current Main Fork source | Registration, Inventory, and Deregistration `v1` |
 
 Preview `v0.1.2.51` predates the `CompanionInstaller` manifest object. The installer applies one explicit legacy profile only when that tag resolves to commit `be539c292d79197e8303d42b68902c6985cde699`: Contract Version 1, Tested Installer Version `0.1.14`, and `installer.parent-registration.v1`. It does not infer support from the runtime version. Any other manifest without `CompanionInstaller` metadata is invalid.
 

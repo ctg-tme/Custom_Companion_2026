@@ -90,7 +90,10 @@ describe('installer workflow presentation', () => {
   });
 
   it('offers installer-computer defaults and safe icon previews in Configure', async () => {
-    const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
+    const [source, styles] = await Promise.all([
+      readFile(new URL('./app.ts', import.meta.url), 'utf8'),
+      readFile(new URL('./styles.css', import.meta.url), 'utf8'),
+    ]);
 
     expect(source).toContain('Selected installation source');
     expect(source).toContain('Version ${escapeHtml(selectedVersion)}');
@@ -101,6 +104,8 @@ describe('installer workflow presentation', () => {
     expect(source).toContain('Use Computer Time Zone');
     expect(source).toContain('data-icon-preview-for');
     expect(source).toContain('Preview unavailable');
+    expect(styles).toMatch(/\.config-icon-preview-frame\s*\{[^}]*background:\s*var\(--mds-color-core-gray-90,\s*#1f2226\)/s);
+    expect(styles).not.toMatch(/\.config-icon-preview-frame\s*\{[^}]*linear-gradient/s);
   });
 
   it('uses document scrolling instead of a dynamic-viewport-height trap', async () => {
