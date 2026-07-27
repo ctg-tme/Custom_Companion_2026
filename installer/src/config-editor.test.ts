@@ -16,6 +16,7 @@ describe('dynamic Config editing', () => {
     expect(document.leaves.some((leaf) => formatConfigPath(leaf.path) === 'UserInterface.WebWidget.CompanionWidget.weather.latitude')).toBe(true);
     expect(document.leaves.some((leaf) => formatConfigPath(leaf.path) === 'pinMode.defaults.pin')).toBe(true);
     expect(document.leaves.find((leaf) => formatConfigPath(leaf.path) === 'version')?.lockedReason).toBe('version');
+    expect(document.leaves.find((leaf) => formatConfigPath(leaf.path) === 'CompanionBoardInformation.host')?.value).toBe('0.0.0.0');
   });
 
   it('injects the login host and callback values without reformatting the file', async () => {

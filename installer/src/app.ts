@@ -446,7 +446,7 @@ export class InstallerApp {
       <section class="panel connect-panel">
         <div class="panel-heading"><span class="heading-icon">${deviceIcon}</span><div><h2>Companion Device connection</h2><p>Enter the device identity and administrator credentials. The serial comparison confirms the intended device before installation.</p></div></div>
         <div class="connection-fields">
-          <label class="field"><span>Companion Device host address</span><input id="companion-device-host" inputmode="url" placeholder="companion.example.com or 10.0.0.120" value="${escapeHtml(this.adminCredentials.host)}" autocomplete="off" ${locked}></label>
+          <label class="field"><span>Companion Device host address</span><input id="companion-device-host" inputmode="url" placeholder="0.0.0.0" value="${escapeHtml(this.adminCredentials.host)}" autocomplete="off" ${locked}></label>
           <label class="field"><span>Companion Device Serial</span><input id="expected-serial" value="${escapeHtml(this.expectedSerial)}" autocomplete="off" spellcheck="false" ${locked}><small>The serial is used for Device Verification prior to Installation</small></label>
           <label class="field"><span>Companion Device Username</span><input id="admin-username" value="${escapeHtml(this.adminCredentials.username)}" autocomplete="username" ${locked}></label>
           <label class="field"><span>Companion Device Password</span><input id="admin-password" type="password" value="${escapeHtml(this.adminCredentials.password)}" autocomplete="current-password" ${locked}></label>
@@ -668,7 +668,7 @@ export class InstallerApp {
           ${outcomeNotice}
           <form id="parent-registration-form" class="parent-registration-form">
           <div class="connection-fields">
-            <label class="field"><span>Parent Room Device host address</span><input id="parent-device-host" inputmode="url" placeholder="parent.example.com or 10.0.0.121" value="${escapeHtml(form.host)}" autocomplete="off" ${disabled}></label>
+            <label class="field"><span>Parent Room Device host address</span><input id="parent-device-host" inputmode="url" placeholder="0.0.0.0" value="${escapeHtml(form.host)}" autocomplete="off" ${disabled}></label>
             <label class="field"><span>Parent Room Device Serial</span><input id="parent-device-serial" value="${escapeHtml(form.serial)}" autocomplete="off" spellcheck="false" ${disabled}><small>The Companion Device uses this value to verify the Parent Room Device before installation.</small></label>
             <label class="field"><span>Parent Room Device Username</span><input id="parent-device-username" value="${escapeHtml(form.username)}" autocomplete="username" ${disabled}></label>
             <label class="field"><span>Parent Room Device Password</span><input id="parent-device-password" type="password" value="${escapeHtml(form.password)}" autocomplete="new-password" ${disabled}></label>

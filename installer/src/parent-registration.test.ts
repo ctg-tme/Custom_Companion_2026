@@ -50,6 +50,17 @@ describe('installer Parent Room Registration request', () => {
       allowOverwrite: false,
     }, 'companion-456')).toThrow('passwords do not match');
   });
+
+  it('rejects the unset host placeholder before any Companion Device message is created', () => {
+    expect(() => createParentRegistrationRequest({
+      host: '0.0.0.0',
+      serial: 'parent-123',
+      username: 'parent-admin',
+      password: 'test-password',
+      passwordConfirmation: 'test-password',
+      allowOverwrite: false,
+    }, 'companion-456')).toThrow('valid Parent Room Device hostname or IP address');
+  });
 });
 
 describe('Parent Room Registration monitor', () => {

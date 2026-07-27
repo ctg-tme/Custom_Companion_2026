@@ -27,7 +27,9 @@ export function normalizeCompanionDeviceHost(input: string): string {
   } catch {
     throw new Error('Enter a valid Companion Device hostname or IP address.');
   }
-  if (url.username || url.password || !url.host) throw new Error('Enter a valid Companion Device hostname or IP address.');
+  if (url.username || url.password || !url.host || url.hostname === '0.0.0.0') {
+    throw new Error('Enter a valid Companion Device hostname or IP address.');
+  }
   return url.host;
 }
 

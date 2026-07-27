@@ -11,6 +11,8 @@ describe('installer workflow presentation', () => {
     expect(source).toContain('Companion Device Username');
     expect(source).toContain('Companion Device Password');
     expect(source).toContain('this.certificatePromptVisible ?');
+    expect(source.match(/placeholder="0\.0\.0\.0"/g)).toHaveLength(2);
+    expect(source).not.toMatch(/placeholder="[^"]*(?:10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/);
     expect(source).not.toContain('Expected serial number');
     expect(source).not.toContain('The serial read from the Companion Device is never displayed or logged.');
   });

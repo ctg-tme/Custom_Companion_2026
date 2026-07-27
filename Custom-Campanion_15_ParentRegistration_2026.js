@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 22, 2026
  * Revised:                 July 27, 2026
- * Version:                 1.0.8
+ * Version:                 1.0.9
  *
  * Description:             Parent Room Registration and Deregistration controller. Owns the
  *                          PIN-authorized wizard, locked provisioning stages, long-hold removal,
@@ -389,7 +389,7 @@ function createParentRegistration(options) {
 			text: text || 'Enter the Parent Room Device host name or IP address.',
 			feedbackId: FEEDBACK_IDS.host,
 			inputType: 'SingleLine',
-			placeholder: 'room.example.com or 10.0.0.10',
+			placeholder: '0.0.0.0',
 			submitText: 'Next',
 			duration: STAGE_TIMEOUT_MS / 1000
 		});
@@ -1239,7 +1239,7 @@ function createParentRegistration(options) {
 
 	function normalizeHost(value) {
 		const host = String(value || '').trim().toLowerCase();
-		if (!host || host.indexOf('://') >= 0 || host.indexOf('/') >= 0 || /\s/.test(host) || host.length > 253) {
+		if (!host || host === '0.0.0.0' || host.indexOf('://') >= 0 || host.indexOf('/') >= 0 || /\s/.test(host) || host.length > 253) {
 			return '';
 		}
 		if (isValidIpv4Address(host) || isValidDnsHostName(host) || isValidBracketedIpv6Address(host)) {

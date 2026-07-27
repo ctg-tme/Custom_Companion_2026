@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.54
+ * Version:                 0.1.2.55
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -388,7 +388,8 @@ function validateCompanionDeviceCallbackConfiguration() {
 	for (let index = 0; index < requiredFields.length; index++) {
 		const field = requiredFields[index];
 		const value = callbackConfiguration && callbackConfiguration[field];
-		if (typeof value !== 'string' || !value.trim()) {
+		const normalizedValue = typeof value === 'string' ? value.trim() : '';
+		if (!normalizedValue || (field === 'host' && normalizedValue === '0.0.0.0')) {
 			invalidFields.push(`CompanionBoardInformation.${field}`);
 		}
 	}
