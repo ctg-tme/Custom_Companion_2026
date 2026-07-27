@@ -22,7 +22,7 @@
   </defs>
 
   <!-- Artwork bounds target 5% horizontal padding in the 512x512 source canvas. -->
-  <g id="roomos-glyph" fill="#FFFFFF" transform="translate(-10.4727 -24.0045) scale(1.040909)">
+  <g id="roomos-glyph" fill="#FFFFFF" transform="translate(-7.04 -20.3975) scale(1.0275)">
     <g id="parent-room-device" mask="url(#parent-companion-separation)">
       <!-- Parent Room Device: a strong filled frame rather than a thin outline. -->
       <path id="parent-display-frame" fill-rule="evenodd" d="
