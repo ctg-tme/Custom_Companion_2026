@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 20, 2026
  * Revised:                 July 27, 2026
- * Version:                 1.0.7
+ * Version:                 1.0.8
  *
  * Description:             Paired Environment Policy controller for the Custom Companion solution.
  *                          Owns reversible local configuration policy, Companion Web Widget mode,
@@ -527,10 +527,9 @@ function createPairedEnvironment(options) {
 		try {
 			dependencies.log.debug({ Message: 'Companion Web Widget URL computed', Mode: activeMode, RestoreExistingWebWidget: !!shouldRestoreExistingWebWidget, UrlOverrideUsed: !!webWidgetConfig.urlOverride, Url: url });
 			if (shouldRestoreExistingWebWidget) {
-				await dependencies.companionUi.removeCompanionWebWidget(dependencies.xapi);
-				await dependencies.companionUi.saveWebWidget(dependencies.xapi, standaloneWebWidget);
+				await dependencies.companionUi.replaceWebWidget(dependencies.xapi, standaloneWebWidget);
 			} else {
-				await dependencies.companionUi.saveCompanionWebWidget(dependencies.xapi, url);
+				await dependencies.companionUi.replaceCompanionWebWidget(dependencies.xapi, url);
 			}
 			dependencies.log.debug({ Message: 'Companion Web Widget mode applied', Mode: activeMode, RestoredStandaloneWidget: !!shouldRestoreExistingWebWidget, UrlLength: url.length });
 		} catch (error) {
@@ -671,7 +670,7 @@ function createPairedEnvironment(options) {
 				standaloneUiFeatureConfig.webWidgetUrl = standaloneUiFeatureConfig.webWidget ? standaloneUiFeatureConfig.webWidget.url : '';
 				hasUpdates = true;
 			} catch (error) {
-				dependencies.log.warn({ Message: 'Failed to save original Standalone Web Widget URL', Error: error.message || error.code || 'Unknown Web Widget status error' });
+				dependencies.log.warn({ Message: 'Failed to save original Standalone Web Widget', Error: error.message || error.code || 'Unknown Web Widget inventory error' });
 			}
 		}
 

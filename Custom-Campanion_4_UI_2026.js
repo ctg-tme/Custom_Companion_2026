@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 1.0.30
+ * Version:                 1.0.31
  *
  * Description:             Companion Device access and hidden panels, custom access-panel icon,
  *                          PIN/registration/status prompts, shared Companion Alert ownership,
@@ -75,10 +75,9 @@ let pendingIconDownload = null;
 
 /*
  * UI xAPI surface:
- * - Commands: UserInterface.Extensions.Icon.Download, Panel.Save/Update/Remove/Open/Close, Widget.SetValue,
+ * - Commands: UserInterface.Extensions.List, Icon.Download, Panel.Save/Update/Remove/Open/Close, Widget.SetValue,
  *   UserInterface.Message.TextInput.Display/Clear, UserInterface.Message.Prompt.Display/Clear,
  *   and Extensions.WebWidget.Save/Remove.
- * - Read: Status.UserInterface.WebView.
  * Event subscriptions remain explicit in the Companion Device entry macro because it owns event routing.
  */
 
@@ -536,10 +535,22 @@ async function showStandaloneInfo(XAPIObject) {
 }
 
 async function getCurrentWebWidget(XAPIObject) {
-	const webViews = normalizeWebViews(await XAPIObject.Status.UserInterface.WebView.get());
-	const webWidget = webViews.find(view => String(view.Type || view.Mode || '').toLowerCase() === 'webwidget');
+	const extensions = await XAPIObject.Command.UserInterface.Extensions.List({ ActivityType: 'WebWidget' });
+	const webWidget = findWebWidgetExtension(extensions);
 
 	return webWidget ? normalizeWebWidget(webWidget) : null;
+}
+
+async function replaceWebWidget(XAPIObject, webWidget) {
+	if (!webWidget || !webWidget.url) {
+		return;
+	}
+
+	const currentWebWidget = await getCurrentWebWidget(XAPIObject);
+	if (currentWebWidget && currentWebWidget.panelId && currentWebWidget.panelId !== webWidget.panelId) {
+		await XAPIObject.Command.UserInterface.Extensions.WebWidget.Remove({ PanelId: currentWebWidget.panelId });
+	}
+	await saveWebWidget(XAPIObject, webWidget);
 }
 
 async function saveWebWidget(XAPIObject, webWidget) {
@@ -552,6 +563,15 @@ async function saveWebWidget(XAPIObject, webWidget) {
 		PanelId: webWidget.panelId || WEB_WIDGET_PANEL_ID,
 		RefreshInterval: webWidget.refreshInterval === undefined ? WEB_WIDGET_REFRESH_INTERVAL : webWidget.refreshInterval,
 		URL: webWidget.url
+	});
+}
+
+async function replaceCompanionWebWidget(XAPIObject, url) {
+	await replaceWebWidget(XAPIObject, {
+		panelId: WEB_WIDGET_PANEL_ID,
+		name: WEB_WIDGET_NAME,
+		refreshInterval: WEB_WIDGET_REFRESH_INTERVAL,
+		url: url
 	});
 }
 
@@ -673,24 +693,37 @@ function buildHashParams(params) {
 	return hashParts.join('&');
 }
 
-function normalizeWebViews(webViewStatus) {
-	if (!webViewStatus) {
-		return [];
+function findWebWidgetExtension(value) {
+	if (!value) {
+		return null;
 	}
 
-	if (Array.isArray(webViewStatus)) {
-		return webViewStatus;
+	if (Array.isArray(value)) {
+		for (let index = 0; index < value.length; index++) {
+			const webWidget = findWebWidgetExtension(value[index]);
+			if (webWidget) {
+				return webWidget;
+			}
+		}
+		return null;
 	}
 
-	if (Array.isArray(webViewStatus.WebView)) {
-		return webViewStatus.WebView;
+	if (typeof value !== 'object') {
+		return null;
 	}
 
-	if (typeof webViewStatus === 'object') {
-		return Object.keys(webViewStatus).map(key => webViewStatus[key]);
+	if (String(value.ActivityType || '').toLowerCase() === 'webwidget') {
+		return value;
 	}
 
-	return [];
+	const keys = Object.keys(value);
+	for (let index = 0; index < keys.length; index++) {
+		const webWidget = findWebWidgetExtension(value[keys[index]]);
+		if (webWidget) {
+			return webWidget;
+		}
+	}
+	return null;
 }
 
 function normalizeWebWidget(webWidget) {
@@ -789,6 +822,8 @@ const companionUi = {
 	setPinModeFeedback,
 	showStandaloneInfo,
 	getCurrentWebWidget,
+	replaceWebWidget,
+	replaceCompanionWebWidget,
 	saveWebWidget,
 	saveCompanionWebWidget,
 	removeWebWidget,

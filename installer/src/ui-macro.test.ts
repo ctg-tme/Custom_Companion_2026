@@ -1,9 +1,57 @@
 import { readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const PANEL_ICON_URL = 'https://ctg-tme.github.io/Custom_Companion_2026/icons/custom-companion-512.png';
 
 describe('Companion Device UI macro', () => {
+  it('discovers a saved WebWidget recursively through Extensions.List', async () => {
+    const source = await readFile(new URL('../../Custom-Campanion_4_UI_2026.js', import.meta.url), 'utf8');
+    const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}#webwidget-list`;
+    const { companionUi } = await import(moduleUrl) as {
+      companionUi: {
+        getCurrentWebWidget: (xapi: unknown) => Promise<Record<string, unknown> | null>;
+      };
+    };
+    const list = vi.fn(async () => ({
+      Extensions: {
+        Panel: [
+          {
+            ActivityType: 'WebWidget',
+            Name: 'Existing WebWidget',
+            PanelId: 'existingWebWidget',
+            RefreshInterval: 45,
+            URL: 'https://example.test/existing',
+          },
+        ],
+      },
+    }));
+
+    const webWidget = await companionUi.getCurrentWebWidget({
+      Status: {
+        UserInterface: {
+          WebView: {
+            get: async () => [],
+          },
+        },
+      },
+      Command: {
+        UserInterface: {
+          Extensions: {
+            List: list,
+          },
+        },
+      },
+    });
+
+    expect(list).toHaveBeenCalledWith({ ActivityType: 'WebWidget' });
+    expect(webWidget).toEqual({
+      name: 'Existing WebWidget',
+      panelId: 'existingWebWidget',
+      refreshInterval: 45,
+      url: 'https://example.test/existing',
+    });
+  });
+
   it('dispatches the hard-coded panel icon download first after the UI build', async () => {
     const source = await readFile(new URL('../../Custom-Campanion_4_UI_2026.js', import.meta.url), 'utf8');
     const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;

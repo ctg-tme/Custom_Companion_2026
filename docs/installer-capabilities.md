@@ -61,7 +61,7 @@ The table collapses documentation-only Main snapshots when their runtime and ins
 | Main at `847b805` | `0.1.2.56` | `0.1.19` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
 | Main at `b083f09` | `0.1.2.56` | `0.1.20` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
 | Main at `f4e5007` | `0.1.2.57` | `0.1.20` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
-| Main after this work package | `0.1.2.59` | `0.1.25` | Current Main Fork source | Registration, Inventory, and Deregistration `v1` plus additive operation progress |
+| Main after this work package | `0.1.2.60` | `0.1.25` | Current Main Fork source | Registration, Inventory, and Deregistration `v1` plus additive operation progress |
 
 Preview `v0.1.2.51` predates the `CompanionInstaller` manifest object. The installer applies one explicit legacy profile only when that tag resolves to commit `be539c292d79197e8303d42b68902c6985cde699`: Contract Version 1, Tested Installer Version `0.1.14`, and `installer.parent-registration.v1`. It does not infer support from the runtime version. Any other manifest without `CompanionInstaller` metadata is invalid.
 
