@@ -22,6 +22,7 @@ import {
   setLockedInstallerValues,
 } from './config-editor';
 import { groupConfigLeaves, humanizeConfigForReview, humanizeConfigSegment, type ConfigGroup } from './config-presentation';
+import { computerLocation, computerTimeZone, iconPreviewUrl } from './computer-defaults';
 import {
   connectToCompanionDevice,
   listInstalledMacros,
@@ -45,6 +46,7 @@ import {
   ParentAdministrationMonitor,
   createParentDeregistrationRequest,
   createParentInventoryRequest,
+  parentInventoryPlanAfterInstallation,
   sendParentAdministrationRequest,
 } from './parent-administration';
 import {
@@ -82,6 +84,8 @@ const INSTALLER_VERSION = installerPackage.version;
 const TEAM_ICON_URL = 'https://avatars.githubusercontent.com/u/159071680?s=200&v=4';
 const TEAM_GITHUB_URL = 'https://github.com/ctg-tme';
 const CISCO_SAMPLE_CODE_LICENSE_URL = 'https://developer.cisco.com/docs/licenses';
+const WEATHER_CONFIG_PATH = 'UserInterface.WebWidget.CompanionWidget.weather';
+const TIME_CONFIG_PATH = 'UserInterface.WebWidget.CompanionWidget.time';
 const BOARD_REGISTRATION_WALKTHROUGH = [
   {
     src: boardRegistrationOpenConfig,
@@ -206,10 +210,14 @@ export class InstallerApp {
   private parentInventory: ParentInventory = { registered: [], pending: [] };
   private parentInventoryLoading = false;
   private parentInventoryError = '';
+  private parentInventoryKnownEmpty = false;
   private parentAdministrationMonitor?: ParentAdministrationMonitor;
   private parentDeregistrationTarget?: RegisteredParentSummary;
   private parentDeregistrationOutcome?: ParentDeregistrationOutcome;
   private parentAdministrationBusy = false;
+  private computerDefaultBusy?: 'location' | 'time-zone';
+  private weatherComputerStatus?: { kind: 'success' | 'error'; message: string };
+  private timeZoneComputerStatus?: { kind: 'success' | 'error'; message: string };
   private readonly localReviewEnabled = isLocalReviewHost(window.location.hostname);
   private localReviewMode = false;
 
@@ -459,6 +467,7 @@ export class InstallerApp {
   private renderConfigField(leaf: ConfigLeaf): string {
     const id = configPathId(leaf.path);
     const value = this.configValues.get(id) ?? leaf.value;
+    const path = formatConfigPath(leaf.path);
     const key = String(leaf.path.at(-1) ?? 'config');
     const label = humanizeConfigSegment(leaf.path.at(-1) ?? 'Configuration');
     const password = /(password|secret|token)/i.test(key);
@@ -471,14 +480,54 @@ export class InstallerApp {
     } else if (value === null || typeof value === 'object') {
       control = `<textarea data-config-id="${escapeHtml(id)}" data-value-type="json" rows="3" ${locked ? 'readonly' : ''}>${escapeHtml(JSON.stringify(value, null, 2))}</textarea>`;
     } else {
-      control = `<input data-config-id="${escapeHtml(id)}" data-value-type="string" type="${password ? 'password' : 'text'}" value="${escapeHtml(value)}" ${locked ? 'readonly' : ''} ${password ? 'autocomplete="new-password"' : ''}>`;
+      const iconUrlInput = path.endsWith('.iconUrl') ? ` data-icon-url-input="${escapeHtml(id)}"` : '';
+      control = `<input data-config-id="${escapeHtml(id)}" data-value-type="string"${iconUrlInput} type="${password ? 'password' : 'text'}" value="${escapeHtml(value)}" ${locked ? 'readonly' : ''} ${password ? 'autocomplete="new-password"' : ''}>`;
     }
     const note = leaf.lockedReason === 'version'
       ? 'Source-controlled version — shown for reference and never edited.'
       : leaf.lockedReason === 'companion-device-host'
         ? 'Filled from the Companion Device address used during sign-in.'
         : '';
-    return `<label class="config-field"><span>${escapeHtml(label)}${locked ? '<mark>Installer controlled</mark>' : ''}</span>${control}${note ? `<small>${escapeHtml(note)}</small>` : ''}</label>`;
+    const preview = path.endsWith('.iconUrl') && typeof value === 'string'
+      ? this.renderIconPreview(id, label, value)
+      : '';
+    return `<label class="config-field"><span>${escapeHtml(label)}${locked ? '<mark>Installer controlled</mark>' : ''}</span>${control}${note ? `<small>${escapeHtml(note)}</small>` : ''}${preview}</label>`;
+  }
+
+  private renderIconPreview(id: string, label: string, value: string): string {
+    const url = iconPreviewUrl(value);
+    return `
+      <span class="config-icon-preview ${url ? '' : 'empty'}" data-icon-preview-for="${escapeHtml(id)}" aria-hidden="true">
+        <span class="config-icon-preview-frame">
+          <img ${url ? `src="${escapeHtml(url)}"` : ''} alt="Preview of ${escapeHtml(label)}" referrerpolicy="no-referrer" ${url ? '' : 'hidden'}>
+        </span>
+        <small data-icon-preview-message>${url ? 'Image preview' : 'Enter an HTTP or HTTPS image URL to preview it.'}</small>
+      </span>`;
+  }
+
+  private renderConfigGroupTools(group: ConfigGroup): string {
+    const path = formatConfigPath(group.path);
+    const count = group.leaves.length
+      ? `<small>${group.leaves.length} setting${group.leaves.length === 1 ? '' : 's'}</small>`
+      : '';
+    if (path === WEATHER_CONFIG_PATH) {
+      return `<span class="config-section-tools">${count}<button class="button secondary config-helper-button" id="use-computer-location" type="button" ${this.computerDefaultBusy ? 'disabled' : ''}>${this.computerDefaultBusy === 'location' ? '<span class="spinner"></span>Reading location…' : 'Use Computer Location'}</button></span>`;
+    }
+    if (path === TIME_CONFIG_PATH) {
+      return `<span class="config-section-tools">${count}<button class="button secondary config-helper-button" id="use-computer-time-zone" type="button" ${this.computerDefaultBusy ? 'disabled' : ''}>${this.computerDefaultBusy === 'time-zone' ? '<span class="spinner"></span>Reading time zone…' : 'Use Computer Time Zone'}</button></span>`;
+    }
+    return count;
+  }
+
+  private renderComputerDefaultStatus(group: ConfigGroup): string {
+    const path = formatConfigPath(group.path);
+    const status = path === WEATHER_CONFIG_PATH
+      ? this.weatherComputerStatus
+      : path === TIME_CONFIG_PATH
+        ? this.timeZoneComputerStatus
+        : undefined;
+    if (!status) return '';
+    return `<div class="config-helper-status ${status.kind}" role="${status.kind === 'error' ? 'alert' : 'status'}"><span>${status.kind === 'success' ? checkIcon : warningIcon}</span><small>${escapeHtml(status.message)}</small></div>`;
   }
 
   private renderConfigGroup(group: ConfigGroup, depth: number): string {
@@ -488,8 +537,9 @@ export class InstallerApp {
       : '';
     return `
       <section class="config-section config-depth-${Math.min(depth, 4)}">
-        <header class="config-section-header"><h${headingLevel}>${escapeHtml(group.label)}</h${headingLevel}>${group.leaves.length ? `<small>${group.leaves.length} setting${group.leaves.length === 1 ? '' : 's'}</small>` : ''}</header>
+        <header class="config-section-header"><h${headingLevel}>${escapeHtml(group.label)}</h${headingLevel}>${this.renderConfigGroupTools(group)}</header>
         ${fields}
+        ${this.renderComputerDefaultStatus(group)}
         ${group.children.map((child) => this.renderConfigGroup(child, depth + 1)).join('')}
       </section>`;
   }
@@ -685,7 +735,9 @@ export class InstallerApp {
             ${parent.active ? '<span class="status-badge active">Active</span>' : '<span class="status-badge">Registered</span>'}
             <button class="button secondary compact-button" type="button" data-remove-parent="${escapeHtml(parent.serial)}" ${this.parentAdministrationBusy || this.localReviewMode ? 'disabled' : ''}>Remove</button>
           </li>`).join('')}</ul>`
-      : '<p class="empty-state">No Parent Room Registrations are saved on this Companion Device.</p>';
+      : this.parentInventoryKnownEmpty
+        ? '<div class="empty-state known-empty"><strong>No Parent Room Registrations are saved on this Companion Device.</strong><span>Fresh Installation erased the saved Custom Companion state, so there is nothing to fetch. Add a Parent Room Device when ready.</span></div>'
+        : '<p class="empty-state">No Parent Room Registrations are saved on this Companion Device.</p>';
     const pendingRows = pending.length
       ? `<ul class="parent-inventory-list pending-list">${pending.map((parent) => `
           <li>
@@ -779,6 +831,9 @@ export class InstallerApp {
     this.byId('trust-certificate')?.addEventListener('click', () => this.openCertificate());
     this.byId('connect-companion-device')?.addEventListener('click', () => void this.connectCompanionDevice());
     this.byId('reuse-admin')?.addEventListener('change', (event) => this.reuseAdminCredentials((event.target as HTMLInputElement).checked));
+    this.byId('use-computer-location')?.addEventListener('click', () => void this.useComputerLocation());
+    this.byId('use-computer-time-zone')?.addEventListener('click', () => void this.useComputerTimeZone());
+    this.bindIconPreviews();
     this.byId('config-continue')?.addEventListener('click', () => void this.validateConfiguration());
     this.byId('disconnect-config')?.addEventListener('click', () => this.reset());
     this.byId('disconnect-device')?.addEventListener('click', () => {
@@ -882,6 +937,11 @@ export class InstallerApp {
     this.render();
     try {
       if (targetStep >= 2) await this.ensureLocalReviewState();
+      if (targetStep === 7 && this.installationType === 'fresh') {
+        const inventoryPlan = parentInventoryPlanAfterInstallation(this.installationType);
+        this.parentInventory = inventoryPlan.inventory;
+        this.parentInventoryKnownEmpty = !inventoryPlan.shouldRequest;
+      }
       this.step = targetStep;
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
@@ -977,6 +1037,7 @@ export class InstallerApp {
         createdAt: '2026-07-27T12:00:00.000Z',
       }],
     };
+    this.parentInventoryKnownEmpty = false;
     this.installProgress = 'Local review mode · no device changes will be made.';
   }
 
@@ -1114,6 +1175,100 @@ export class InstallerApp {
     return this.configDocument
       ? setLockedInstallerValues(this.configDocument, result, this.adminCredentials.host)
       : result;
+  }
+
+  private setConfigPathValue(path: string, value: ConfigValue): void {
+    const leaf = this.configDocument?.leaves.find((item) => formatConfigPath(item.path) === path);
+    if (!leaf) throw new Error(`The selected Config does not include ${path}.`);
+    this.configValues.set(configPathId(leaf.path), value);
+  }
+
+  private async useComputerLocation(): Promise<void> {
+    if (this.computerDefaultBusy) return;
+    try {
+      this.configValues = this.readConfigValues();
+      this.computerDefaultBusy = 'location';
+      this.weatherComputerStatus = undefined;
+      this.render();
+      const location = await computerLocation();
+      this.setConfigPathValue(`${WEATHER_CONFIG_PATH}.latitude`, location.latitude);
+      this.setConfigPathValue(`${WEATHER_CONFIG_PATH}.longitude`, location.longitude);
+      this.weatherComputerStatus = {
+        kind: 'success',
+        message: 'Latitude and longitude were copied from the installer computer.',
+      };
+    } catch (error) {
+      this.weatherComputerStatus = {
+        kind: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      this.computerDefaultBusy = undefined;
+      this.render();
+    }
+  }
+
+  private async useComputerTimeZone(): Promise<void> {
+    if (this.computerDefaultBusy) return;
+    try {
+      this.configValues = this.readConfigValues();
+      this.computerDefaultBusy = 'time-zone';
+      this.timeZoneComputerStatus = undefined;
+      this.render();
+      const timeZone = computerTimeZone();
+      this.setConfigPathValue(`${TIME_CONFIG_PATH}.timeZone`, timeZone);
+      this.timeZoneComputerStatus = {
+        kind: 'success',
+        message: `${timeZone} was copied from the installer computer.`,
+      };
+    } catch (error) {
+      this.timeZoneComputerStatus = {
+        kind: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      this.computerDefaultBusy = undefined;
+      this.render();
+    }
+  }
+
+  private bindIconPreviews(): void {
+    for (const control of this.root.querySelectorAll<HTMLInputElement>('[data-icon-url-input]')) {
+      const preview = [...this.root.querySelectorAll<HTMLElement>('[data-icon-preview-for]')]
+        .find((candidate) => candidate.dataset.iconPreviewFor === control.dataset.iconUrlInput);
+      const image = preview?.querySelector<HTMLImageElement>('img');
+      const message = preview?.querySelector<HTMLElement>('[data-icon-preview-message]');
+      if (!preview || !image || !message) continue;
+      const showLoaded = () => {
+        preview.classList.remove('empty', 'failed');
+        image.hidden = false;
+        message.textContent = 'Image preview';
+      };
+      const showFailed = () => {
+        preview.classList.remove('empty');
+        preview.classList.add('failed');
+        image.hidden = true;
+        message.textContent = 'Preview unavailable. Confirm the image URL is reachable by this browser.';
+      };
+      image.addEventListener('load', showLoaded);
+      image.addEventListener('error', showFailed);
+      control.addEventListener('input', () => {
+        const url = iconPreviewUrl(control.value);
+        preview.classList.remove('failed');
+        if (!url) {
+          image.removeAttribute('src');
+          image.hidden = true;
+          preview.classList.add('empty');
+          message.textContent = 'Enter an HTTP or HTTPS image URL to preview it.';
+          return;
+        }
+        preview.classList.remove('empty');
+        image.hidden = false;
+        message.textContent = 'Loading preview…';
+        image.src = url;
+        if (image.complete && image.naturalWidth > 0) showLoaded();
+      });
+    }
   }
 
   private callbackCredentials(values: Map<string, ConfigValue>): CompanionDeviceCredentials {
@@ -1275,9 +1430,13 @@ export class InstallerApp {
     this.parentInventory = { registered: [], pending: [] };
     this.parentInventoryLoading = false;
     this.parentInventoryError = '';
+    this.parentInventoryKnownEmpty = false;
     this.parentDeregistrationTarget = undefined;
     this.parentDeregistrationOutcome = undefined;
     this.parentAdministrationBusy = false;
+    this.computerDefaultBusy = undefined;
+    this.weatherComputerStatus = undefined;
+    this.timeZoneComputerStatus = undefined;
     this.disconnectModalOpen = false;
     this.certificatePromptVisible = false;
     this.completionHost = '';
@@ -1292,9 +1451,14 @@ export class InstallerApp {
     this.macroLogs = [];
     this.error = '';
     this.installError = '';
+    const inventoryPlan = parentInventoryPlanAfterInstallation(this.installationType);
+    this.parentInventory = inventoryPlan.inventory;
+    this.parentInventoryLoading = false;
+    this.parentInventoryError = '';
+    this.parentInventoryKnownEmpty = !inventoryPlan.shouldRequest;
     this.step = 7;
     this.render();
-    void this.refreshParentInventory();
+    if (inventoryPlan.shouldRequest) void this.refreshParentInventory();
   }
 
   private async refreshParentInventory(): Promise<void> {
@@ -1314,6 +1478,7 @@ export class InstallerApp {
     this.parentInventoryLoading = true;
     this.parentAdministrationBusy = true;
     this.parentInventoryError = '';
+    this.parentInventoryKnownEmpty = false;
     this.render();
     try {
       await sendParentAdministrationRequest(this.companionDevice, request);
@@ -1522,9 +1687,13 @@ export class InstallerApp {
     this.parentInventory = { registered: [], pending: [] };
     this.parentInventoryLoading = false;
     this.parentInventoryError = '';
+    this.parentInventoryKnownEmpty = false;
     this.parentDeregistrationTarget = undefined;
     this.parentDeregistrationOutcome = undefined;
     this.parentAdministrationBusy = false;
+    this.computerDefaultBusy = undefined;
+    this.weatherComputerStatus = undefined;
+    this.timeZoneComputerStatus = undefined;
     this.betaAcknowledged = false;
     this.localReviewMode = false;
     this.certificatePromptVisible = false;

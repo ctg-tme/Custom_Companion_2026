@@ -1209,6 +1209,7 @@ input[type='radio'] {
 }
 
 .config-section {
+  min-width: 0;
   padding: 20px;
   border: 1px solid var(--mds-color-theme-outline-primary-normal, #00000033);
   border-radius: 12px;
@@ -1230,7 +1231,7 @@ input[type='radio'] {
 
 .config-section-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding-bottom: 12px;
@@ -1260,6 +1261,49 @@ input[type='radio'] {
   font-size: var(--mds-font-size-body-small, 0.75rem);
 }
 
+.config-section-tools {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.config-helper-button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 18px;
+  white-space: nowrap;
+}
+
+.config-helper-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 9px;
+}
+
+.config-helper-status.success {
+  background: var(--mds-color-theme-background-alert-success-normal, #e5f7ed);
+  color: var(--mds-color-theme-text-success-normal, #126b36);
+}
+
+.config-helper-status.error {
+  background: var(--mds-color-theme-background-alert-error-normal, #ffe6e8);
+  color: var(--mds-color-theme-text-error-normal, #ab0a15);
+}
+
+.config-helper-status svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.config-helper-status small {
+  color: inherit;
+}
+
 .config-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1282,6 +1326,53 @@ input[type='radio'] {
   font-size: 0.625rem;
   font-weight: var(--mds-font-weight-bold, 700);
   text-transform: uppercase;
+}
+
+.config-icon-preview {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.config-icon-preview-frame {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--mds-color-theme-outline-primary-normal, #00000033);
+  border-radius: 12px;
+  background:
+    linear-gradient(45deg, #0000000a 25%, transparent 25%),
+    linear-gradient(-45deg, #0000000a 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #0000000a 75%),
+    linear-gradient(-45deg, transparent 75%, #0000000a 75%);
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  background-size: 12px 12px;
+}
+
+.config-icon-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.config-icon-preview img[hidden],
+.config-icon-preview.empty .config-icon-preview-frame,
+.config-icon-preview.failed .config-icon-preview-frame {
+  display: none;
+}
+
+.config-icon-preview.empty,
+.config-icon-preview.failed {
+  grid-template-columns: 1fr;
+}
+
+.config-icon-preview.failed small {
+  color: var(--mds-color-theme-text-error-normal, #ab0a15);
 }
 
 .toggle {
@@ -1391,6 +1482,21 @@ input[type='radio'] {
   border-radius: 10px;
   background: var(--mds-color-theme-background-solid-secondary-normal, #f7f7f7);
   color: var(--mds-color-theme-text-secondary-normal, #000000b3);
+}
+
+.empty-state.known-empty {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--mds-color-theme-outline-primary-normal, #0000001f);
+}
+
+.empty-state.known-empty strong {
+  color: var(--mds-color-theme-text-primary-normal, #000000f2);
+}
+
+.empty-state.known-empty span {
+  font-size: var(--mds-font-size-body-midsize, 0.875rem);
+  line-height: var(--mds-font-lineheight-body-midsize, 1.25rem);
 }
 
 .config-preview {
@@ -2033,6 +2139,15 @@ input[type='radio'] {
     padding-top: 0;
   }
 
+  .config-section {
+    padding: 14px;
+  }
+
+  .config-section .config-section {
+    margin-top: 12px;
+    padding: 10px;
+  }
+
   .connection-fields,
   .verification-grid,
   .summary-grid,
@@ -2040,6 +2155,20 @@ input[type='radio'] {
   .installation-type-grid,
   .config-grid {
     grid-template-columns: 1fr;
+  }
+
+  .config-section-header,
+  .config-section-tools {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .config-section-tools {
+    width: 100%;
+  }
+
+  .config-helper-button {
+    width: 100%;
   }
 
   .complete-setup-panel {

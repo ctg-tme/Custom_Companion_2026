@@ -37,6 +37,8 @@ Open-Meteo and Aptabase are downstream services introduced by the optional Simpl
 
 These endpoints support the hosted Companion Installer, source selection, release preflight, and its authenticated connection to a Companion Device.
 
+The optional **Use Computer Location** and **Use Computer Time Zone** controls use browser-provided Installer Computer values and introduce no network endpoint. Location may require browser permission. Icon previews load the configured image URL in the Installer Computer browser; the Companion Device still needs its own access to that URL for the installed WebWidget.
+
 | Endpoint group | Network endpoint | Purpose | When required |
 | --- | --- | --- | --- |
 | Companion Installer and Main Fork | `https://ctg-tme.github.io/Custom_Companion_2026/` | Hosts the installer application, packaged README, Main Fork snapshot, Release Manifest, macro sources, and release-owned icon. | Required when using the hosted installer or its packaged Main Fork. |

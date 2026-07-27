@@ -4,6 +4,7 @@ import {
   ParentAdministrationMonitor,
   createParentDeregistrationRequest,
   createParentInventoryRequest,
+  parentInventoryPlanAfterInstallation,
   sendParentAdministrationRequest,
 } from './parent-administration';
 import {
@@ -14,6 +15,17 @@ import {
 } from './types';
 
 describe('installer Parent Room administration requests', () => {
+  it('treats Fresh Installation as a known-empty inventory without a runtime request', () => {
+    expect(parentInventoryPlanAfterInstallation('fresh')).toEqual({
+      inventory: { registered: [], pending: [] },
+      shouldRequest: false,
+    });
+    expect(parentInventoryPlanAfterInstallation('preserve')).toEqual({
+      inventory: { registered: [], pending: [] },
+      shouldRequest: true,
+    });
+  });
+
   it('requests a credential-free inventory for the verified Companion Device', () => {
     const request = createParentInventoryRequest('companion-456');
     const payload = JSON.parse(request.text) as Record<string, unknown>;

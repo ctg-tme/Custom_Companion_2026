@@ -69,7 +69,10 @@ Protect all device credentials and any backup of generated storage. Do not place
 6. Configure the Companion Device runtime:
    - enter the existing Companion Device Callback Credentials;
    - keep a distinct callback account unless your deployment deliberately reuses the installer account;
-   - review PIN Mode defaults, HTTPClient certificate behavior, and Companion WebWidget settings; and
+   - review PIN Mode defaults, HTTPClient certificate behavior, and Companion WebWidget settings;
+   - select **Use Computer Location** to copy the Installer Computer's latitude and longitude after granting browser location permission, or enter the coordinates manually;
+   - select **Use Computer Time Zone** to copy the Installer Computer's current IANA time zone, or enter it manually;
+   - verify each Standalone and Paired `iconUrl` in the image preview; and
    - remember that PIN Mode defaults apply only when saved PIN Mode state does not already exist.
 7. Choose the installation type:
    - **Install or Update — Keep Saved Data** is for a new endpoint or an upgrade and preserves `Custom-Campanion-Storage`.
@@ -90,6 +93,7 @@ Protect all device credentials and any backup of generated storage. Do not place
 
 10. On Complete Setup:
     - review **Parent Room Registrations** and **Pending Deregistrations** already stored on the Companion Device;
+    - after Fresh Installation, confirm the known-empty message; generated storage was erased, so the installer does not issue an unnecessary initial inventory request;
     - use **Add Parent** zero or more times to start Installer Parent Room Registration;
     - use **Remove** and confirm the safeguard dialog to start Installer Parent Room Deregistration; or
     - leave Parent Room administration for the Companion Device interface.

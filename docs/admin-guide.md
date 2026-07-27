@@ -117,7 +117,7 @@ The administrator-facing source configuration is in `Custom-Campanion_2_Config_2
 | `UserInterface.WebWidget.urlOverride` | Replaces the built-in Simple-WebWidget base URL. | Leave empty for the release default. Validate any custom page on every supported display. |
 | `UserInterface.WebWidget.CompanionWidget.enabled` | Enables solution management of the Companion WebWidget. | Disable only if the deployment does not need the widget or its runtime status field. |
 | `restoreStandaloneExisting` | Restores the WebWidget captured before Paired mode while Standalone. | Configure the intended existing WebWidget before its first Standalone capture. The original is saved as durable internal state, not continuously rediscovered. |
-| `weather`, `time`, `Standalone`, and `Paired` fields | Configure widget weather, clock, status copy, and mode-specific WebWidget images. | Use valid coordinates, temperature unit, IANA time zone, text, and reachable HTTPS image URLs. Both mode-specific `iconUrl` fields are prefilled with the release image and may be edited independently. Runtime owns heading, theme, `info1`, `info3`, and `hideSettings`. |
+| `weather`, `time`, `Standalone`, and `Paired` fields | Configure widget weather, clock, status copy, and mode-specific WebWidget images. | Use valid coordinates, temperature unit, IANA time zone, text, and reachable HTTPS image URLs. During installation, Weather and Time may copy one-time values from the Installer Computer, and both mode-specific `iconUrl` fields show a browser preview. The URLs are prefilled with the release image and may be edited independently. Runtime owns heading, theme, `info1`, `info3`, and `hideSettings`. |
 
 The current PIN, registered Parent Room Devices, active selection, Pending Deregistrations, and saved Standalone preferences are not base configuration. Manage them through the supported UI and runtime workflows, not by editing Config.
 
@@ -248,7 +248,7 @@ Parent Room Registration may be started in either of two supported ways:
 
 Both routes keep provisioning owned by the Companion Device and perform the same live Parent Room Device serial verification, capacity checks, macro installation, peripheral connection, readiness acknowledgement, configuration acceptance, and durable commit.
 
-Complete Setup first lists the connected Companion Device's saved Parent Room Registrations and Pending Deregistrations without returning stored Parent Room credentials. **Remove** requires confirmation and starts Installer Parent Room Deregistration through the same Companion Device-owned flow described below. The browser never edits generated storage or contacts a Parent Room Device directly.
+Complete Setup first lists the connected Companion Device's saved Parent Room Registrations and Pending Deregistrations without returning stored Parent Room credentials. Immediately after Fresh Installation, the installer shows a known-empty state instead of requesting the storage it just erased; a later explicit Refresh or successful Add Parent still reads current runtime state. **Remove** requires confirmation and starts Installer Parent Room Deregistration through the same Companion Device-owned flow described below. The browser never edits generated storage or contacts a Parent Room Device directly.
 
 Important administration rules:
 

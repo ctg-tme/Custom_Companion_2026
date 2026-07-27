@@ -7,6 +7,7 @@ import {
   INSTALLER_PARENT_INVENTORY_ACTION,
   INSTALLER_PARENT_INVENTORY_FAILURE_MESSAGE,
   INSTALLER_PARENT_INVENTORY_SUCCESS_MESSAGE,
+  type InstallationType,
   type ParentAdministrationRequest,
   type ParentDeregistrationOutcome,
   type ParentInventory,
@@ -15,6 +16,15 @@ import {
 } from './types';
 
 type LogPayload = Record<string, unknown>;
+
+export function parentInventoryPlanAfterInstallation(
+  installationType: InstallationType | undefined,
+): { inventory: ParentInventory; shouldRequest: boolean } {
+  return {
+    inventory: { registered: [], pending: [] },
+    shouldRequest: installationType !== 'fresh',
+  };
+}
 
 function randomSuffix(): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();

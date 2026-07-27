@@ -77,6 +77,19 @@ describe('installer workflow presentation', () => {
     expect(source).toContain('id="refresh-parent-inventory"');
     expect(source).toContain('data-remove-parent');
     expect(source).toContain('Deregister Parent Room Device?');
+    expect(source).toContain('No Parent Room Registrations are saved on this Companion Device.');
+    expect(source).toContain('parentInventoryPlanAfterInstallation');
+  });
+
+  it('offers installer-computer defaults and safe icon previews in Configure', async () => {
+    const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
+
+    expect(source).toContain('id="use-computer-location"');
+    expect(source).toContain('Use Computer Location');
+    expect(source).toContain('id="use-computer-time-zone"');
+    expect(source).toContain('Use Computer Time Zone');
+    expect(source).toContain('data-icon-preview-for');
+    expect(source).toContain('Preview unavailable');
   });
 
   it('uses document scrolling instead of a dynamic-viewport-height trap', async () => {

@@ -62,6 +62,10 @@ _Avoid_: In-Room User, room operator
 A browser-based deployment tool used by a Device Administrator to configure and install the solution onto one Companion Device at a time. A Parent Room Device is never its installation target; from Complete Setup it may inspect saved Parent Room state and optionally start Companion Device-owned Installer Parent Room Registration or Installer Parent Room Deregistration.
 _Avoid_: Parent installer, room installer
 
+**Installer Computer**:
+The computer running the Companion Installer. Its current location and time zone may be copied into Weather and Time configuration as one-time values; it is not the Companion Device and is not tracked after configuration.
+_Avoid_: Device Location, Companion Device location
+
 **Installer Parent Room Registration**:
 The optional post-installation Device Administrator workflow that starts Parent Room Registration from the Companion Installer while the Companion Device performs the normal verification, Parent Room macro installation, and durable registration. It uses the authenticated Device Administrator session instead of PIN Mode and does not display the in-room registration experience.
 _Avoid_: Direct Parent Room Device installation, remote Parent Room Device configuration, PIN bypass
