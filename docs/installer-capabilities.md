@@ -21,7 +21,7 @@ Manifest fragment, with unrelated fields omitted:
   "SchemaVersion": 1,
   "CompanionInstaller": {
     "ContractVersion": 1,
-    "TestedVersion": "0.1.21",
+    "TestedVersion": "0.1.22",
     "Capabilities": [
       "installer.parent-deregistration.v1",
       "installer.parent-inventory.v1",
@@ -61,7 +61,7 @@ The table collapses documentation-only Main snapshots when their runtime and ins
 | Main at `847b805` | `0.1.2.56` | `0.1.19` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
 | Main at `b083f09` | `0.1.2.56` | `0.1.20` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
 | Main at `f4e5007` | `0.1.2.57` | `0.1.20` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
-| Main after this work package | `0.1.2.58` | `0.1.21` | Current Main Fork source | Registration, Inventory, and Deregistration `v1` |
+| Main after this work package | `0.1.2.58` | `0.1.22` | Current Main Fork source | Registration, Inventory, and Deregistration `v1` |
 
 Preview `v0.1.2.51` predates the `CompanionInstaller` manifest object. The installer applies one explicit legacy profile only when that tag resolves to commit `be539c292d79197e8303d42b68902c6985cde699`: Contract Version 1, Tested Installer Version `0.1.14`, and `installer.parent-registration.v1`. It does not infer support from the runtime version. Any other manifest without `CompanionInstaller` metadata is invalid.
 
@@ -86,7 +86,7 @@ Most installer behaviors do not belong in the manifest capability list.
 | Installer area | Compatibility class | Reason |
 | --- | --- | --- |
 | Release discovery, ordering, Preview/Beta labels, beta acknowledgement, and commit-pinned resource loading | Installer-native plus Contract Version 1 | These select and preserve a source snapshot; they do not call an optional runtime workflow. |
-| Manifest validation, supported product and minimum RoomOS checks, external resource loading, and stable Main/Config anchors | Contract Version 1 | These are baseline installation semantics. |
+| Manifest validation, product-family and minimum RoomOS checks, external resource loading, and stable Main/Config anchors | Contract Version 1 | These are baseline installation semantics. Product comparison is exact-first, then allows a loose `Desk` or `Board Pro` match when the selected release declares that family. |
 | Recursive Config parsing, source-comment definitions, generated Config review, selected Project Version presentation, locked Companion Device host, and required callback paths | Contract Version 1, with fields sourced from Config | The selected Config source already determines which ordinary options exist. Definitions are optional for older releases, and the Project Version is source metadata rather than Deployment Configuration. |
 | Browser location, browser time zone, and HTTP/HTTPS icon preview | Installer-native and Config-presence-derived | These conveniences are shown only when the selected Config contains the relevant group or field. |
 | Callback credential authentication and Companion Device Identity Confirmation | Contract Version 1 | These are baseline safety gates rather than optional runtime features. |
@@ -96,9 +96,11 @@ Most installer behaviors do not belong in the manifest capability list.
 | Installer Parent Room Registration | `installer.parent-registration.v1` | It sends an optional runtime action and waits for runtime-owned terminal results. |
 | Installer Parent Room Inventory | `installer.parent-inventory.v1` | It sends an optional runtime action and waits for runtime-owned terminal results. |
 | Installer Parent Room Deregistration | `installer.parent-deregistration.v1` | It sends an optional runtime action and waits for runtime-owned terminal results. |
-| README rendering and sanitization, Mermaid rendering, local review mode, certificate recovery link, labels, styling, navigation, and redaction | Installer-native | These do not depend on the selected runtime contract. |
+| README rendering and sanitization, Mermaid rendering, local review mode, certificate recovery link, unsupported-product exploration acknowledgement, labels, styling, navigation, and redaction | Installer-native | These do not depend on the selected runtime contract. |
 
 This classification deliberately avoids a capability flag for every UI feature. A long list of browser-only flags would duplicate installer implementation and would not improve release compatibility.
+
+Exact-first comparison with a loose `Desk` or `Board Pro` fallback is a backwards-compatible interpretation of existing `ProductPlatform` entries and therefore applies across retained releases without changing their manifests. The exploration acknowledgement is a browser-only exception around that preflight: it sends no release-defined runtime action, waits for no release-defined result, and remains visibly unsupported through Review. Neither behavior requires a new Installer Capability or Installer Contract Version.
 
 The HTTPClient prerequisite does not receive an Installer Capability. It is mandatory baseline preflight rather than an optional workflow, sends no runtime-defined action, waits for no runtime-defined result, and can be enforced without changing Release Manifest structure, activation order, generated storage, or initialization verification. Installer Contract Version 1 remains applicable.
 

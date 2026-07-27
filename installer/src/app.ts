@@ -193,6 +193,7 @@ export class InstallerApp {
   private adminCredentials: CompanionDeviceCredentials = { host: '', username: '', password: '' };
   private expectedSerial = '';
   private compatibility?: DeviceCompatibility;
+  private unsupportedProductConfirmed = false;
   private installed: InstalledMacro[] = [];
   private configDocument?: ConfigDocument;
   private configValues = new Map<string, ConfigValue>();
@@ -368,7 +369,10 @@ export class InstallerApp {
     }
     if (this.step === 2) {
       if (this.companionDevice) {
-        return '<div class="actions split"><button class="button ghost" id="back-release">Back</button><span class="action-group"><button class="button secondary" id="disconnect-device">Disconnect</button><button class="button primary" id="return-to-config">Continue to configuration</button></span></div>';
+        const productBlocked = this.compatibility
+          && !this.compatibility.productSupported
+          && !this.unsupportedProductConfirmed;
+        return `<div class="actions split"><button class="button ghost" id="back-release">Back</button><span class="action-group"><button class="button secondary" id="disconnect-device">Disconnect</button><button class="button primary" id="return-to-config" ${productBlocked ? 'disabled' : ''}>Continue to configuration</button></span></div>`;
       }
       const label = this.localReviewMode ? 'Connect disabled in local review' : this.busy ? '<span class="spinner inverse"></span>Connecting…' : 'Connect and verify';
       return `<div class="actions split"><button class="button ghost" id="back-release">Back</button><button class="button primary" id="connect-companion-device" ${this.busy || this.localReviewMode ? 'disabled' : ''}>${label}</button></div>`;
@@ -460,6 +464,8 @@ export class InstallerApp {
       ${this.pageHeader('Step 3 of 8', 'Connect to the Companion Device', 'Sign in with the Companion Device administrator account used only for installation. If certificate trust blocks sign-in, a recovery link appears after the failed attempt.')}
       ${this.errorNotice()}
       ${connected ? `<div class="notice success"><span>${checkIcon}</span><div><strong>Connected to this Companion Device</strong><p>The verified connection is locked to prevent multiple simultaneous device sessions. Disconnect before connecting to another Companion Device.</p></div></div>` : ''}
+      ${connected ? this.renderCompatibility() : ''}
+      ${this.renderUnsupportedProductWarning(true)}
       <section class="panel connect-panel">
         <div class="panel-heading"><span class="heading-icon">${deviceIcon}</span><div><h2>Companion Device connection</h2><p>Enter the device identity and administrator credentials. The serial comparison confirms the intended device before installation.</p></div></div>
         <div class="connection-fields">
@@ -475,12 +481,26 @@ export class InstallerApp {
   private renderCompatibility(): string {
     if (!this.compatibility || !this.snapshot) return '';
     const selectedVersion = this.currentSource()?.version ?? 'Unavailable';
+    const productSupported = this.compatibility.productSupported;
+    const productStatus = productSupported
+      ? 'Supported product family'
+      : this.unsupportedProductConfirmed
+        ? 'Exploration bypass acknowledged'
+        : 'Unsupported product';
     return `<div class="verification-grid">
       <div><span>${checkIcon}</span><small>Custom Companion</small><strong>Version ${escapeHtml(selectedVersion)}</strong><em>Selected installation source</em></div>
       <div><span>${checkIcon}</span><small>Serial number</small><strong>Match confirmed</strong></div>
-      <div><span>${checkIcon}</span><small>Product platform</small><strong>${escapeHtml(this.compatibility.productPlatform)}</strong></div>
+      <div class="${productSupported ? '' : 'product-warning'}"><span>${productSupported ? checkIcon : warningIcon}</span><small>Product platform</small><strong>${escapeHtml(this.compatibility.productPlatform)}</strong><em>${productStatus}</em></div>
       <div><span>${checkIcon}</span><small>RoomOS</small><strong>${escapeHtml(this.compatibility.roomOsVersion)}</strong><em>Minimum ${escapeHtml(this.snapshot.manifest.MinimumRoomOSVersion)}</em></div>
     </div>`;
+  }
+
+  private renderUnsupportedProductWarning(confirmable = false): string {
+    if (!this.compatibility || this.compatibility.productSupported) return '';
+    const confirmation = confirmable
+      ? `<label class="check-row compact"><input id="unsupported-product-confirm" type="checkbox" ${this.unsupportedProductConfirmed ? 'checked' : ''}><span>I understand Custom Companion is not validated on this product and want to continue for exploration.</span></label>`
+      : '<p><strong>Exploration bypass acknowledged.</strong> This exception applies only to the current browser session and does not establish product support.</p>';
+    return `<div class="notice warning"><span>${warningIcon}</span><div><strong>Unsupported device exploration</strong><p>${escapeHtml(this.compatibility.productPlatform)} does not match a supported Desk or Board Pro product family. Runtime behavior and xAPI availability may differ on this device.</p>${confirmation}</div></div>`;
   }
 
   private renderHttpClientTrustPosture(): string {
@@ -592,6 +612,7 @@ export class InstallerApp {
       ${this.pageHeader('Step 4 of 8', 'Configure the Companion Device runtime', 'Every value is generated from the selected Config macro. Per-install edits remain in memory and never change repository files.')}
       ${this.errorNotice()}
       ${this.renderCompatibility()}
+      ${this.renderUnsupportedProductWarning()}
       ${this.renderHttpClientTrustPosture()}
       ${this.compatibility?.deskSeriesWarning ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Desk Series is not recommended</strong><p>This platform is available for testing and special use cases.</p></div></div>` : ''}
       ${this.compatibility?.activeCalls ? `<div class="notice danger"><span>${warningIcon}</span><div><strong>Active call detected</strong><p>Installing and restarting macros during a call may change Companion Device behavior.</p><label class="check-row compact"><input id="active-call-confirm" type="checkbox" ${this.activeCallConfirmed ? 'checked' : ''}><span>I understand and want to continue during the active call.</span></label></div></div>` : ''}
@@ -645,11 +666,12 @@ export class InstallerApp {
       <section class="summary-grid install-summary">
         <div class="summary-item"><small>Installation source</small><strong>${escapeHtml(source?.label ?? '')}</strong><span title="${escapeHtml(this.snapshot?.commitSha ?? '')}">Version ${escapeHtml(source?.version ?? 'Unavailable')} · ${escapeHtml((this.snapshot?.commitSha ?? '').slice(0, 12))}</span></div>
         <div class="summary-item"><small>Installer compatibility</small><strong>Contract ${escapeHtml(this.snapshot?.manifest.CompanionInstaller.ContractVersion ?? '')}</strong><span>Tested with installer v${escapeHtml(this.snapshot?.manifest.CompanionInstaller.TestedVersion ?? '')} · ${this.snapshot?.manifest.CompanionInstaller.Capabilities.length ?? 0} capabilities</span></div>
-        <div class="summary-item"><small>Target Companion Device</small><strong>${escapeHtml(this.adminCredentials.host)}</strong><span>Serial match confirmed</span></div>
+        <div class="summary-item"><small>Target Companion Device</small><strong>${escapeHtml(this.adminCredentials.host)}</strong><span>${escapeHtml(this.compatibility?.productPlatform ?? 'Product unavailable')} · ${this.unsupportedProductConfirmed ? 'Exploration bypass acknowledged' : 'Supported product family'}</span></div>
         <div class="summary-item"><small>HTTPClient Trust Posture</small><strong>${escapeHtml(this.compatibility?.httpClientTrustPosture ?? 'Unavailable')}</strong><span>Administrator-owned device-wide setting</span></div>
         <div class="summary-item"><small>Files ready</small><strong>${this.preparedResources.length}</strong><span>${this.snapshot?.manifest.Files.length ?? 0} project · ${this.snapshot?.manifest.ExternalDependencies.length ?? 0} external</span></div>
         <div class="summary-item"><small>Installation type</small><strong>${freshInstallation ? 'Fresh Installation — Erase Saved Data' : 'Install or Update — Keep Saved Data'}</strong><span>${freshInstallation ? (storageInstalled ? `${GENERATED_STORAGE_MACRO} will be removed` : 'No generated storage macro was found') : 'Generated storage will be preserved'}</span></div>
       </section>
+      ${this.renderUnsupportedProductWarning()}
       ${this.renderHttpClientTrustPosture()}
       <section class="panel legacy-panel">
         <div class="panel-heading"><span class="heading-icon warning-color">${warningIcon}</span><div><h2>Legacy project macros</h2><p>These are installed Custom-Campanion files that are not part of the selected release.</p></div></div>
@@ -865,8 +887,16 @@ export class InstallerApp {
     });
     this.byId('back-release')?.addEventListener('click', () => this.navigateBackward(1));
     this.byId('return-to-config')?.addEventListener('click', () => {
-      if (!this.companionDevice) return;
+      if (
+        !this.companionDevice
+        || (this.compatibility && !this.compatibility.productSupported && !this.unsupportedProductConfirmed)
+      ) return;
       this.step = 3;
+      this.error = '';
+      this.render();
+    });
+    this.byId('unsupported-product-confirm')?.addEventListener('change', (event) => {
+      this.unsupportedProductConfirmed = (event.target as HTMLInputElement).checked;
       this.error = '';
       this.render();
     });
@@ -1158,6 +1188,7 @@ export class InstallerApp {
     }
 
     this.busy = true;
+    this.unsupportedProductConfirmed = false;
     this.render();
     let signedIn = false;
     try {
@@ -1167,7 +1198,6 @@ export class InstallerApp {
       this.compatibility = await validateConnectedCompanionDevice(this.companionDevice, this.snapshot.manifest, this.expectedSerial);
       if (!this.compatibility.serialMatches) throw new Error('Serial number mismatch. No files were changed, and the serial read from the Companion Device was not displayed.');
       if (!this.compatibility.roomOsSupported) throw new Error(`RoomOS ${this.compatibility.roomOsVersion} is below the required ${this.snapshot.manifest.MinimumRoomOSVersion}.`);
-      if (!this.compatibility.productSupported) throw new Error(`${this.compatibility.productPlatform} is not supported by the selected release.`);
       this.installed = await listInstalledMacros(this.companionDevice);
       this.configValues = new Map(this.configDocument.leaves.map((leaf) => [configPathId(leaf.path), leaf.value]));
       this.configValues = setLockedInstallerValues(this.configDocument, this.configValues, this.adminCredentials.host);
@@ -1176,7 +1206,7 @@ export class InstallerApp {
           this.configValues.set(configPathId(leaf.path), 'custom-companion');
         }
       }
-      this.step = 3;
+      this.step = this.compatibility.productSupported ? 3 : 2;
     } catch (error) {
       this.companionDevice?.close();
       this.companionDevice = undefined;
@@ -1457,6 +1487,7 @@ export class InstallerApp {
     this.companionDevice.close();
     this.companionDevice = undefined;
     this.compatibility = undefined;
+    this.unsupportedProductConfirmed = false;
     this.installed = [];
     this.adminCredentials = { host: '', username: '', password: '' };
     this.expectedSerial = '';
@@ -1728,6 +1759,7 @@ export class InstallerApp {
     this.error = '';
     this.snapshot = undefined;
     this.compatibility = undefined;
+    this.unsupportedProductConfirmed = false;
     this.installed = [];
     this.configDocument = undefined;
     this.configValues.clear();

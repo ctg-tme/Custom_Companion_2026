@@ -1136,6 +1136,10 @@ input[type='radio'] {
   fill: var(--mds-color-theme-text-success-normal, #185e46);
 }
 
+.verification-grid .product-warning svg {
+  fill: var(--mds-color-theme-text-warning-normal, #7d4705);
+}
+
 .verification-grid small,
 .verification-grid strong,
 .verification-grid em {

@@ -89,8 +89,12 @@ The Companion Installer outcome reached when the installed Companion Device entr
 _Avoid_: ParentReady, files uploaded
 
 **Release Manifest**:
-The installation contract published with a Custom Companion release. It identifies the release's required macro resources, supported deployment environment, external dependencies, and declared Companion Installer compatibility.
+The installation contract published with a Custom Companion release. It identifies the release's required macro resources, supported deployment environment, external dependencies, and declared Companion Installer compatibility. Unsupported Device Exploration does not expand or alter that support contract.
 _Avoid_: package manifest, file listing
+
+**Unsupported Device Exploration**:
+The Device Administrator's explicit choice to continue an installation on a product outside the Release Manifest's supported product families. The target remains unsupported and requires independent xAPI and behavior validation.
+_Avoid_: Supported product, product validation, compatibility certification
 
 **Release Contract**:
 The build-time agreement that keeps a release's manifest, deployable source, stable installer anchors, synchronized runtime project version, imports, initialization messages, and declared Installer Capabilities consistent before an installation snapshot can be packaged.

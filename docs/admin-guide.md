@@ -30,13 +30,15 @@ The Companion Installer reporting **Companion Device Installation Ready** means 
 The [Release Manifest](../manifest.json) is the authority for the selected release. The current manifest declares:
 
 - Minimum RoomOS: `11.32.1.1`
-- Supported Companion Device products: Board Pro, Board Pro G2, Board Pro G3, Desk Pro, Desk, Desk Mini, and Desk Pro G2
+- Known exact Companion Device product names: Board Pro 55, Board Pro 75, Board Pro 55 G2, Board Pro 75 G2, Board Pro 55 G3, Board Pro 75 G3, Desk Mini, Desk, Desk Pro, and Desk Pro G2
 - Maximum registered Parent Room Devices per Companion Device: 6
 - Maximum registered Companion Devices per Parent Room Device: 3
 - One active Parent Room Device per Companion Device
 - One Parent Room Device-authorized call at a time while Paired
 - Automatic call coordination for Webex calls only
 - External dependency: `Memory-Storage-Functions-V2`
+
+The installer checks the selected Release Manifest for an exact normalized product match first. If none exists, it loosely accepts a product containing `Desk` or `Board Pro` when that release declares the family. Other products remain unsupported. A Device Administrator can explicitly acknowledge an exploration-only bypass for the current browser session; Configure and Review continue to identify that exception, and it does not replace platform acceptance testing or change the Release Manifest.
 
 Use [Network Requirements](network-requirements.md) to prepare the endpoints introduced by macro core communication, optional Simple-WebWidget features, and the Companion Installer.
 

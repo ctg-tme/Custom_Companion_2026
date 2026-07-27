@@ -14,6 +14,7 @@ const INSTALLER_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-
 const INSTALLER_CAPABILITY_PATTERN = /^installer\.[a-z0-9]+(?:-[a-z0-9]+)*\.v[1-9]\d*$/;
 const FILE_PATTERN = /^Custom-Campanion_[A-Za-z0-9_-]+_2026\.js$/;
 const MACRO_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
+const LOOSE_PRODUCT_FAMILIES = ['boardpro', 'desk'];
 
 function requireStringArray(value: unknown, field: string): string[] {
   if (!Array.isArray(value) || value.length === 0 || value.some((item) => typeof item !== 'string' || item.trim() === '')) {
@@ -162,13 +163,19 @@ export function normalizeProductPlatform(value: string): string {
   return value
     .toLowerCase()
     .replace(/^cisco/, '')
-    .replace(/(boardpro)(55|75)/, '$1')
-    .replace(/[^a-z0-9]/g, '');
+    .replace(/[^a-z0-9]/g, '')
+    .replace(/(boardpro)(55|75)/, '$1');
 }
 
 export function isProductSupported(actual: string, allowed: string[]): boolean {
   const normalizedActual = normalizeProductPlatform(actual);
-  return allowed.some((value) => normalizeProductPlatform(value) === normalizedActual);
+  const normalizedAllowed = allowed.map(normalizeProductPlatform);
+  if (normalizedAllowed.includes(normalizedActual)) return true;
+
+  const looseFamily = LOOSE_PRODUCT_FAMILIES.find((family) => normalizedActual.startsWith(family));
+  return looseFamily
+    ? normalizedAllowed.some((value) => value.startsWith(looseFamily))
+    : false;
 }
 
 export function isDeskSeries(value: string): boolean {

@@ -31,6 +31,16 @@ describe('installer workflow presentation', () => {
     expect(appSource).toContain('Open Companion Device certificate page');
   });
 
+  it('requires an explicit administrator acknowledgement to explore an unsupported product', async () => {
+    const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
+
+    expect(source).toContain('id="unsupported-product-confirm"');
+    expect(source).toContain('Unsupported device exploration');
+    expect(source).toContain('this.unsupportedProductConfirmed');
+    expect(source).toContain('Exploration bypass acknowledged');
+    expect(source).not.toContain('is not supported by the selected release.');
+  });
+
   it('keeps installer Parent Room Registration optional from Complete Setup', async () => {
     const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
 

@@ -18,7 +18,7 @@ describe('release manifest', () => {
     expect(manifest.MinimumRoomOSVersion).toBe('11.32.1.1');
     expect(manifest.CompanionInstaller).toEqual({
       ContractVersion: 1,
-      TestedVersion: '0.1.21',
+      TestedVersion: '0.1.22',
       Capabilities: [
         'installer.parent-deregistration.v1',
         'installer.parent-inventory.v1',
@@ -137,10 +137,40 @@ describe('device compatibility', () => {
     expect(compareRoomOsVersions('11.31.9.9', '11.32.1.1')).toBe(-1);
   });
 
-  it('normalizes Cisco product platform formatting and display sizes', () => {
-    expect(isProductSupported('Cisco BoardPro75G2', ['Board Pro G2'])).toBe(true);
-    expect(isProductSupported('DeskProG2', ['Desk Pro G2'])).toBe(true);
-    expect(isProductSupported('Room Bar Pro', ['Board Pro'])).toBe(false);
+  it('accepts product names within the manifest-supported Desk and Board Pro families', () => {
+    const allowed = [
+      'Board Pro',
+      'Board Pro G2',
+      'Board Pro G3',
+      'Desk Mini',
+      'Desk',
+      'Desk Pro',
+      'Desk Pro G2',
+    ];
+    const exactProductNames = [
+      'Board Pro 55',
+      'Board Pro 75',
+      'Board Pro 55 G2',
+      'Board Pro 75 G2',
+      'Board Pro 55 G3',
+      'Board Pro 75 G3',
+      'Desk Mini',
+      'Desk',
+      'Desk Pro',
+      'Desk Pro G2',
+    ];
+
+    for (const productName of exactProductNames) {
+      expect(isProductSupported(productName, allowed)).toBe(true);
+    }
+    expect(isProductSupported('Cisco BoardPro75G2', allowed)).toBe(true);
+    expect(isProductSupported('DeskProG2', allowed)).toBe(true);
+    expect(isProductSupported('Cisco Board Pro Experimental', allowed)).toBe(true);
+    expect(isProductSupported('Cisco Desk 500', allowed)).toBe(true);
+    expect(isProductSupported('Room Bar Pro', allowed)).toBe(false);
+    expect(isProductSupported('Whiteboard Pro', allowed)).toBe(false);
+    expect(isProductSupported('Hotdesk Controller', allowed)).toBe(false);
+    expect(isProductSupported('Room Bar Pro G2', ['Room Bar Pro'])).toBe(false);
     expect(isDeskSeries('Cisco DeskMini')).toBe(true);
   });
 });
