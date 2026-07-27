@@ -10,6 +10,7 @@ import {
 import {
   INSTALLER_PARENT_DEREGISTRATION_ACTION,
   INSTALLER_PARENT_DEREGISTRATION_PENDING_MESSAGE,
+  INSTALLER_PARENT_DEREGISTRATION_PROGRESS_MESSAGE,
   INSTALLER_PARENT_INVENTORY_ACTION,
   INSTALLER_PARENT_INVENTORY_SUCCESS_MESSAGE,
 } from './types';
@@ -75,6 +76,45 @@ describe('installer Parent Room administration requests', () => {
 });
 
 describe('Parent Room administration monitor', () => {
+  it('reports transaction-correlated deregistration stages before the terminal result', () => {
+    let listener: ((event: unknown) => void) | undefined;
+    const onProgress = vi.fn();
+    const xapi = {
+      event: {
+        on: vi.fn((_path: string, callback: (event: unknown) => void) => {
+          listener = callback;
+          return vi.fn();
+        }),
+      },
+    } as unknown as CompanionDeviceXapi;
+    const monitor = new ParentAdministrationMonitor(
+      xapi,
+      'installer-deregistration:progress',
+      onProgress,
+    );
+
+    listener?.({
+      Message: JSON.stringify({
+        Message: INSTALLER_PARENT_DEREGISTRATION_PROGRESS_MESSAGE,
+        TransactionId: 'installer-deregistration:progress',
+        Stage: 'Confirming Parent Room Deregistration',
+        Detail: 'Waiting for remote cleanup.',
+        Step: 2,
+        TotalSteps: 2,
+        Host: 'parent.example.com',
+      }),
+    });
+
+    expect(onProgress).toHaveBeenCalledWith({
+      stage: 'Confirming Parent Room Deregistration',
+      detail: 'Waiting for remote cleanup.',
+      step: 2,
+      totalSteps: 2,
+      host: 'parent.example.com',
+    });
+    monitor.close();
+  });
+
   it('returns only its transaction-correlated inventory without credentials', async () => {
     let listener: ((event: unknown) => void) | undefined;
     const xapi = {

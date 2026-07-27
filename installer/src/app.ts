@@ -75,6 +75,7 @@ import {
   type ParentRegistrationForm,
   type ParentRegistrationOutcome,
   type ParentRegistrationRequest,
+  type ParentWorkflowProgress,
   type RegisteredParentSummary,
   type ReleaseDiscovery,
   type ReleaseSource,
@@ -89,6 +90,19 @@ const CISCO_SAMPLE_CODE_LICENSE_URL = 'https://developer.cisco.com/docs/licenses
 const WEATHER_CONFIG_PATH = 'UserInterface.WebWidget.CompanionWidget.weather';
 const TIME_CONFIG_PATH = 'UserInterface.WebWidget.CompanionWidget.time';
 const COMPANION_DEVICE_INFORMATION_GROUPS = ['CompanionDeviceInformation', 'CompanionBoardInformation'];
+const PARENT_REGISTRATION_PROGRESS_STEPS = [
+  'Verifying Parent Room Device',
+  'Installing Parent Room Runtime',
+  'Connecting Companion Device',
+  'Waiting for Parent Room Runtime',
+  'Confirming Parent Room Registration',
+  'Saving Parent Room Registration',
+] as const;
+const PARENT_DEREGISTRATION_PROGRESS_STEPS = [
+  'Returning to Standalone',
+  'Saving Parent Room Deregistration',
+  'Confirming Parent Room Deregistration',
+] as const;
 
 function isCompanionDeviceInformationField(path: string, field: 'host' | 'username' | 'password'): boolean {
   return COMPANION_DEVICE_INFORMATION_GROUPS.some((group) => path === `${group}.${field}`);
@@ -151,6 +165,29 @@ function escapeHtml(value: unknown): string {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+}
+
+function deviceConfigurationUrl(hostValue: string, search: string): string | undefined {
+  try {
+    const host = normalizeCompanionDeviceHost(hostValue);
+    return `https://${host}/web/configurations?s=${encodeURIComponent(search)}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function renderDeviceConfigurationLink(
+  host: string,
+  search: 'HTTPClient Mode' | 'HTTPClient AllowInsecureHTTPS',
+  label: string,
+  hostInputId = '',
+): string {
+  const url = deviceConfigurationUrl(host, search);
+  return `<a class="device-configuration-link ${url ? '' : 'disabled'}"
+    ${url ? `href="${escapeHtml(url)}"` : 'aria-disabled="true"'}
+    ${hostInputId ? `data-device-configuration-host-input="${escapeHtml(hostInputId)}"` : ''}
+    data-device-configuration-search="${escapeHtml(search)}"
+    target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
 }
 
 function deepCopy<T>(value: T): T {
@@ -220,6 +257,7 @@ export class InstallerApp {
     allowOverwrite: false,
   };
   private parentRegistrationOutcome?: ParentRegistrationOutcome;
+  private parentRegistrationProgress?: ParentWorkflowProgress;
   private parentRegistrationMonitor?: ParentRegistrationMonitor;
   private parentRegistrationLogs: string[] = [];
   private parentRegistrationModalOpen = false;
@@ -231,6 +269,7 @@ export class InstallerApp {
   private parentAdministrationMonitor?: ParentAdministrationMonitor;
   private parentDeregistrationTarget?: RegisteredParentSummary;
   private parentDeregistrationOutcome?: ParentDeregistrationOutcome;
+  private parentDeregistrationProgress?: ParentWorkflowProgress;
   private parentAdministrationBusy = false;
   private computerDefaultBusy?: 'location' | 'time-zone';
   private weatherComputerStatus?: { kind: 'success' | 'error'; message: string };
@@ -465,7 +504,7 @@ export class InstallerApp {
       <section class="panel release-prerequisites" aria-labelledby="solution-prerequisites-title">
         <div class="panel-heading"><span class="heading-icon warning-color">${warningIcon}</span><div><h2 id="solution-prerequisites-title">Solution prerequisites</h2><p>Prepare these requirements for the Companion Device and every Parent Room Device that will participate in this deployment.</p></div></div>
         <ul class="prerequisite-list">
-          <li><strong>Enable device-to-device HTTP.</strong><span>Set <code>HttpClient Mode: On</code> on every Companion and Parent Room Device. The installer and runtime verify but never change it.</span></li>
+          <li><strong>Enable device-to-device HTTP.</strong><span><code>HttpClient Mode: On</code> is required on every Companion and Parent Room Device. Direct device WebUI links appear after each host is entered; the installer and runtime never change this setting.</span></li>
           <li><strong>Choose the certificate posture.</strong><span>Use <code>AllowInsecureHTTPS: False</code> only with trusted CAs and host/SAN matching. Otherwise use <code>True</code>, accepting device-wide untrusted or self-signed certificates.</span></li>
           <li><strong>Prepare both network directions.</strong><span>Allow HTTPS/WSS from the Installer Computer to the Companion Device and HTTPS both ways between Companion and Parent Room Devices. Browser trust does not configure RoomOS trust.</span></li>
           <li><strong>Prepare identity and a maintenance window.</strong><span>Record serials, create installer, callback, and Parent Room accounts, enable Macro Runtime, and schedule work when affected devices have no active calls.</span></li>
@@ -532,7 +571,7 @@ export class InstallerApp {
     return `
       ${this.pageHeader('Step 3 of 8', 'Connect to the Companion Device', 'Confirm the RoomOS HTTPClient prerequisite first, then sign in with the Companion Device administrator account used only for installation.')}
       ${this.errorNotice()}
-      <div class="notice warning connect-httpclient-prerequisite"><span>${warningIcon}</span><div><strong>Before connecting, set xConfiguration HttpClient Mode to On</strong><p>Enable it on this Companion Device and every intended Parent Room Device. If trusted, host-matching endpoint certificates are not provisioned, also set <code>HttpClient AllowInsecureHTTPS: True</code> on each participating device. These are Device Administrator-owned, device-wide settings; the installer never changes them.</p></div></div>
+      <div class="notice warning connect-httpclient-prerequisite"><span>${warningIcon}</span><div><strong>Before connecting, set xConfiguration HttpClient Mode to On</strong><p>Enable it on this Companion Device and every intended Parent Room Device. If trusted, host-matching endpoint certificates are not provisioned, also set <code>HttpClient AllowInsecureHTTPS: True</code> on each participating device. These are Device Administrator-owned, device-wide settings; the installer never changes them.</p><div class="device-configuration-links">${renderDeviceConfigurationLink(this.adminCredentials.host, 'HTTPClient Mode', 'Open HTTPClient Mode', 'companion-device-host')}${renderDeviceConfigurationLink(this.adminCredentials.host, 'HTTPClient AllowInsecureHTTPS', 'Open certificate validation setting', 'companion-device-host')}</div></div></div>
       ${connected ? `<div class="notice success"><span>${checkIcon}</span><div><strong>Connected to this Companion Device</strong><p>The verified connection is locked to prevent multiple simultaneous device sessions. Disconnect before connecting to another Companion Device.</p></div></div>` : ''}
       ${connected ? this.renderCompatibility() : ''}
       ${connected ? this.renderHttpClientTrustPosture() : ''}
@@ -585,10 +624,11 @@ export class InstallerApp {
 
   private renderHttpClientTrustPostureGuidance(): string {
     if (!this.compatibility) return '';
+    const host = this.adminCredentials.host;
     if (this.compatibility.httpClientAllowsInsecureHTTPS) {
-      return `<div class="notice success"><span>${checkIcon}</span><div><strong>Current setting: AllowInsecureHTTPS=True</strong><p>Untrusted or self-signed endpoint certificates are permitted by this Companion Device. Use this posture only when trusted, host-matching endpoint certificates are not provisioned and the broader device-wide effect is accepted.</p></div></div>`;
+      return `<div class="notice warning"><span>${warningIcon}</span><div><strong>Permissive lab posture: AllowInsecureHTTPS=True</strong><p>Untrusted or self-signed endpoint certificates are permitted device-wide. Use this only when trusted, host-matching certificates are not provisioned; move to strict validation after the issuing CA and correct certificate SANs are in place.</p><div class="device-configuration-links">${renderDeviceConfigurationLink(host, 'HTTPClient AllowInsecureHTTPS', 'Open certificate validation setting')}</div></div></div>`;
     }
-    return `<div class="notice warning"><span>${warningIcon}</span><div><strong>Current setting: AllowInsecureHTTPS=False</strong><p>The installer sign-in host becomes the Companion callback host and must match the Companion Device certificate SAN. An IP address is valid only when present as an IP SAN, and every Parent Room Device must trust the issuing CA chain. If trusted, host-matching endpoint certificates are not provisioned, set <code>HttpClient AllowInsecureHTTPS: True</code> before installation and Parent Room Registration.</p></div></div>`;
+    return `<div class="notice success"><span>${checkIcon}</span><div><strong>Recommended production posture: AllowInsecureHTTPS=False</strong><p>Strict certificate validation is active. The installer sign-in host becomes the Companion callback host and must be present in the Companion Device certificate SAN; every Parent Room Device must trust its issuing CA. Use an IP address only when it is present as an IP SAN.</p><div class="device-configuration-links">${renderDeviceConfigurationLink(host, 'HTTPClient AllowInsecureHTTPS', 'Open certificate validation setting')}</div></div></div>`;
   }
 
   private applyHttpClientTrustPosture(posture: HttpClientTrustPosture): void {
@@ -757,9 +797,7 @@ export class InstallerApp {
       ${this.errorNotice()}
       <section class="summary-grid install-summary">
         <div class="summary-item"><small>Installation source</small><strong>${escapeHtml(source?.label ?? '')}</strong><span title="${escapeHtml(this.snapshot?.commitSha ?? '')}">Version ${escapeHtml(source?.version ?? 'Unavailable')} · ${escapeHtml((this.snapshot?.commitSha ?? '').slice(0, 12))}</span></div>
-        <div class="summary-item"><small>Installer compatibility</small><strong>Contract ${escapeHtml(this.snapshot?.manifest.CompanionInstaller.ContractVersion ?? '')}</strong><span>Tested with installer v${escapeHtml(this.snapshot?.manifest.CompanionInstaller.TestedVersion ?? '')} · ${this.snapshot?.manifest.CompanionInstaller.Capabilities.length ?? 0} capabilities</span></div>
         <div class="summary-item"><small>Target Companion Device</small><strong>${escapeHtml(this.adminCredentials.host)}</strong><span>${escapeHtml(this.compatibility?.productPlatform ?? 'Product unavailable')} · ${this.unsupportedProductConfirmed ? 'Exploration bypass acknowledged' : 'Supported product family'}</span></div>
-        <div class="summary-item"><small>HTTPClient Trust Posture</small><strong data-httpclient-posture-label>${escapeHtml(this.compatibility?.httpClientTrustPosture ?? 'Unavailable')}</strong><span>Administrator-owned device-wide setting · monitored live</span></div>
         <div class="summary-item"><small>Files ready</small><strong>${this.preparedResources.length}</strong><span>${this.snapshot?.manifest.Files.length ?? 0} project · ${this.snapshot?.manifest.ExternalDependencies.length ?? 0} external</span></div>
         <div class="summary-item"><small>Installation type</small><strong>${freshInstallation ? 'Fresh Installation — Erase Saved Data' : 'Install or Update — Keep Saved Data'}</strong><span>${freshInstallation ? (storageInstalled ? `${GENERATED_STORAGE_MACRO} will be removed` : 'No generated storage macro was found') : 'Generated storage will be preserved'}</span></div>
       </section>
@@ -793,15 +831,41 @@ export class InstallerApp {
       ${ready ? `<div class="modal-backdrop"><div class="success-dialog" role="dialog" aria-modal="true" aria-labelledby="ready-title"><button class="dialog-close" id="close-ready" aria-label="Continue to Complete Setup">Close</button><span class="dialog-icon">${checkIcon}</span><h2 id="ready-title">Macros installed and ready</h2><p>Custom Companion initialized on the Companion Device. Parent Room Device registration is optional and remains available from Complete Setup.</p><button class="button primary" id="acknowledge-ready">Continue to Complete Setup</button></div></div>` : ''}`;
   }
 
+  private renderParentWorkflowProgress(
+    kind: 'registration' | 'deregistration',
+    progress: ParentWorkflowProgress | undefined,
+  ): string {
+    const allSteps = kind === 'registration'
+      ? [...PARENT_REGISTRATION_PROGRESS_STEPS]
+      : [...PARENT_DEREGISTRATION_PROGRESS_STEPS];
+    const steps = kind === 'deregistration' && progress?.totalSteps === 2
+      ? allSteps.slice(1)
+      : allSteps;
+    const step = Math.min(Math.max(progress?.step || 1, 1), steps.length);
+    const stage = progress?.stage || steps[step - 1];
+    const detail = progress?.detail || 'The request was accepted. Waiting for the Companion Device to report its current stage.';
+    return `
+      <section class="parent-workflow-progress" role="status" aria-live="polite">
+        <header><strong>${kind === 'registration' ? 'Registration progress' : 'Deregistration progress'}</strong><span>Step ${step} of ${steps.length}</span></header>
+        <ol>
+          ${steps.map((title, index) => {
+            const state = index + 1 < step ? 'complete' : index + 1 === step ? 'current' : 'upcoming';
+            return `<li class="${state}" ${state === 'current' ? 'aria-current="step"' : ''}><span class="progress-step-marker">${state === 'complete' ? checkIcon : index + 1}</span><span>${escapeHtml(title)}</span></li>`;
+          }).join('')}
+        </ol>
+        <p><strong>${escapeHtml(stage)}</strong> — ${escapeHtml(detail)}</p>
+      </section>`;
+  }
+
   private renderParentRegistrationModal(): string {
     const form = this.parentRegistrationForm;
     const outcome = this.parentRegistrationOutcome;
     const disabled = this.busy || this.localReviewMode ? 'disabled' : '';
     const canClose = !this.busy && outcome?.kind !== 'timeout';
     const outcomeNotice = outcome?.kind === 'succeeded'
-      ? `<div class="notice success"><span>${checkIcon}</span><div><strong>Parent Room Device registered</strong><p>The Companion Device confirmed the Parent Room Device installation and saved the registration.</p></div></div>`
+      ? `<div class="notice success"><span>${checkIcon}</span><div><strong>Parent Room Device registered</strong><p>${escapeHtml(outcome.detail || 'The Companion Device confirmed the Parent Room Device installation and saved the registration.')}</p></div></div>`
       : outcome?.kind === 'failed'
-        ? `<div class="notice error"><span>${warningIcon}</span><div><strong>Parent Room Device registration failed</strong><p>${escapeHtml(this.parentRegistrationResultText(outcome.message))}</p></div></div>`
+        ? `<div class="notice error"><span>${warningIcon}</span><div><strong>Parent Room Device registration failed</strong><p>${escapeHtml(outcome.detail || 'The Companion Device reported that the Parent Room Device could not be registered.')}</p>${outcome.stage || outcome.code || outcome.host ? `<small>${[outcome.stage, outcome.code, outcome.host].filter(Boolean).map((value) => escapeHtml(value)).join(' · ')}</small>` : ''}${outcome.host ? `<div class="device-configuration-links">${renderDeviceConfigurationLink(outcome.host, 'HTTPClient Mode', 'Open Parent HTTPClient Mode')}${renderDeviceConfigurationLink(outcome.host, 'HTTPClient AllowInsecureHTTPS', 'Open Parent certificate validation setting')}</div>` : ''}</div></div>`
         : outcome?.kind === 'timeout'
           ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Registration has not been confirmed</strong><p>The Companion Device is still connected and the log subscription remains active. Keep waiting for its final result.</p></div></div>`
           : '';
@@ -815,7 +879,7 @@ export class InstallerApp {
         <section class="parent-registration-dialog" role="dialog" aria-modal="true" aria-labelledby="parent-registration-title">
           <button class="dialog-close" id="close-parent-registration" type="button" aria-label="Close Parent Room Device registration" ${canClose ? '' : 'disabled'}>Close</button>
           <div class="panel-heading"><span class="heading-icon">${deviceIcon}</span><div><span class="eyebrow">Optional setup</span><h2 id="parent-registration-title">Add Parent Room Device</h2><p>Use the signed-in Device Administrator session to start the existing Parent Room Registration workflow. Nothing is shown in the Companion Device in-room interface.</p></div></div>
-          <div class="notice warning parent-httpclient-prerequisite"><span>${certificateIcon}</span><div><strong>Configure HTTPClient on both devices before registration</strong><p>Set <code>HttpClient Mode: On</code> on the Companion Device and Parent Room Device. Current connected Companion Device posture: <b data-httpclient-posture-label>${escapeHtml(this.compatibility?.httpClientTrustPosture ?? 'Unavailable')}</b>. With <code>AllowInsecureHTTPS: False</code>, each requested host must match the remote certificate SAN and each sending device must trust the remote issuing CA. If trusted, host-matching endpoint certificates are not provisioned, set <code>HttpClient AllowInsecureHTTPS: True</code> on both devices and accept its device-wide effect. The installer never connects to or changes the Parent Room Device directly.</p></div></div>
+          <div class="notice warning parent-httpclient-prerequisite"><span>${certificateIcon}</span><div><strong>Configure HTTPClient on both devices before registration</strong><p>Set <code>HttpClient Mode: On</code> on the Companion Device and Parent Room Device. Current connected Companion Device posture: <b data-httpclient-posture-label>${escapeHtml(this.compatibility?.httpClientTrustPosture ?? 'Unavailable')}</b>. With <code>AllowInsecureHTTPS: False</code>, each requested host must match the remote certificate SAN and each sending device must trust the remote issuing CA. If trusted, host-matching endpoint certificates are not provisioned, set <code>HttpClient AllowInsecureHTTPS: True</code> on both devices and accept its device-wide effect. The installer never connects to or changes the Parent Room Device directly.</p><div class="device-configuration-link-groups"><span><b>Companion Device</b>${renderDeviceConfigurationLink(this.adminCredentials.host, 'HTTPClient Mode', 'HTTPClient Mode')}${renderDeviceConfigurationLink(this.adminCredentials.host, 'HTTPClient AllowInsecureHTTPS', 'Certificate validation')}</span><span><b>Parent Room Device</b>${renderDeviceConfigurationLink(form.host, 'HTTPClient Mode', 'HTTPClient Mode', 'parent-device-host')}${renderDeviceConfigurationLink(form.host, 'HTTPClient AllowInsecureHTTPS', 'Certificate validation', 'parent-device-host')}</span></div></div></div>
           ${this.errorNotice()}
           ${outcomeNotice}
           <form id="parent-registration-form" class="parent-registration-form">
@@ -828,6 +892,7 @@ export class InstallerApp {
           </div>
           <label class="check-row replacement-ack"><input id="parent-device-overwrite" type="checkbox" ${form.allowOverwrite ? 'checked' : ''} ${disabled}><span><strong>Allow replacement of an existing Parent Room Registration</strong><small>Required only when the verified Parent Room Device is already registered or has a Pending Deregistration. This makes the new registration the current intent.</small></span></label>
           </form>
+          ${this.busy && !outcome ? this.renderParentWorkflowProgress('registration', this.parentRegistrationProgress) : ''}
           ${this.parentRegistrationLogs.length ? `<details class="log-panel" open><summary>Parent registration activity <span>${this.parentRegistrationLogs.length}</span></summary><ol>${this.parentRegistrationLogs.map((message) => `<li class="info"><span>status</span><code>${escapeHtml(message)}</code></li>`).join('')}</ol></details>` : ''}
           ${actions}
         </section>
@@ -857,7 +922,7 @@ export class InstallerApp {
     const outcomeNotice = outcome?.kind === 'completed'
       ? `<div class="notice success"><span>${checkIcon}</span><div><strong>Parent Room Device deregistered</strong><p>${escapeHtml(outcome.detail || 'The Companion Device completed local and remote cleanup.')}</p></div></div>`
       : outcome?.kind === 'pending'
-        ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Remote cleanup is pending</strong><p>${escapeHtml(outcome.detail || 'The registration was removed locally and will remain visible under Pending Deregistrations until remote cleanup succeeds.')}</p></div></div>`
+        ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Remote cleanup is pending</strong><p>${escapeHtml(outcome.detail || 'The registration was removed locally and will remain visible under Pending Deregistrations until remote cleanup succeeds.')}</p><div class="device-configuration-link-groups"><span><b>Companion Device</b>${renderDeviceConfigurationLink(this.adminCredentials.host, 'HTTPClient Mode', 'HTTPClient Mode')}${renderDeviceConfigurationLink(this.adminCredentials.host, 'HTTPClient AllowInsecureHTTPS', 'Certificate validation')}</span><span><b>Parent Room Device</b>${renderDeviceConfigurationLink(target.host, 'HTTPClient Mode', 'HTTPClient Mode')}${renderDeviceConfigurationLink(target.host, 'HTTPClient AllowInsecureHTTPS', 'Certificate validation')}</span></div></div></div>`
         : outcome?.kind === 'failed' || outcome?.kind === 'timeout'
           ? `<div class="notice error"><span>${warningIcon}</span><div><strong>Deregistration was not completed</strong><p>${escapeHtml(outcome.detail)}</p></div></div>`
           : '';
@@ -872,6 +937,7 @@ export class InstallerApp {
           <p><strong>${escapeHtml(target.name)}</strong><br><code>${escapeHtml(target.host)}</code> · Serial ${escapeHtml(target.serial)}</p>
           ${target.active && !outcome ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>This is the active Parent Room Device</strong><p>The Companion Device will leave any active Companion call and return to Standalone before removing the registration.</p></div></div>` : ''}
           ${!outcome ? '<p>This uses the Companion Device’s existing deregistration flow. If the Parent Room Device is unreachable, local removal completes and remote cleanup is retained under Pending Deregistrations.</p>' : ''}
+          ${this.parentAdministrationBusy && !outcome ? this.renderParentWorkflowProgress('deregistration', this.parentDeregistrationProgress) : ''}
           ${outcomeNotice}
           ${actions}
         </section>
@@ -1011,6 +1077,7 @@ export class InstallerApp {
     this.byId('use-computer-location')?.addEventListener('click', () => void this.useComputerLocation());
     this.byId('use-computer-time-zone')?.addEventListener('click', () => void this.useComputerTimeZone());
     this.bindIconPreviews();
+    this.bindDeviceConfigurationLinks();
     this.byId('config-continue')?.addEventListener('click', () => void this.validateConfiguration());
     this.byId('disconnect-config')?.addEventListener('click', () => this.reset());
     this.byId('disconnect-device')?.addEventListener('click', () => {
@@ -1067,6 +1134,7 @@ export class InstallerApp {
         if (!target || this.parentAdministrationBusy || this.localReviewMode) return;
         this.parentDeregistrationTarget = target;
         this.parentDeregistrationOutcome = undefined;
+        this.parentDeregistrationProgress = undefined;
         this.render();
       });
     }
@@ -1077,6 +1145,33 @@ export class InstallerApp {
     this.byId('disconnect-install')?.addEventListener('click', () => this.reset());
     this.byId('keep-waiting')?.addEventListener('click', () => void this.waitForInitialization());
     this.byId('restart-runtime')?.addEventListener('click', () => void this.restartRuntime());
+  }
+
+  private bindDeviceConfigurationLinks(): void {
+    for (const link of this.root.querySelectorAll<HTMLAnchorElement>('[data-device-configuration-host-input]')) {
+      const hostInput = this.byId(link.dataset.deviceConfigurationHostInput ?? '') as HTMLInputElement | null;
+      const search = link.dataset.deviceConfigurationSearch ?? '';
+      if (!hostInput || !search) continue;
+      const update = () => {
+        const url = deviceConfigurationUrl(hostInput.value, search);
+        if (url) {
+          link.href = url;
+          link.classList.remove('disabled');
+          link.removeAttribute('aria-disabled');
+        } else {
+          link.removeAttribute('href');
+          link.classList.add('disabled');
+          link.setAttribute('aria-disabled', 'true');
+        }
+      };
+      hostInput.addEventListener('input', update);
+      link.addEventListener('click', (event) => {
+        if (link.hasAttribute('href')) return;
+        event.preventDefault();
+        hostInput.focus();
+      });
+      update();
+    }
   }
 
   private byId(id: string): HTMLElement | null {
@@ -1622,6 +1717,7 @@ export class InstallerApp {
     this.parentInventoryKnownEmpty = false;
     this.parentDeregistrationTarget = undefined;
     this.parentDeregistrationOutcome = undefined;
+    this.parentDeregistrationProgress = undefined;
     this.parentAdministrationBusy = false;
     this.computerDefaultBusy = undefined;
     this.weatherComputerStatus = undefined;
@@ -1695,6 +1791,7 @@ export class InstallerApp {
     if (this.parentAdministrationBusy) return;
     this.parentDeregistrationTarget = undefined;
     this.parentDeregistrationOutcome = undefined;
+    this.parentDeregistrationProgress = undefined;
     this.render();
   }
 
@@ -1720,10 +1817,18 @@ export class InstallerApp {
     }
 
     this.parentAdministrationMonitor?.close();
-    const monitor = new ParentAdministrationMonitor(this.companionDevice, request.transactionId);
+    const monitor = new ParentAdministrationMonitor(
+      this.companionDevice,
+      request.transactionId,
+      (progress) => {
+        this.parentDeregistrationProgress = progress;
+        this.render();
+      },
+    );
     this.parentAdministrationMonitor = monitor;
     this.parentAdministrationBusy = true;
     this.parentDeregistrationOutcome = undefined;
+    this.parentDeregistrationProgress = undefined;
     this.render();
     try {
       await sendParentAdministrationRequest(this.companionDevice, request);
@@ -1788,6 +1893,7 @@ export class InstallerApp {
     this.parentRegistrationMonitor?.close();
     this.parentRegistrationLogs = [];
     this.parentRegistrationOutcome = undefined;
+    this.parentRegistrationProgress = undefined;
     this.error = '';
     this.busy = true;
     this.parentRegistrationMonitor = new ParentRegistrationMonitor(
@@ -1796,6 +1902,10 @@ export class InstallerApp {
       (message) => {
         this.parentRegistrationLogs.push(this.sanitizeLog(message, [this.parentRegistrationForm.password]));
         if (this.parentRegistrationLogs.length > 50) this.parentRegistrationLogs.shift();
+        this.render();
+      },
+      (progress) => {
+        this.parentRegistrationProgress = progress;
         this.render();
       },
     );
@@ -1832,17 +1942,6 @@ export class InstallerApp {
     this.render();
   }
 
-  private parentRegistrationResultText(message: string | undefined): string {
-    if (!message) return 'The Companion Device reported that the Parent Room Device could not be registered.';
-    const detail = /"Detail"\s*:\s*"((?:\\.|[^"])*)"/.exec(message)?.[1];
-    if (!detail) return 'The Companion Device reported that the Parent Room Device could not be registered.';
-    try {
-      return JSON.parse('"' + detail + '"') as string;
-    } catch {
-      return detail;
-    }
-  }
-
   private resetParentRegistrationForm(render = true): void {
     this.parentRegistrationForm = {
       host: '',
@@ -1853,6 +1952,7 @@ export class InstallerApp {
       allowOverwrite: false,
     };
     this.parentRegistrationOutcome = undefined;
+    this.parentRegistrationProgress = undefined;
     this.parentRegistrationLogs = [];
     this.error = '';
     if (render) this.render();
@@ -1896,6 +1996,7 @@ export class InstallerApp {
       allowOverwrite: false,
     };
     this.parentRegistrationOutcome = undefined;
+    this.parentRegistrationProgress = undefined;
     this.parentRegistrationLogs = [];
     this.parentRegistrationModalOpen = false;
     this.disconnectModalOpen = false;
@@ -1905,6 +2006,7 @@ export class InstallerApp {
     this.parentInventoryKnownEmpty = false;
     this.parentDeregistrationTarget = undefined;
     this.parentDeregistrationOutcome = undefined;
+    this.parentDeregistrationProgress = undefined;
     this.parentAdministrationBusy = false;
     this.computerDefaultBusy = undefined;
     this.weatherComputerStatus = undefined;

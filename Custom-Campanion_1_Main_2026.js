@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.58
+ * Version:                 0.1.2.59
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -281,12 +281,14 @@ const parentRegistrationController = parentRegistration.create({
 	peripheralType: PERIPHERAL_TYPE,
 	initialHeartbeatTimeout: INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS,
 	installerRegistrationAction: MESSAGE_CONFIG.routes.installerParentRegistration,
+	installerRegistrationProgressMessage: 'Companion Installer Parent Room Registration progress',
 	installerRegistrationSuccessMessage: 'Companion Installer Parent Room Registration completed',
 	installerRegistrationFailureMessage: 'Companion Installer Parent Room Registration failed',
 	installerInventoryAction: MESSAGE_CONFIG.routes.installerParentInventory,
 	installerInventorySuccessMessage: 'Companion Installer Parent Room Inventory completed',
 	installerInventoryFailureMessage: 'Companion Installer Parent Room Inventory failed',
 	installerDeregistrationAction: MESSAGE_CONFIG.routes.installerParentDeregistration,
+	installerDeregistrationProgressMessage: 'Companion Installer Parent Room Deregistration progress',
 	installerDeregistrationSuccessMessage: 'Companion Installer Parent Room Deregistration completed',
 	installerDeregistrationPendingMessage: 'Companion Installer Parent Room Deregistration pending',
 	installerDeregistrationFailureMessage: 'Companion Installer Parent Room Deregistration failed',

@@ -29,10 +29,17 @@ describe('installer workflow presentation', () => {
     expect(appSource).toContain('HTTPClient Trust Posture');
     expect(appSource).toContain('The installer monitors it while connected and never changes it.');
     expect(appSource).toContain('Before connecting, set xConfiguration HttpClient Mode to On');
+    expect(appSource).toContain('/web/configurations?s=${encodeURIComponent(search)}');
+    expect(appSource).toContain("'HTTPClient Mode', 'Open HTTPClient Mode'");
+    expect(appSource).toContain("'HTTPClient AllowInsecureHTTPS', 'Open certificate validation setting'");
     expect(appSource).toContain('data-httpclient-posture-label');
     expect(appSource).toContain('httpClientTrustPostureSubscription');
     expect(appSource).toContain('Certificate trust may be blocking sign-in');
     expect(appSource).toContain('Open Companion Device certificate page');
+    expect(appSource).toContain('Recommended production posture: AllowInsecureHTTPS=False');
+    expect(appSource).toContain('Permissive lab posture: AllowInsecureHTTPS=True');
+    expect(appSource).toMatch(/httpClientAllowsInsecureHTTPS\)[\s\S]*notice warning[\s\S]*AllowInsecureHTTPS=True/);
+    expect(appSource).toMatch(/return `<div class="notice success"[\s\S]*AllowInsecureHTTPS=False/);
   });
 
   it('shows whole-solution and selected-release prerequisites before connection', async () => {
@@ -95,6 +102,8 @@ describe('installer workflow presentation', () => {
     expect(source).toContain('this.parentRegistrationModalOpen && this.currentCompleteSetupCapabilities().parentRegistration ? this.renderParentRegistrationModal()');
     expect(source).toContain('createParentRegistrationRequest');
     expect(source).toContain('sendParentRegistrationRequest');
+    expect(source).toContain("renderParentWorkflowProgress('registration'");
+    expect(source).toContain("renderParentWorkflowProgress('deregistration'");
     expect(source).toContain('Nothing is shown in the Companion Device in-room interface');
     expect(source).toContain("'Complete Setup'");
     expect(source).toContain('Complete setup on the Companion Device');
@@ -135,7 +144,10 @@ describe('installer workflow presentation', () => {
   });
 
   it('shows the installer version and Parent Room administration on Complete Setup', async () => {
-    const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
+    const [source, styles] = await Promise.all([
+      readFile(new URL('./app.ts', import.meta.url), 'utf8'),
+      readFile(new URL('./styles.css', import.meta.url), 'utf8'),
+    ]);
 
     expect(source).toContain('INSTALLER_VERSION');
     expect(source).toContain('Installer version');
@@ -150,7 +162,10 @@ describe('installer workflow presentation', () => {
     expect(source).toContain('capabilities.parentDeregistration ? `<button');
     expect(source).toContain('!this.currentCompleteSetupCapabilities().parentDeregistration');
     expect(source).toContain('!this.currentCompleteSetupCapabilities().parentRegistration');
-    expect(source).toContain('Tested with installer v');
+    expect(source).not.toContain('<small>Installer compatibility</small>');
+    expect(source).not.toContain('<strong>Contract ${');
+    expect(source).not.toContain('<small>HTTPClient Trust Posture</small>');
+    expect(styles).toMatch(/\.summary-item strong\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   });
 
   it('offers installer-computer defaults and safe icon previews in Configure', async () => {

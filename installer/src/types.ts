@@ -11,12 +11,14 @@ export const INSTALLER_PARENT_DEREGISTRATION_CAPABILITY = 'installer.parent-dere
 export const INSTALLER_PARENT_INVENTORY_CAPABILITY = 'installer.parent-inventory.v1';
 export const INSTALLER_PARENT_REGISTRATION_CAPABILITY = 'installer.parent-registration.v1';
 export const INSTALLER_PARENT_REGISTRATION_ACTION = releaseContract.InstallerParentRegistrationAction;
+export const INSTALLER_PARENT_REGISTRATION_PROGRESS_MESSAGE = releaseContract.InstallerParentRegistrationProgressMessage;
 export const INSTALLER_PARENT_REGISTRATION_SUCCESS_MESSAGE = releaseContract.InstallerParentRegistrationSuccessMessage;
 export const INSTALLER_PARENT_REGISTRATION_FAILURE_MESSAGE = releaseContract.InstallerParentRegistrationFailureMessage;
 export const INSTALLER_PARENT_INVENTORY_ACTION = releaseContract.InstallerParentInventoryAction;
 export const INSTALLER_PARENT_INVENTORY_SUCCESS_MESSAGE = releaseContract.InstallerParentInventorySuccessMessage;
 export const INSTALLER_PARENT_INVENTORY_FAILURE_MESSAGE = releaseContract.InstallerParentInventoryFailureMessage;
 export const INSTALLER_PARENT_DEREGISTRATION_ACTION = releaseContract.InstallerParentDeregistrationAction;
+export const INSTALLER_PARENT_DEREGISTRATION_PROGRESS_MESSAGE = releaseContract.InstallerParentDeregistrationProgressMessage;
 export const INSTALLER_PARENT_DEREGISTRATION_SUCCESS_MESSAGE = releaseContract.InstallerParentDeregistrationSuccessMessage;
 export const INSTALLER_PARENT_DEREGISTRATION_PENDING_MESSAGE = releaseContract.InstallerParentDeregistrationPendingMessage;
 export const INSTALLER_PARENT_DEREGISTRATION_FAILURE_MESSAGE = releaseContract.InstallerParentDeregistrationFailureMessage;
@@ -147,7 +149,18 @@ export type ParentRegistrationOutcomeKind = 'succeeded' | 'failed' | 'timeout';
 
 export interface ParentRegistrationOutcome {
   kind: ParentRegistrationOutcomeKind;
-  message?: string;
+  detail?: string;
+  host?: string;
+  stage?: string;
+  code?: string;
+}
+
+export interface ParentWorkflowProgress {
+  stage: string;
+  detail: string;
+  step: number;
+  totalSteps: number;
+  host: string;
 }
 
 export interface ParentAdministrationRequest {

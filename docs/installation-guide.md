@@ -68,13 +68,13 @@ Protect all device credentials and any backup of generated storage. Do not place
 
 1. Open the [Companion Installer Web Application](https://ctg-tme.github.io/Custom_Companion_2026/).
 2. Review the project introduction and the whole-solution prerequisites on Release. The default source prepares automatically; choosing another source immediately prepares it instead. Inspect the resulting manifest-derived minimum RoomOS version, software and product platforms, and external macro dependencies. Acknowledge the warning if you intentionally select Main Fork (Beta), then continue to connection.
-3. On Connect, confirm the reminder to set `xConfiguration HttpClient Mode: On` before sign-in and the trust-posture guidance. Then enter the Companion Device host address, expected serial number, and Installer Credentials.
+3. On Connect, enter the Companion Device host address, then use the direct WebUI configuration-search links to confirm `xConfiguration HttpClient Mode: On` and the intended trust posture before sign-in. Enter the expected serial number and Installer Credentials.
 4. If sign-in fails because of certificate trust, open the Companion Device HTTPS page from the installer, accept the browser warning according to your organization's policy, and try again.
 5. Confirm that the installer reports a matching serial number, supported product family, and supported RoomOS version.
    - The installer checks normalized product names exactly first. If no exact match exists, a product name containing `Desk` or `Board Pro` passes when the selected Release Manifest declares that family.
    - For any other product, the installer remains blocked until the Device Administrator explicitly acknowledges the unsupported-device exploration warning. The acknowledgement lasts only for that browser session, remains visible through Review, and does not establish support.
    - During this signed-in preflight, the installer reads `HttpClient Mode` and `HttpClient AllowInsecureHTTPS` without changing them. If Mode is not `On`, installation stops before any mutation with `Set xConfiguration HttpClient Mode to On, then reconnect.`
-   - After preflight, the installer subscribes to `HttpClient AllowInsecureHTTPS` and keeps the reported **HTTPClient Trust Posture** current until Disconnect. Under strict validation, confirm that the installer host becomes a callback host that matches the Companion Device certificate SAN and that every Parent Room Device trusts its issuing CA.
+   - After preflight, the installer subscribes to `HttpClient AllowInsecureHTTPS` and keeps the reported **HTTPClient Trust Posture** current until Disconnect. `False` is the green recommended production posture and requires trusted issuing CAs plus requested-host/SAN matching. `True` is the yellow permissive lab posture for deployments without those certificates.
    - The verified connection is locked to one Companion Device. To change devices, select **Disconnect**, confirm the safeguard dialog, and reconnect. The selected release remains prepared, while credentials and device-derived state are cleared.
 6. Configure the Companion Device runtime:
    - enter the existing Companion Device Callback Credentials;
@@ -87,7 +87,7 @@ Protect all device credentials and any backup of generated storage. Do not place
 7. Choose the installation type:
    - **Install or Update — Keep Saved Data** is for a new endpoint or an upgrade and preserves `Custom-Campanion-Storage`.
    - **Fresh Installation — Erase Saved Data** removes `Custom-Campanion-Storage` immediately before installation. This permanently discards saved Parent Room Devices, Pending Deregistration cleanup records, the active Parent Room Device selection, PIN Mode state, and captured Standalone Paired Environment and standby preferences.
-8. Review the selected source, target, configuration, file count, installation type, and any Legacy Project Macros. The installer is forward-only and does not restore overwritten files after a failure.
+8. Review the selected source, target, configuration, file count, installation type, and any Legacy Project Macros. Internal Installer Contract metadata is intentionally omitted, the detailed HTTPClient posture appears once, and long installation-type labels wrap. The installer is forward-only and does not restore overwritten files after a failure.
    - Before installation starts, select any completed progress step to return to it. Values are retained, and forward navigation repeats validation. Progress navigation locks when Install begins.
 9. Start the installation and keep the browser connected while it streams macro logs. The installer saves and activates Main, explicitly restarts the Macro Runtime, and reaches **Companion Device Installation Ready** after the Main macro logs:
 
@@ -104,13 +104,13 @@ Protect all device credentials and any backup of generated storage. Do not place
 10. On Complete Setup:
     - review **Parent Room Registrations** and **Pending Deregistrations** already stored on the Companion Device;
     - after Fresh Installation, confirm the known-empty message; generated storage was erased, so the installer does not issue an unnecessary initial inventory request;
-    - use **Add Parent** zero or more times to start Installer Parent Room Registration; its modal repeats `HttpClient Mode` and strict/permissive certificate guidance for both devices;
-    - use **Remove** and confirm the safeguard dialog to start Installer Parent Room Deregistration; or
+    - use **Add Parent** zero or more times to start Installer Parent Room Registration; its modal repeats `HttpClient Mode` and strict/permissive certificate guidance with direct WebUI configuration-search links for both devices;
+    - use **Remove** and confirm the safeguard dialog to start Installer Parent Room Deregistration; the modal shows each applicable Companion Device-owned stage and links to both devices' HTTPClient settings if remote cleanup remains pending; or
     - leave Parent Room administration for the Companion Device interface.
 11. Select **Finish** to disconnect the authenticated installer session.
 12. Complete the checks under [Validate the installation](#validate-the-installation).
 
-An accepted Add Parent or Remove request is not itself proof of completion. Wait for the transaction-correlated result shown by the installer. An unreachable removed Parent Room Device disappears from registrations and remains visible under Pending Deregistrations while the Companion Device retries remote cleanup.
+An accepted Add Parent or Remove request is not itself proof of completion. Current Main Fork runtimes report transaction-correlated progress for each stage, while the terminal result remains authoritative and older retained releases may show only generic waiting status. An unreachable removed Parent Room Device disappears from registrations and remains visible under Pending Deregistrations while the Companion Device retries remote cleanup. A verification-stage HTTP failure now preserves the submitted Parent host, stage, stable code, and certificate/HTTPClient remediation.
 
 ## Run the Companion Installer locally
 

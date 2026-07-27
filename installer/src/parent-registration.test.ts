@@ -8,6 +8,7 @@ import {
 import {
   INSTALLER_PARENT_REGISTRATION_ACTION,
   INSTALLER_PARENT_REGISTRATION_FAILURE_MESSAGE,
+  INSTALLER_PARENT_REGISTRATION_PROGRESS_MESSAGE,
   INSTALLER_PARENT_REGISTRATION_SUCCESS_MESSAGE,
 } from './types';
 
@@ -64,6 +65,46 @@ describe('installer Parent Room Registration request', () => {
 });
 
 describe('Parent Room Registration monitor', () => {
+  it('reports transaction-correlated runtime stages before the terminal result', async () => {
+    let listener: ((event: unknown) => void) | undefined;
+    const onProgress = vi.fn();
+    const xapi = {
+      event: {
+        on: vi.fn((_path: string, callback: (event: unknown) => void) => {
+          listener = callback;
+          return vi.fn();
+        }),
+      },
+    } as unknown as CompanionDeviceXapi;
+    const monitor = new ParentRegistrationMonitor(
+      xapi,
+      'installer-registration:progress',
+      () => undefined,
+      onProgress,
+    );
+
+    listener?.({
+      Message: JSON.stringify({
+        Message: INSTALLER_PARENT_REGISTRATION_PROGRESS_MESSAGE,
+        TransactionId: 'installer-registration:progress',
+        Stage: 'Installing Parent Room Runtime',
+        Detail: 'Installing shared macros.',
+        Step: 2,
+        TotalSteps: 6,
+        Host: 'parent.example.com',
+      }),
+    });
+
+    expect(onProgress).toHaveBeenCalledWith({
+      stage: 'Installing Parent Room Runtime',
+      detail: 'Installing shared macros.',
+      step: 2,
+      totalSteps: 6,
+      host: 'parent.example.com',
+    });
+    monitor.close();
+  });
+
   it('accepts only the terminal result for its own transaction', async () => {
     let listener: ((event: unknown) => void) | undefined;
     const stopFeedback = vi.fn();

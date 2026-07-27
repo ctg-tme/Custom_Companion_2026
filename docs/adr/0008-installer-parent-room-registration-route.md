@@ -18,7 +18,7 @@ The Companion Device accepts this action only when it names the connected Compan
 - PIN Mode and all in-room prompts are skipped because the Device Administrator already authenticated to the Companion Device.
 - Live Parent Room Device serial verification, capacity checks, Parent Room macro installation, peripheral connection, ParentReady, ConfigAccepted, storage commit, and tombstone handling remain unchanged.
 - Existing registrations and Pending Deregistrations still require the explicit replacement acknowledgement.
-- The Companion Device emits a transaction-correlated terminal macro-log result. The installer waits for that result rather than treating command acceptance as registration success.
+- The current Companion Device runtime emits transaction-correlated macro-log progress for each registration stage plus the existing terminal result. Progress is advisory and additive; the installer still waits for the terminal result and supports retained runtimes that emit no progress.
 
 This route is not a direct Parent Room Device control API. RoomOS administrator authentication authorizes the browser's local command; the Companion Device remains the only component that contacts and mutates a Parent Room Device.
 
@@ -27,5 +27,5 @@ This route is not a direct Parent Room Device control API. RoomOS administrator 
 - Device Administrators can add zero or more Parent Room Devices during installation without operating the Companion Device UI.
 - Closing the Add Parent modal returns to Complete Setup without disconnecting; Finish is the explicit session-disconnect boundary.
 - In-Room User registration retains its PIN-gated flow and visible prompts.
-- A submitted local message is only a request. Parent Room Registration is successful only after the Companion Device emits the matching completion result.
+- A submitted local message is only a request. Parent Room Registration is successful only after the Companion Device emits the matching completion result; stage progress never substitutes for completion.
 - The action is deliberately narrow and uses the existing message envelope, so a future caller must not treat its declared source role as a general network authorization mechanism.

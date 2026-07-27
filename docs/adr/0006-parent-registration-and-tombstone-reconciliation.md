@@ -21,7 +21,7 @@ Parent Room Deregistration retires the selectable Parent Room Device record imme
 - Cleanup is attempted when deregistration begins, when the Companion Device initializes, and whenever a valid message arrives from the tombstoned Parent Room Device.
 - The Parent Room Device sends `RegistrationValidation` for saved Companion Devices at initialization. An actively registered Companion Device replies `RegistrationValidated`; a tombstoned Companion Device retries deregistration. An unknown Companion Device may ignore the Parent Room Device without affecting its normal experience.
 - A matching transaction ID is required to remove a tombstone. Stale acknowledgements are ignored.
-- Re-registering a tombstoned serial requires explicit confirmation. Acceptance makes registration the newer intent, suppresses the older tombstone's cleanup retries during the handshake, and only `ConfigAccepted` plus the local registration write replaces the tombstone.
+- Re-registering a tombstoned serial requires explicit confirmation. Acceptance makes registration the newer intent, suppresses the older tombstone's cleanup retries during the handshake, and only `ConfigAccepted` plus the local registration write replaces the tombstone. An installer-supplied acknowledgement begins suppression before initial identity verification; a failed attempt releases it so the retained tombstone can resume cleanup.
 - If both a durable registration and an old tombstone are found after a partial storage write, the durable registration is the newer committed intent and the stale tombstone is removed.
 
 ## Consequences

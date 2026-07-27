@@ -2,11 +2,15 @@ import { normalizeCompanionDeviceHost, normalizeSerial, type CompanionDeviceXapi
 import {
   INSTALLER_PARENT_REGISTRATION_ACTION,
   INSTALLER_PARENT_REGISTRATION_FAILURE_MESSAGE,
+  INSTALLER_PARENT_REGISTRATION_PROGRESS_MESSAGE,
   INSTALLER_PARENT_REGISTRATION_SUCCESS_MESSAGE,
   type ParentRegistrationForm,
   type ParentRegistrationOutcome,
   type ParentRegistrationRequest,
+  type ParentWorkflowProgress,
 } from './types';
+
+type LogPayload = Record<string, unknown>;
 
 function randomSuffix(): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
@@ -72,6 +76,46 @@ function serializedLog(event: unknown): string {
   return typeof event === 'string' ? event : JSON.stringify(event);
 }
 
+function parseJsonRecord(text: string): LogPayload | undefined {
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace < 0 || lastBrace <= firstBrace) return undefined;
+  try {
+    const value = JSON.parse(text.slice(firstBrace, lastBrace + 1)) as unknown;
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value as LogPayload
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function logPayload(event: unknown): LogPayload | undefined {
+  const record = typeof event === 'string'
+    ? parseJsonRecord(event)
+    : event && typeof event === 'object' && !Array.isArray(event)
+      ? event as LogPayload
+      : undefined;
+  if (!record) return undefined;
+  if (typeof record.TransactionId === 'string' && typeof record.Message === 'string') return record;
+  for (const key of ['Message', 'Text']) {
+    if (typeof record[key] === 'string') {
+      const parsed = parseJsonRecord(record[key]);
+      if (parsed) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function stringField(record: LogPayload, field: string): string {
+  return typeof record[field] === 'string' ? record[field] : '';
+}
+
+function numberField(record: LogPayload, field: string): number {
+  const value = Number(record[field]);
+  return Number.isFinite(value) ? value : 0;
+}
+
 export class ParentRegistrationMonitor {
   private outcome?: ParentRegistrationOutcome;
   private waiters = new Set<() => void>();
@@ -81,15 +125,37 @@ export class ParentRegistrationMonitor {
     xapi: CompanionDeviceXapi,
     private readonly transactionId: string,
     private readonly onLog: (message: string) => void,
+    private readonly onProgress: (progress: ParentWorkflowProgress) => void = () => undefined,
   ) {
     this.stopFeedback = xapi.event.on('Macros Log', (event: unknown) => {
+      const payload = logPayload(event);
+      if (!payload || payload.TransactionId !== this.transactionId) return;
       const message = serializedLog(event);
-      if (!message.includes(this.transactionId)) return;
       this.onLog(message);
-      if (message.includes(INSTALLER_PARENT_REGISTRATION_SUCCESS_MESSAGE)) {
-        this.outcome = { kind: 'succeeded', message };
-      } else if (message.includes(INSTALLER_PARENT_REGISTRATION_FAILURE_MESSAGE)) {
-        this.outcome = { kind: 'failed', message };
+      if (payload.Message === INSTALLER_PARENT_REGISTRATION_PROGRESS_MESSAGE) {
+        this.onProgress({
+          stage: stringField(payload, 'Stage'),
+          detail: stringField(payload, 'Detail'),
+          step: numberField(payload, 'Step'),
+          totalSteps: numberField(payload, 'TotalSteps'),
+          host: stringField(payload, 'Host'),
+        });
+      } else if (payload.Message === INSTALLER_PARENT_REGISTRATION_SUCCESS_MESSAGE) {
+        this.outcome = {
+          kind: 'succeeded',
+          detail: stringField(payload, 'Detail'),
+          host: stringField(payload, 'Host'),
+          stage: stringField(payload, 'Stage'),
+          code: stringField(payload, 'Code'),
+        };
+      } else if (payload.Message === INSTALLER_PARENT_REGISTRATION_FAILURE_MESSAGE) {
+        this.outcome = {
+          kind: 'failed',
+          detail: stringField(payload, 'Detail'),
+          host: stringField(payload, 'Host'),
+          stage: stringField(payload, 'Stage'),
+          code: stringField(payload, 'Code'),
+        };
       }
       if (this.outcome) {
         for (const wake of this.waiters) wake();

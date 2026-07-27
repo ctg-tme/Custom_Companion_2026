@@ -248,7 +248,7 @@ Parent Room Registration may be started in either of two supported ways:
 - Use **Add Parent** from the Companion Installer Complete Setup page as described in the [Installation Guide](installation-guide.md).
 - Use the Companion Device interface as described in the [User Guide](user-guide.md).
 
-Both routes keep provisioning owned by the Companion Device and perform the same live Parent Room Device serial verification, capacity checks, macro installation, peripheral connection, readiness acknowledgement, configuration acceptance, and durable commit.
+Both routes keep provisioning owned by the Companion Device and perform the same live Parent Room Device serial verification, capacity checks, macro installation, peripheral connection, readiness acknowledgement, configuration acceptance, and durable commit. The current Companion Installer shows those six stages as the runtime reports them; initial HTTPS verification failures preserve the submitted Parent host and identify the failed stage and stable transport code.
 
 Complete Setup first lists the connected Companion Device's saved Parent Room Registrations and Pending Deregistrations without returning stored Parent Room credentials. Immediately after Fresh Installation, the installer shows a known-empty state instead of requesting the storage it just erased; a later explicit Refresh or successful Add Parent still reads current runtime state. **Remove** requires confirmation and starts Installer Parent Room Deregistration through the same Companion Device-owned flow described below. The browser never edits generated storage or contacts a Parent Room Device directly.
 
@@ -256,7 +256,7 @@ Important administration rules:
 
 - Registration does not select the Parent Room Device or change the Companion Device from Standalone to Paired.
 - The observed serial is never disclosed when it does not match the expected serial.
-- Re-registering the same serial requires explicit replacement acknowledgement and does not consume another slot.
+- Re-registering the same serial requires explicit replacement acknowledgement and does not consume another slot. For the installer route, that acknowledgement suppresses older Pending Deregistration cleanup from initial identity verification through the handshake; a failed attempt releases suppression so cleanup can resume.
 - Credentials are transient until the Parent Room Device accepts the configuration and the Companion Device storage write succeeds.
 - A failed registration does not create a selectable Parent Room Device.
 - Registration is blocked only while the Companion Device is both Paired and in an active call.
@@ -272,7 +272,7 @@ Only `DeregistrationAccepted` for the current transaction proves completion. A t
 When cleanup is pending:
 
 1. Do not delete generated storage or the tombstone.
-2. Restore network reachability and the saved Parent Room credentials.
+2. Use the Companion Installer's direct device WebUI links to confirm `HttpClient Mode=On` and the approved certificate-validation posture on both devices, then restore network reachability and the saved Parent Room credentials.
 3. Keep the Parent Room Device Macro Runtime available.
 4. Restart the Companion Device Macro Runtime during a safe window to trigger another initialization-time attempt, or allow a valid message from that Parent Room Device to trigger reconciliation.
 5. Confirm the later success notice and matching logs before treating capacity as reclaimed.

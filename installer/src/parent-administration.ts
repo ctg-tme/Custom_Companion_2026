@@ -3,6 +3,7 @@ import {
   INSTALLER_PARENT_DEREGISTRATION_ACTION,
   INSTALLER_PARENT_DEREGISTRATION_FAILURE_MESSAGE,
   INSTALLER_PARENT_DEREGISTRATION_PENDING_MESSAGE,
+  INSTALLER_PARENT_DEREGISTRATION_PROGRESS_MESSAGE,
   INSTALLER_PARENT_DEREGISTRATION_SUCCESS_MESSAGE,
   INSTALLER_PARENT_INVENTORY_ACTION,
   INSTALLER_PARENT_INVENTORY_FAILURE_MESSAGE,
@@ -11,6 +12,7 @@ import {
   type ParentAdministrationRequest,
   type ParentDeregistrationOutcome,
   type ParentInventory,
+  type ParentWorkflowProgress,
   type PendingDeregistrationSummary,
   type RegisteredParentSummary,
 } from './types';
@@ -167,10 +169,20 @@ export class ParentAdministrationMonitor {
   constructor(
     xapi: CompanionDeviceXapi,
     private readonly transactionId: string,
+    private readonly onProgress: (progress: ParentWorkflowProgress) => void = () => undefined,
   ) {
     this.stopFeedback = xapi.event.on('Macros Log', (event: unknown) => {
       const payload = logPayload(event);
       if (!payload || payload.TransactionId !== this.transactionId) return;
+      if (payload.Message === INSTALLER_PARENT_DEREGISTRATION_PROGRESS_MESSAGE) {
+        this.onProgress({
+          stage: stringField(payload, 'Stage'),
+          detail: stringField(payload, 'Detail'),
+          step: Number(payload.Step) || 0,
+          totalSteps: Number(payload.TotalSteps) || 0,
+          host: stringField(payload, 'Host'),
+        });
+      }
       this.payload = payload;
       for (const wake of this.waiters) wake();
     });

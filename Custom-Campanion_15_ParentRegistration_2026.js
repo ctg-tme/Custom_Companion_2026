@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 22, 2026
  * Revised:                 July 27, 2026
- * Version:                 1.0.11
+ * Version:                 1.0.12
  *
  * Description:             Parent Room Registration and Deregistration controller. Owns the
  *                          PIN-authorized wizard, locked provisioning stages, long-hold removal,
@@ -63,6 +63,19 @@ const STAGE_TIMEOUT_MS = 60000;
 const NETWORK_RETRY_MS = 5000;
 const LONG_PRESS_MS = 3000;
 const RESULT_DURATION_SECONDS = 60;
+const INSTALLER_REGISTRATION_STAGES = [
+	'Verifying Parent Room Device',
+	'Installing Parent Room Runtime',
+	'Connecting Companion Device',
+	'Waiting for Parent Room Runtime',
+	'Confirming Parent Room Registration',
+	'Saving Parent Room Registration'
+];
+const INSTALLER_DEREGISTRATION_STAGES = [
+	'Returning to Standalone',
+	'Saving Parent Room Deregistration',
+	'Confirming Parent Room Deregistration'
+];
 
 const FEEDBACK_IDS = {
 	registrationInfo: 'cc26_registration_info',
@@ -475,13 +488,25 @@ function createParentRegistration(options) {
 			transactionId: transactionId,
 			channel: options.channel || 'in-room',
 			allowOverwrite: !!options.allowOverwrite,
-			candidate: null,
+			candidate: {
+				host: credentials.host,
+				serial: credentials.serial,
+				name: credentials.host,
+				username: credentials.username,
+				password: credentials.password
+			},
 			currentPrompt: null,
 			currentStage: '',
+			currentStageDetail: '',
+			stagePlan: INSTALLER_REGISTRATION_STAGES.slice(),
 			mayHaveRegistered: false,
 			configDenied: false,
 			hadExistingRegistration: false,
-			supersededTombstoneSerial: ''
+			supersededTombstoneSerial: options.channel === 'installer'
+				&& options.allowOverwrite
+				&& findPendingDeregistration(credentials.serial)
+				? credentials.serial
+				: ''
 		};
 		if (usesInRoomOperationUi()) {
 			await dependencies.companionUi.closeProtectedPanel(dependencies.xapi);
@@ -566,7 +591,7 @@ function createParentRegistration(options) {
 	}
 
 	async function runLocalStage(title, text, task) {
-		setCurrentStage(title);
+		setCurrentStage(title, text);
 		if (usesInRoomOperationUi()) {
 			setLockedPrompt(title, text, FEEDBACK_IDS.progress, ['Please Wait']);
 			await reopenLockedPrompt();
@@ -575,7 +600,7 @@ function createParentRegistration(options) {
 	}
 
 	async function runDecisionStage(title, text, choices) {
-		setCurrentStage(title);
+		setCurrentStage(title, text);
 		setLockedPrompt(title, text, FEEDBACK_IDS.overwrite, choices);
 		await reopenLockedPrompt();
 		return withStageTimeout(new Promise(resolve => {
@@ -584,7 +609,7 @@ function createParentRegistration(options) {
 	}
 
 	async function runMessageStage(title, text, expectedAction, sendRequest) {
-		setCurrentStage(title);
+		setCurrentStage(title, text);
 		if (usesInRoomOperationUi()) {
 			setLockedPrompt(title, text, FEEDBACK_IDS.progress, ['Please Wait']);
 			await reopenLockedPrompt();
@@ -622,10 +647,33 @@ function createParentRegistration(options) {
 		});
 	}
 
-	function setCurrentStage(title) {
+	function setCurrentStage(title, detail) {
 		if (operation) {
 			operation.currentStage = title || '';
+			operation.currentStageDetail = detail || '';
+			reportInstallerOperationProgress();
 		}
+	}
+
+	function reportInstallerOperationProgress() {
+		if (!operation || operation.channel !== 'installer') {
+			return;
+		}
+		const stages = operation.stagePlan || [];
+		const stageIndex = stages.indexOf(operation.currentStage);
+		const message = operation.kind === 'registration'
+			? dependencies.installerRegistrationProgressMessage
+			: dependencies.installerDeregistrationProgressMessage;
+		const outcome = {
+			Message: message,
+			TransactionId: operation.transactionId || 'unavailable',
+			Stage: operation.currentStage || '',
+			Detail: operation.currentStageDetail || '',
+			Step: stageIndex >= 0 ? stageIndex + 1 : 0,
+			TotalSteps: stages.length,
+			Host: operation.candidate && operation.candidate.host || operation.parentDevice && operation.parentDevice.host || ''
+		};
+		dependencies.log.info(JSON.stringify(outcome));
 	}
 
 	function sendWaitingRequest() {
@@ -860,7 +908,7 @@ function createParentRegistration(options) {
 			}
 		}
 
-		const failureText = error && error.UserMessage ? error.UserMessage : 'The Parent Room Device could not be registered.';
+		const failureText = registrationFailureText(error, failedOperation);
 		await finishOperation();
 		if (failedOperation && failedOperation.channel === 'installer') {
 			reportInstallerRegistrationResult('failed', failedOperation.transactionId, failureText, failedOperation.candidate, {
@@ -913,13 +961,18 @@ function createParentRegistration(options) {
 			parentDevice: parentDevice,
 			candidate: null,
 			currentPrompt: null,
-			currentStage: ''
+			currentStage: '',
+			currentStageDetail: '',
+			stagePlan: []
 		};
 		if (usesInRoomOperationUi()) {
 			cleanupResultNotice = null;
 			await dependencies.companionUi.closeProtectedPanel(dependencies.xapi);
 		}
 		const context = getRuntimeContext();
+		operation.stagePlan = context.activeParentSerial === parentDevice.serial
+			? INSTALLER_DEREGISTRATION_STAGES.slice()
+			: INSTALLER_DEREGISTRATION_STAGES.slice(1);
 		let tombstone;
 		try {
 			if (context.activeParentSerial === parentDevice.serial) {
@@ -1372,6 +1425,21 @@ function createParentRegistration(options) {
 		} else {
 			dependencies.log.warn(JSON.stringify(outcome));
 		}
+	}
+
+	function registrationFailureText(error, failedOperation) {
+		if (error && error.UserMessage) {
+			return error.UserMessage;
+		}
+		const stage = failedOperation && failedOperation.currentStage || '';
+		const code = error && error.code || '';
+		if (stage === 'Verifying Parent Room Device' && (code === 'CC26-HTTP-REQUEST' || code === 'CC26-HTTP-STATUS')) {
+			const host = failedOperation && failedOperation.candidate && failedOperation.candidate.host
+				|| error && error.Context && error.Context.Host
+				|| 'the Parent Room Device';
+			return `The Companion Device could not reach or authenticate to ${host} over HTTPS. Verify HTTPClient Mode is On, the Parent Room Device credentials and network path are correct, and the Parent Room Device certificate is trusted with host/SAN matching. If trusted endpoint certificates are not provisioned, a Device Administrator may deliberately set HTTPClient AllowInsecureHTTPS to True on the Companion Device.`;
+		}
+		return 'The Parent Room Device could not be registered.';
 	}
 
 	function reportInstallerInventoryResult(status, transactionId, detail, inventory) {

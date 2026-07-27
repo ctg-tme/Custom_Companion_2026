@@ -16,7 +16,7 @@ Keep the authenticated Companion Installer JSXAPI session connected on Complete 
 
 The installer presentation channel skips PIN Mode and in-room prompts because the Device Administrator already authenticated to the Companion Device. It does not skip the operating-mode transition, active-call release, durable local retirement, Pending Deregistration tombstone, remote cleanup retry, acknowledgement matching, or terminal result. If the Parent Room Device cannot confirm cleanup, the registration disappears from the saved list and appears under Pending Deregistrations.
 
-The Companion Device accepts either action only when it names the connected Companion Device and declares the Installer source role. The browser treats command acceptance only as request acceptance and waits for the matching macro-log result.
+The Companion Device accepts either action only when it names the connected Companion Device and declares the Installer source role. The current runtime emits transaction-correlated deregistration progress for the applicable Standalone, local-retirement, and remote-confirmation stages. Progress is additive and advisory; the browser treats command acceptance only as request acceptance and waits for the matching terminal macro-log result, including for retained runtimes without progress.
 
 ## Consequences
 

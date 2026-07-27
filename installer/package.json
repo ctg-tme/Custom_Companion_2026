@@ -1,7 +1,7 @@
 {
   "name": "custom-companion-installer",
   "private": true,
-  "version": "0.1.24",
+  "version": "0.1.25",
   "type": "module",
   "scripts": {
     "verify:release": "node scripts/verify-release-contract.mjs",

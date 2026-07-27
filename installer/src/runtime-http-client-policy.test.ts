@@ -56,7 +56,9 @@ type DeviceCommsModule = {
 };
 
 type RegistrationController = {
+  setState: (parents: Record<string, unknown>[], tombstones: Record<string, unknown>[]) => void;
   handleInstallerRegistrationRequest: (message: Record<string, unknown>) => Promise<boolean>;
+  handleInstallerDeregistrationRequest: (message: Record<string, unknown>) => Promise<boolean>;
   handleMessage: (message: Record<string, unknown>) => Promise<boolean>;
 };
 
@@ -150,7 +152,7 @@ function connection(host: string) {
   };
 }
 
-function buildInstallerRequest(transactionId: string) {
+function buildInstallerRequest(transactionId: string, allowOverwrite = false) {
   return {
     Action: 'InstallerParentRegistrationRequest',
     Serial: 'COMPANION123',
@@ -163,13 +165,31 @@ function buildInstallerRequest(transactionId: string) {
         Username: 'admin',
         Password: 'secret',
       },
+      AllowOverwrite: allowOverwrite,
     },
   };
 }
 
-async function createRegistrationHarness(options: { acknowledgeMessages: boolean }) {
+function buildInstallerDeregistrationRequest(transactionId: string) {
+  return {
+    Action: 'InstallerParentDeregistrationRequest',
+    Serial: 'COMPANION123',
+    Source: { Role: 'Installer' },
+    Payload: {
+      TransactionId: transactionId,
+      ParentSerial: 'PARENT123',
+    },
+  };
+}
+
+async function createRegistrationHarness(options: {
+  acknowledgeMessages: boolean;
+  initializationError?: unknown;
+  initializationGate?: Promise<void>;
+}) {
   const { parentRegistration } = await loadParentRegistration();
   const sentMessages: Array<{ action: string; payload: Record<string, unknown> }> = [];
+  const infoLogs: unknown[] = [];
   const warnings: unknown[] = [];
   const parent = {
     host: 'parent.example.test',
@@ -198,7 +218,11 @@ async function createRegistrationHarness(options: { acknowledgeMessages: boolean
   };
   let controller: RegistrationController;
   const deviceComms = {
-    parentInitializationRequest: vi.fn(async () => parent),
+    parentInitializationRequest: vi.fn(async () => {
+      await options.initializationGate;
+      if (options.initializationError) throw options.initializationError;
+      return parent;
+    }),
     installParentMacros: vi.fn(async () => undefined),
     connectPeripheral: vi.fn(async () => undefined),
     sendPeripheralHeartbeat: vi.fn(async () => undefined),
@@ -228,6 +252,15 @@ async function createRegistrationHarness(options: { acknowledgeMessages: boolean
           });
         });
       }
+      if (action === 'DeregisterRequest') {
+        queueMicrotask(() => {
+          void controller.handleMessage({
+            Action: 'DeregistrationAccepted',
+            Serial: parent.serial,
+            Payload: { TransactionId: payload.TransactionId },
+          });
+        });
+      }
     }),
   };
 
@@ -249,11 +282,17 @@ async function createRegistrationHarness(options: { acknowledgeMessages: boolean
     peripheralType: 'ControlSystem',
     initialHeartbeatTimeout: 3,
     installerRegistrationAction: 'InstallerParentRegistrationRequest',
+    installerRegistrationProgressMessage: 'Companion Installer Parent Room Registration progress',
     installerRegistrationSuccessMessage: 'Companion Installer Parent Room Registration completed',
     installerRegistrationFailureMessage: 'Companion Installer Parent Room Registration failed',
+    installerDeregistrationAction: 'InstallerParentDeregistrationRequest',
+    installerDeregistrationProgressMessage: 'Companion Installer Parent Room Deregistration progress',
+    installerDeregistrationSuccessMessage: 'Companion Installer Parent Room Deregistration completed',
+    installerDeregistrationPendingMessage: 'Companion Installer Parent Room Deregistration pending',
+    installerDeregistrationFailureMessage: 'Companion Installer Parent Room Deregistration failed',
     log: {
       debug: vi.fn(),
-      info: vi.fn(),
+      info: vi.fn((value: unknown) => infoLogs.push(value)),
       warn: vi.fn((value: unknown) => warnings.push(value)),
       error: vi.fn(),
     },
@@ -280,6 +319,7 @@ async function createRegistrationHarness(options: { acknowledgeMessages: boolean
 
   return {
     controller,
+    infoLogs,
     parent,
     sentMessages,
     syncConfig,
@@ -393,6 +433,111 @@ describe('fixed request-level HTTPClient policy', () => {
 });
 
 describe('runtime policy handoff removal', () => {
+  it('suppresses older tombstone cleanup from accepted re-registration through identity verification', async () => {
+    let releaseInitialization: () => void = () => undefined;
+    const initializationGate = new Promise<void>((resolve) => {
+      releaseInitialization = resolve;
+    });
+    const harness = await createRegistrationHarness({
+      acknowledgeMessages: true,
+      initializationGate,
+    });
+    harness.controller.setState([], [{
+      serial: harness.parent.serial,
+      name: harness.parent.name,
+      host: harness.parent.host,
+      username: harness.parent.username,
+      password: harness.parent.password,
+      peripheralId: 'COMPANION123',
+      transactionId: 'deregistration:older-intent',
+      createdAt: '2026-07-27T12:00:00.000Z',
+    }]);
+
+    const registration = harness.controller.handleInstallerRegistrationRequest(
+      buildInstallerRequest('installer-registration:newer-intent-1234', true),
+    );
+    await vi.waitFor(() => {
+      expect(harness.infoLogs.length).toBeGreaterThan(0);
+    });
+    await harness.controller.handleMessage({
+      Action: 'RegistrationValidation',
+      Serial: harness.parent.serial,
+      Payload: {},
+    });
+
+    expect(harness.sentMessages).not.toContainEqual(expect.objectContaining({
+      action: 'DeregisterRequest',
+    }));
+    releaseInitialization();
+    await registration;
+  });
+
+  it('retains the requested Parent host and actionable transport guidance when verification fails', async () => {
+    const harness = await createRegistrationHarness({
+      acknowledgeMessages: false,
+      initializationError: Object.assign(new Error('RoomOS HTTP request failed before a valid response was received'), {
+        code: 'CC26-HTTP-REQUEST',
+        Context: {
+          Host: 'parent.example.test',
+          Cause: 'Certificate validation failed',
+        },
+      }),
+    });
+
+    await harness.controller.handleInstallerRegistrationRequest(
+      buildInstallerRequest('installer-registration:verification-failure-1234'),
+    );
+
+    const outcome = harness.warnings
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => JSON.parse(value) as Record<string, unknown>)
+      .find((value) => value.Message === 'Companion Installer Parent Room Registration failed');
+    expect(outcome).toMatchObject({
+      Code: 'CC26-HTTP-REQUEST',
+      Stage: 'Verifying Parent Room Device',
+      Host: 'parent.example.test',
+    });
+    expect(outcome?.Detail).toMatch(/certificate|HTTPClient|HTTPS/i);
+    const progress = harness.infoLogs
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => JSON.parse(value) as Record<string, unknown>)
+      .find((value) => value.Message === 'Companion Installer Parent Room Registration progress');
+    expect(progress).toMatchObject({
+      Stage: 'Verifying Parent Room Device',
+      Step: 1,
+      TotalSteps: 6,
+      Host: 'parent.example.test',
+    });
+  });
+
+  it('reports each Companion Device-owned deregistration stage to the installer', async () => {
+    const harness = await createRegistrationHarness({ acknowledgeMessages: true });
+    harness.controller.setState([harness.parent], []);
+
+    await harness.controller.handleInstallerDeregistrationRequest(
+      buildInstallerDeregistrationRequest('installer-deregistration:progress-test-1234'),
+    );
+
+    const progress = harness.infoLogs
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => JSON.parse(value) as Record<string, unknown>)
+      .filter((value) => value.Message === 'Companion Installer Parent Room Deregistration progress');
+    expect(progress).toMatchObject([
+      {
+        Stage: 'Saving Parent Room Deregistration',
+        Step: 1,
+        TotalSteps: 2,
+        Host: harness.parent.host,
+      },
+      {
+        Stage: 'Confirming Parent Room Deregistration',
+        Step: 2,
+        TotalSteps: 2,
+        Host: harness.parent.host,
+      },
+    ]);
+  });
+
   it('omits HTTPClient policy from ParentReady and ConfigSync', async () => {
     const harness = await createRegistrationHarness({ acknowledgeMessages: true });
 
