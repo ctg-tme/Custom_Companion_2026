@@ -19,7 +19,7 @@ Custom Companion separates installation, runtime ownership, and in-room operatio
 | --- | --- | --- |
 | Companion Installer | Connects to one Companion Device, verifies its expected serial, writes the selected release and configuration, controls the installation type, and optionally inventories, registers, or deregisters Parent Room Devices after initialization. | It never connects to or directly changes a Parent Room Device. |
 | Companion Device runtime | Stores registrations and Standalone preferences, renders Companion Device Select, changes the Companion Device between Standalone and Paired, provisions registered Parent Room Devices, and coordinates supported calls. | It does not turn PIN Mode into device authentication and does not automatically coordinate non-Webex calls. |
-| Parent Room Device runtime | Recognizes registered Companion Devices, stores their callback configuration, reports call and standby state, admits validated Companion Device guests when allowed, and reconciles deregistration. | It does not own the Companion Device configuration or remove its shared macro package when one Companion Device deregisters. |
+| Parent Room Device runtime | Recognizes registered Companion Devices, stores their callback configuration and last authoritative pairing state, renders Registered Companion Devices, reports call and standby state, admits validated Companion Device guests when allowed, and reconciles deregistration. | It does not decide the Companion Device pairing state, own the Companion Device configuration, or remove its shared macro package when one Companion Device deregisters. |
 | Device Administrator | Controls device accounts, network and certificate policy, installation and upgrades, source configuration, maintenance windows, validation, logs, recovery, and secure access to macros and storage. | Administrator access is not restricted by PIN Mode. |
 | In-Room User | Selects Standalone or a registered Parent Room Device and may use PIN-protected registration, deregistration, and PIN controls. | The user is not expected to repair macro, xAPI, account, certificate, or network failures. |
 
@@ -100,6 +100,8 @@ Registration causes the Companion Device to install or update these resources on
 Only `Custom-Campanion_Room_2026` is active. The Parent Room Device also creates its own `Custom-Campanion-Storage`.
 
 Provisioning saves the package, activates the Parent Room entry macro, and restarts the Parent Room Device Macro Runtime. Companion Device initialization repeats package provisioning for every online registered Parent Room Device, so a Companion Device Macro Runtime restart can also restart the Macro Runtime on those Parent Room Devices. Plan this as a shared-device maintenance action.
+
+The active Parent Room entry macro keeps **Registered Companion Devices** in the RoomOS Control Panel even when the registration list is empty. It applies the same Custom Companion icon used by Companion Device Select. Device rows are read-only status, not pairing controls.
 
 ## 4. Editable deployment configuration
 
@@ -194,7 +196,8 @@ The solution intentionally leaves other device surfaces alone, including Whitebo
 | --- | --- |
 | Macro package | Shared Parent Room runtime and dependencies are saved; only `Custom-Campanion_Room_2026` is active. Provisioning restarts the Parent Room Device Macro Runtime. |
 | HTTPClient | Mode is set to `On`. `AllowInsecureHTTPS` starts enabled by the Parent Room entry source and is updated from accepted Companion Device configuration. The previous device-wide values are not restored. |
-| Generated storage | `registeredBoards` stores recognized Companion Device records and callback credentials. `boardConfigs` stores the last accepted Companion Device configuration by serial. |
+| Generated storage | `registeredBoards` stores recognized Companion Device records and callback credentials. `boardConfigs` stores the last accepted Companion Device configuration by serial. `companionPairingStates` stores the last Companion-authoritative Paired/Not paired value; Offline remains transient. |
+| User interface | `Registered Companion Devices` is saved in `ControlPanel` with an information row, one named status row per registration, or an explicit no-registrations row. Ten-second alerts announce authoritative Paired/Not paired changes and exhausted startup validation. |
 | Connected peripherals | The Companion Device is connected and heartbeated as a RoomOS peripheral. Confirmed deregistration purges only that Companion Device peripheral entry. |
 | Calls | The runtime reads call state, reports it to registered Companion Devices, looks up a current booking only when a Meeting Password is requested, and may admit an exact validated Companion Device guest. |
 | Standby | The runtime reads and subscribes to Parent Room Device standby state and reports it to registered Companion Devices. It does not replace the Parent Room Device standby configuration. |
@@ -260,7 +263,7 @@ Important administration rules:
 
 ### Deregistration and Pending Deregistration
 
-Deregistration first writes a tombstone and removes the Parent Room Device from the selectable list. The Parent Room Device must then confirm that it purged the Companion Device peripheral and removed that Companion Device from its registration and configuration records.
+Deregistration first writes a tombstone and removes the Parent Room Device from the selectable list. The Parent Room Device must then confirm that it purged the Companion Device peripheral and removed that Companion Device from its registration, configuration, and pairing-state records.
 
 Only `DeregistrationAccepted` for the current transaction proves completion. A timeout, authentication failure, offline Parent Room Device, or lost response produces Pending Deregistration.
 
@@ -314,6 +317,7 @@ Stable diagnostic codes begin with `CC26-` for administrator-facing runtime fail
 | `cc26_error` replaces Companion Device Select | The solution entered an Unhealthy State because a required local prerequisite, saved PIN state, or required Paired media/DND command failed. | Read the first stable error diagnostic, correct the macro/xAPI/capability issue, wait for any active call to end, then restart Macro Runtime. |
 | A Parent Room Device is offline or unavailable | Parent Connectivity failed. This alone is not an Unhealthy State. An `Offline` entry remains actionable so an In-Room User can request a fresh check. | Check host resolution, routing, HTTPS, credentials, certificate policy, live serial identity, Parent Room macros, and logs on both devices. |
 | `Companion Device Registration Error` appears on a Parent Room Device | The Parent Room Device accepted or denied configuration but could not send its response to the Companion Device. | Verify callback host, callback credentials, permissions, HTTPS reachability, and certificate policy from Parent Room Device to Companion Device. |
+| A Companion Device row shows `Offline` on its Parent Room Device | Three serialized startup validation attempts did not receive an authoritative response within their two-second response windows. The last saved Paired/Not paired state remains preserved. | Check callback reachability and credentials. A later Companion Device status message corrects the row automatically. |
 | Registration reports capacity denial | The Companion Device has 6 Parent Room Devices or the Parent Room Device already recognizes 3 Companion Devices. | Deregister an unused relationship and wait for confirmed cleanup. Re-syncing an existing serial does not consume a new slot. |
 | Parent Room Deregistration Pending | Local retirement succeeded but remote cleanup was not acknowledged. | Preserve storage, restore connectivity or credentials, and let reconciliation complete. |
 | A non-Webex call does not join | Automatic coordination is intentionally Webex-only. | Start a Webex call on the Parent Room Device or use the Companion Device in Standalone. |
@@ -378,6 +382,8 @@ Record each result with device serial, product platform, RoomOS version, project
 - Each Parent Room Registration completes with the expected serial and correct capacity.
 - Each Parent Room Device has the expected shared package with only its entry macro active.
 - Parent Room callback communication succeeds.
+- Registered Companion Devices remains in the Parent Room Control Panel, uses the Custom Companion icon, and shows the expected information, device, and empty-state rows.
+- Paired, Not paired, Offline, startup priority/concatenation, and later Offline correction behave as documented without duplicate alerts for unchanged state.
 - Paired mode applies UI, sharing, proximity, connector, standby, microphone, volume, and DND behavior.
 - Returning to Standalone restores every governed snapshot value and applies the documented microphone, volume, and DND exceptions.
 - A supported Webex call started on the Parent Room Device joins on the Companion Device as Guest.

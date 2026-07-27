@@ -32,6 +32,18 @@ When you return to Standalone, Custom Companion restores the supported preferenc
 
 If a call is still active when you select Standalone, the call continues and the Companion Device asks whether to restore its default volume.
 
+## Check Registered Companion Devices from a Parent Room
+
+On a Parent Room Device, open **Registered Companion Devices** from the Control Panel. The first row explains the panel. Each following row is named for one registered Companion Device and shows:
+
+- **Paired** — that Companion Device is currently paired to this room.
+- **Not paired** — it is registered with this room but is not currently paired to it.
+- **Offline** — the Parent Room Device could not confirm its current state.
+
+When no Companion Devices are registered, the second row reads **Registration Status** / **No Companion Devices Registered**.
+
+A 10-second alert announces a Companion Device becoming Paired or Not paired. After the Parent Room runtime restarts, it checks registered Companion Devices before presenting one relevant alert: newly Paired state first, newly Not paired state second, and Offline third. If several devices share the selected state, their names appear together. A later response replaces Offline with the Companion Device's authoritative current state.
+
 ## Open Companion Device Select
 
 1. On the Companion Device home screen or call controls, tap **Companion Device Select**.

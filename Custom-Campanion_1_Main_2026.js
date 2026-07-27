@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.53
+ * Version:                 0.1.2.54
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -93,6 +93,7 @@ const MESSAGE_CONFIG = {
 		installerParentRegistration: 'InstallerParentRegistrationRequest',
 		installerParentInventory: 'InstallerParentInventoryRequest',
 		installerParentDeregistration: 'InstallerParentDeregistrationRequest',
+		pairingStatus: 'PairingStatus',
 		activeCallDetailsRequest: 'ActiveCallDetailsRequest',
 		meetingPasswordRequest: 'MeetingPasswordRequest',
 		callState: 'parent.callState',
@@ -122,6 +123,8 @@ let selectionProgressAlertToken = null;
 let isUnhealthy = false;
 let unhealthyReleasePending = false;
 let areUiEventHandlersRegistered = false;
+let isPairingStatusSynchronizationEnabled = false;
+let pairingStatusSynchronizationPromise = null;
 
 const pinModeController = pinMode.create({
 	xapi: xapi,
@@ -166,6 +169,11 @@ const parentConnectivityController = parentConnectivity.create({
 			parentDeviceStatus = snapshot.parentDeviceStatus;
 			pendingDeregistrations = parentRegistrationController.getState().pendingDeregistrations;
 			parentRegistrationController.setState(parentDevices, pendingDeregistrations);
+			if (isPairingStatusSynchronizationEnabled && !isHandlingSelection) {
+				synchronizeParentPairingStatuses('ParentStatusRefresh').catch(error => {
+					utils.softError({ Context: 'Failed to synchronize Parent Room pairing status after availability refresh', Error: error });
+				});
+			}
 		},
 		onAvailabilityChanged: async () => renderParentRoomDeviceSelectionUi(),
 		onInfoChanged: async () => applyRuntimeWebWidget(),
@@ -356,6 +364,8 @@ async function init() {
 		await renderParentRoomDeviceSelectionUi();
 		await installParentMacrosOnOnlineParents();
 		await connectPeripheralToOnlineParents();
+		isPairingStatusSynchronizationEnabled = true;
+		await synchronizeParentPairingStatuses('CompanionDeviceInitialization');
 		await parentRegistrationController.reconcilePendingDeregistrations();
 		parentConnectivityController.start();
 		await parentConnectivityController.evaluate();
@@ -787,6 +797,7 @@ async function selectParentByIndex(parentIndex) {
 }
 
 async function completeVerifiedParentSelection(refreshedParentDevice, parentStatus) {
+	const previousActiveParent = companionState.findActiveParentDevice(companionDeviceState, parentDevices);
 	await standbyCoordinationController.clear();
 	await companionDeviceCallSyncController.cancel();
 	await pairedEnvironmentController.captureStandaloneConfig();
@@ -800,16 +811,21 @@ async function completeVerifiedParentSelection(refreshedParentDevice, parentStat
 	await standbyCoordinationController.applyMode(companionDeviceState.mode);
 	await pairedEnvironmentController.enforceInitialMediaState();
 	if (isUnhealthy) {
+		if (previousActiveParent && previousActiveParent.serial !== refreshedParentDevice.serial) {
+			await sendPairingStatus(previousActiveParent, 'NotPaired', 'ParentSelectionFailed');
+		}
 		return false;
 	}
 	await clearSelectionProgressAlert('StandbyPromptReady');
 	await standbyCoordinationController.scheduleSelectedParentSync(refreshedParentDevice, prefetchedStandbyState);
+	await publishPairingTransition(previousActiveParent, refreshedParentDevice, 'ParentSelection');
 	await companionDeviceCallSyncController.requestActiveParentCallState('ParentSelection');
 	return true;
 }
 
 async function transitionToStandalone(options = {}) {
 	const wasPaired = companionDeviceState.mode === 'Paired';
+	const previousActiveParent = companionState.findActiveParentDevice(companionDeviceState, parentDevices);
 	const hadActiveCall = wasPaired && !options.SkipMediaRestore ? await isCompanionDeviceInActiveCall() : false;
 
 	await parentConnectivityController.cancel(!options.PreserveParentConnectivityInfo);
@@ -824,6 +840,9 @@ async function transitionToStandalone(options = {}) {
 
 	if (wasPaired && !options.SkipMediaRestore) {
 		await pairedEnvironmentController.handleStandaloneRelease(hadActiveCall);
+	}
+	if (wasPaired && previousActiveParent) {
+		await sendPairingStatus(previousActiveParent, 'NotPaired', options.Reason || 'StandaloneTransition');
 	}
 
 	log.info({ Message: 'Companion Device transitioned to Standalone', Reason: options.Reason || 'Unspecified', ActiveCallPreserved: hadActiveCall });
@@ -1006,6 +1025,7 @@ async function sendParentConfigMessage(message) {
 
 	const companionDeviceInformation = await companionDeviceServices.getRuntimeCompanionDeviceInformation(xapi, getConfiguredCompanionDeviceInformation(), log);
 	await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.configSync, {
+		PairingState: getPairingStateForParentSerial(message.Serial),
 		Config: getParentSyncConfig(),
 		Board: {
 			Username: companionDeviceInformation.username,
@@ -1028,6 +1048,72 @@ async function sendParentConfigMessage(message) {
 			MacAddress: companionDeviceInformation.macAddress
 		}
 	}, HTTP_CLIENT_CONFIG);
+}
+
+async function publishPairingTransition(previousParentDevice, activeParentDevice, reason) {
+	if (previousParentDevice && (!activeParentDevice || previousParentDevice.serial !== activeParentDevice.serial)) {
+		await sendPairingStatus(previousParentDevice, 'NotPaired', reason);
+	}
+	if (activeParentDevice) {
+		await sendPairingStatus(activeParentDevice, 'Paired', reason);
+	}
+}
+
+async function synchronizeParentPairingStatuses(reason) {
+	if (pairingStatusSynchronizationPromise) {
+		return pairingStatusSynchronizationPromise;
+	}
+
+	pairingStatusSynchronizationPromise = (async () => {
+		for (let index = 0; index < parentDevices.length; index++) {
+			const parentDevice = parentDevices[index];
+			const status = parentDeviceStatus.find(item => item.serial === parentDevice.serial || item.host === parentDevice.host);
+			if (!status || !status.online) {
+				continue;
+			}
+			await sendPairingStatus(parentDevice, getPairingStateForParentSerial(parentDevice.serial), reason);
+		}
+	})();
+
+	try {
+		await pairingStatusSynchronizationPromise;
+	} finally {
+		pairingStatusSynchronizationPromise = null;
+	}
+}
+
+async function sendPairingStatus(parentDevice, pairingState, reason) {
+	try {
+		const companionDeviceInformation = await companionDeviceServices.getRuntimeCompanionDeviceInformation(xapi, getConfiguredCompanionDeviceInformation(), log);
+		await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.pairingStatus, {
+			PairingState: pairingState,
+			ActiveParentSerial: companionDeviceState.mode === 'Paired' ? activeParentSerial : '',
+			Reason: reason || ''
+		}, {
+			app: 'Companion Board 2026',
+			serial: companionDeviceInformation.serial,
+			source: {
+				Role: 'Board',
+				Name: companionDeviceInformation.name,
+				Host: companionDeviceInformation.host,
+				MacAddress: companionDeviceInformation.macAddress
+			}
+		}, HTTP_CLIENT_CONFIG);
+		log.debug({ Message: 'Companion Device pairing status sent', ParentRoomDeviceSerial: parentDevice.serial, PairingState: pairingState, Reason: reason || '' });
+	} catch (error) {
+		log.debug({
+			Message: 'Companion Device pairing status could not be sent',
+			ParentRoomDeviceSerial: parentDevice && parentDevice.serial || '',
+			PairingState: pairingState,
+			Reason: reason || '',
+			Error: error.code || error.message || 'Unknown pairing status error',
+			ErrorContext: error.Context || {}
+		});
+	}
+}
+
+function getPairingStateForParentSerial(parentSerial) {
+	return companionDeviceState.mode === 'Paired' && activeParentSerial === parentSerial ? 'Paired' : 'NotPaired';
 }
 
 function getParentSyncConfig() {

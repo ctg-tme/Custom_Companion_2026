@@ -21,11 +21,12 @@ or implied.
  *
  * Date Created:            July 22, 2026
  * Revised:                 July 27, 2026
- * Version:                 1.0.7
+ * Version:                 1.0.8
  *
  * Description:             Parent Room Registration and Deregistration controller. Owns the
  *                          PIN-authorized wizard, locked provisioning stages, long-hold removal,
- *                          Pending Deregistration tombstones, and registration reconciliation.
+ *                          Pending Deregistration tombstones, registration reconciliation,
+ *                          and Companion-authoritative pairing-state validation responses.
  *
  * Documentation:           https://github.com/ctg-tme/Custom_Companion_2026/blob/main/docs/technical-reference.md
  *
@@ -1069,8 +1070,10 @@ function createParentRegistration(options) {
 	}
 
 	async function sendConfigSync(parentDevice, companionDeviceInformation, transactionId) {
+		const runtimeContext = getRuntimeContext();
 		await dependencies.deviceComms.sendMessageCommand(dependencies.xapi, parentDevice, 'ConfigSync', {
 			TransactionId: transactionId,
+			PairingState: getPairingStateForParent(runtimeContext, parentDevice.serial),
 			Config: callbacks.getParentSyncConfig(),
 			Board: buildCompanionDevicePayload(companionDeviceInformation),
 			Capabilities: {
@@ -1084,10 +1087,17 @@ function createParentRegistration(options) {
 
 	async function sendRegistrationValidated(parentDevice, message) {
 		const companionDeviceInformation = await callbacks.getRuntimeCompanionDeviceInformation();
+		const runtimeContext = getRuntimeContext();
 		await dependencies.deviceComms.sendMessageCommand(dependencies.xapi, parentDevice, 'RegistrationValidated', {
 			TransactionId: String(message.Payload && message.Payload.TransactionId || ''),
-			Status: 'Registered'
+			Status: 'Registered',
+			PairingState: getPairingStateForParent(runtimeContext, message.Serial),
+			ActiveParentSerial: runtimeContext.mode === 'Paired' ? runtimeContext.activeParentSerial : ''
 		}, buildCompanionDeviceMessageConfig(companionDeviceInformation), dependencies.httpClientConfig);
+	}
+
+	function getPairingStateForParent(runtimeContext, parentSerial) {
+		return runtimeContext.mode === 'Paired' && runtimeContext.activeParentSerial === parentSerial ? 'Paired' : 'NotPaired';
 	}
 
 	function buildCompanionDevicePayload(companionDeviceInformation) {

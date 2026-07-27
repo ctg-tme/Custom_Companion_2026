@@ -38,6 +38,10 @@ _Avoid_: Memory capture, Paired value, presumed RoomOS default
 The in-room interface for choosing Standalone or a registered Parent Room Device and for opening the configuration controls for PIN Mode, Parent Room Registration, and Parent Room Deregistration.
 _Avoid_: Select Device, room picker, board select
 
+**Registered Companion Devices**:
+The Parent Room interface that lists registered Companion Devices and shows each latest Companion-authoritative state as Paired or Not paired, or Offline when the current state cannot be confirmed.
+_Avoid_: Parent board status, pairing configuration
+
 **Parent Room Registration**:
 The durable relationship established after a Companion Device verifies the expected Parent Room Device identity and both devices recognize one another, making that Parent Room Device available for later selection. Registration does not select the Parent Room Device or change the Companion Device's operating mode, and it is unavailable only while the Companion Device is both Paired and participating in an active call.
 _Avoid_: Pairing, active pairing, room setup
