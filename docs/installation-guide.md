@@ -7,10 +7,10 @@ Use the [Companion Installer Web Application](https://ctg-tme.github.io/Custom_C
 - selects one versioned source snapshot and checks every required resource before changing a device;
 - verifies the expected Companion Device serial number, supported product platform, and minimum RoomOS version;
 - validates the Installer Credentials and Companion Device Callback Credentials;
-- makes Standard Installation and Clean Installation consequences explicit;
+- makes **Install or Update — Keep Saved Data** and **Fresh Installation — Erase Saved Data** consequences explicit;
 - installs all required macros with the correct activation model;
 - watches the macro log for a confirmed initialization result; and
-- can start zero or more Parent Room Registrations without connecting directly to a Parent Room Device.
+- can inspect existing Parent Room Registrations and Pending Deregistrations, then start registration or deregistration without connecting directly to a Parent Room Device.
 
 GitHub Pages and repository access policies control availability of the hosted application. If the hosted application is unavailable, run the installer locally as described under [Run the Companion Installer locally](#run-the-companion-installer-locally), or use the [manual installation procedure](#manual-installation).
 
@@ -65,16 +65,18 @@ Protect all device credentials and any backup of generated storage. Do not place
 3. Enter the Companion Device host address, expected serial number, and Installer Credentials.
 4. If sign-in fails because of certificate trust, open the Companion Device HTTPS page from the installer, accept the browser warning according to your organization's policy, and try again.
 5. Confirm that the installer reports a matching serial number, supported product platform, and supported RoomOS version.
+   - The verified connection is locked to one Companion Device. To change devices, select **Disconnect**, confirm the safeguard dialog, and reconnect. The selected release remains prepared, while credentials and device-derived state are cleared.
 6. Configure the Companion Device runtime:
    - enter the existing Companion Device Callback Credentials;
    - keep a distinct callback account unless your deployment deliberately reuses the installer account;
    - review PIN Mode defaults, HTTPClient certificate behavior, and Companion WebWidget settings; and
    - remember that PIN Mode defaults apply only when saved PIN Mode state does not already exist.
 7. Choose the installation type:
-   - **Standard Installation** installs or upgrades the selected source while preserving `Custom-Campanion-Storage`.
-   - **Clean Installation** removes `Custom-Campanion-Storage` immediately before installation. This permanently discards saved Parent Room Devices, Pending Deregistration cleanup records, the active Parent Room Device selection, PIN Mode state, and captured Standalone Paired Environment and standby preferences.
+   - **Install or Update — Keep Saved Data** is for a new endpoint or an upgrade and preserves `Custom-Campanion-Storage`.
+   - **Fresh Installation — Erase Saved Data** removes `Custom-Campanion-Storage` immediately before installation. This permanently discards saved Parent Room Devices, Pending Deregistration cleanup records, the active Parent Room Device selection, PIN Mode state, and captured Standalone Paired Environment and standby preferences.
 8. Review the selected source, target, configuration, file count, installation type, and any Legacy Project Macros. The installer is forward-only and does not restore overwritten files after a failure.
-9. Start the installation and keep the browser connected while it streams macro logs. A successful installation reaches **Companion Device Installation Ready** after the Main macro logs:
+   - Before installation starts, select any completed progress step to return to it. Values are retained, and forward navigation repeats validation. Progress navigation locks when Install begins.
+9. Start the installation and keep the browser connected while it streams macro logs. The installer saves and activates Main, explicitly restarts the Macro Runtime, and reaches **Companion Device Installation Ready** after the Main macro logs:
 
    ```text
    Custom Companion initialized on Companion Device
@@ -86,13 +88,15 @@ Protect all device credentials and any backup of generated storage. Do not place
    Custom Companion initialization stopped on Companion Device
    ```
 
-10. On Complete Setup, either:
-    - use **Add Parent** zero or more times to start Installer Parent Room Registration; or
-    - leave Parent Room Registration for the Companion Device interface.
+10. On Complete Setup:
+    - review **Parent Room Registrations** and **Pending Deregistrations** already stored on the Companion Device;
+    - use **Add Parent** zero or more times to start Installer Parent Room Registration;
+    - use **Remove** and confirm the safeguard dialog to start Installer Parent Room Deregistration; or
+    - leave Parent Room administration for the Companion Device interface.
 11. Select **Finish** to disconnect the authenticated installer session.
 12. Complete the checks under [Validate the installation](#validate-the-installation).
 
-An accepted Add Parent request is not itself proof of registration. Wait for the transaction-correlated success result shown by the installer.
+An accepted Add Parent or Remove request is not itself proof of completion. Wait for the transaction-correlated result shown by the installer. An unreachable removed Parent Room Device disappears from registrations and remains visible under Pending Deregistrations while the Companion Device retries remote cleanup.
 
 ## Run the Companion Installer locally
 
@@ -163,9 +167,9 @@ Use valid JavaScript string escaping for every value. Never paste a configuratio
 3. Confirm the device serial, product platform, RoomOS version, and zero active calls.
 4. For an upgrade, deactivate `Custom-Campanion_1_Main_2026` before overwriting any project file.
 5. Choose the state-handling path:
-   - For the equivalent of a Standard Installation, leave `Custom-Campanion-Storage` in place and inactive.
-   - For the equivalent of a Clean Installation, first ensure the Companion Device is Standalone, securely back up the storage macro, deactivate the project runtime, and remove only `Custom-Campanion-Storage`. This deletion is permanent and can abandon Pending Deregistration cleanup.
-6. Compare installed `Custom-Campanion_*_2026` macros with the selected Release Manifest. Deactivate any Legacy Project Macro absent from the selected manifest. Remove it only after confirming it is obsolete. Do not remove unrelated macros or generated storage during a Standard Installation.
+   - For the equivalent of Install or Update — Keep Saved Data, leave `Custom-Campanion-Storage` in place and inactive.
+   - For the equivalent of Fresh Installation — Erase Saved Data, first ensure the Companion Device is Standalone, securely back up the storage macro, deactivate the project runtime, and remove only `Custom-Campanion-Storage`. This deletion is permanent and can abandon Pending Deregistration cleanup.
+6. Compare installed `Custom-Campanion_*_2026` macros with the selected Release Manifest. Deactivate any Legacy Project Macro absent from the selected manifest. Remove it only after confirming it is obsolete. Do not remove unrelated macros or generated storage during Install or Update — Keep Saved Data.
 
 ### 4. Import the macros
 
@@ -229,6 +233,6 @@ Command acceptance, file presence, and macro activation do not by themselves pro
 | Companion Device Select is replaced by Companion Device Unavailable | Read the hard-error diagnostic, correct the prerequisite or required xAPI path, then restart the Macro Runtime. |
 | Parent Room Registration fails | Confirm host syntax, expected serial, Parent Room Device credentials and permissions, HTTPS reachability in both directions, available registration capacity, and the transaction's macro logs. |
 | WebWidget is absent or incomplete | Confirm it is enabled, its URL and icon resources are reachable from the Companion Device, and the configured weather and time values are valid. |
-| Upgrade loses saved rooms or PIN state | Confirm whether `Custom-Campanion-Storage` was removed. Only a Standard Installation preserves it; a deleted storage macro cannot be reconstructed by the installer. |
+| Upgrade loses saved rooms or PIN state | Confirm whether `Custom-Campanion-Storage` was removed. Only Install or Update — Keep Saved Data preserves it; a deleted storage macro cannot be reconstructed by the installer. |
 
 For exact runtime behavior and xAPI contracts, see the [Technical Reference](technical-reference.md). For operational ownership and planned acceptance coverage, see the [Admin Guide](admin-guide.md).

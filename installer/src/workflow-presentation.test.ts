@@ -46,12 +46,47 @@ describe('installer workflow presentation', () => {
     const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
 
     expect(source).toContain("'Installation Type'");
-    expect(source).toContain('Install Custom Companion 2026 Macros');
-    expect(source).toContain('Purge ${GENERATED_STORAGE_MACRO} and Install Custom Companion 2026 Macros');
+    expect(source).toContain('Install or Update — Keep Saved Data');
+    expect(source).toContain('Fresh Installation — Erase Saved Data');
     expect(source).toContain('captured Standalone Paired Environment and standby preferences');
-    expect(source).toContain("this.installationType === 'clean'");
-    expect(source).toContain("this.installationType === 'clean' ? `<div class=\"notice warning\"");
+    expect(source).toContain("this.installationType === 'fresh'");
+    expect(source).toContain("this.installationType === 'fresh' ? `<div class=\"notice warning\"");
     expect(source).toContain('Generated storage is governed only by the selected installation type');
+  });
+
+  it('supports guarded backward progress navigation and one connected device session', async () => {
+    const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
+
+    expect(source).toContain('data-workflow-step');
+    expect(source).toContain('navigateBackward');
+    expect(source).toContain('if (this.companionDevice)');
+    expect(source).toContain('Connected to this Companion Device');
+    expect(source).toContain('id="disconnect-device"');
+    expect(source).toContain('id="confirm-disconnect"');
+    expect(source).toContain('Disconnect from this Companion Device?');
+    expect(source).toContain('The selected release remains prepared.');
+  });
+
+  it('shows the installer version and Parent Room administration on Complete Setup', async () => {
+    const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
+
+    expect(source).toContain('INSTALLER_VERSION');
+    expect(source).toContain('Installer version');
+    expect(source).toContain('Parent Room Registrations');
+    expect(source).toContain('Pending Deregistrations');
+    expect(source).toContain('id="refresh-parent-inventory"');
+    expect(source).toContain('data-remove-parent');
+    expect(source).toContain('Deregister Parent Room Device?');
+  });
+
+  it('uses document scrolling instead of a dynamic-viewport-height trap', async () => {
+    const styles = await readFile(new URL('./styles.css', import.meta.url), 'utf8');
+
+    expect(styles).not.toMatch(/html,\s*body,\s*#app\s*\{[^}]*(?:^|[;\s])height:\s*100%/s);
+    expect(styles).not.toMatch(/html,\s*body,\s*#app\s*\{[^}]*overflow:\s*hidden/s);
+    expect(styles).not.toMatch(/\.app-shell\s*\{[^}]*height:\s*100dvh/s);
+    expect(styles).toMatch(/\.app-shell\s*\{[^}]*min-height:\s*100vh/s);
+    expect(styles).toMatch(/\.workspace-actions\s*\{[^}]*position:\s*sticky/s);
   });
 
   it('turns README headings into nested disclosure sections', async () => {

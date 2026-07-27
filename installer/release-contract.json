@@ -7,5 +7,12 @@
   "InitializationStoppedMessage": "Custom Companion initialization stopped on Companion Device",
   "InstallerParentRegistrationAction": "InstallerParentRegistrationRequest",
   "InstallerParentRegistrationSuccessMessage": "Companion Installer Parent Room Registration completed",
-  "InstallerParentRegistrationFailureMessage": "Companion Installer Parent Room Registration failed"
+  "InstallerParentRegistrationFailureMessage": "Companion Installer Parent Room Registration failed",
+  "InstallerParentInventoryAction": "InstallerParentInventoryRequest",
+  "InstallerParentInventorySuccessMessage": "Companion Installer Parent Room Inventory completed",
+  "InstallerParentInventoryFailureMessage": "Companion Installer Parent Room Inventory failed",
+  "InstallerParentDeregistrationAction": "InstallerParentDeregistrationRequest",
+  "InstallerParentDeregistrationSuccessMessage": "Companion Installer Parent Room Deregistration completed",
+  "InstallerParentDeregistrationPendingMessage": "Companion Installer Parent Room Deregistration pending",
+  "InstallerParentDeregistrationFailureMessage": "Companion Installer Parent Room Deregistration failed"
 }

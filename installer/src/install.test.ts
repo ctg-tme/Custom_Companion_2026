@@ -78,6 +78,25 @@ describe('installation type', () => {
     ]);
   });
 
+  it('restarts the Macro Runtime after activating Main', async () => {
+    const command = vi.fn().mockResolvedValue(undefined);
+    const progress: string[] = [];
+    const xapi = { command } as unknown as CompanionDeviceXapi;
+
+    await installResources(
+      xapi,
+      [mainResource],
+      [],
+      { purgeLegacy: false, purgeGeneratedStorage: false },
+      (message) => progress.push(message),
+    );
+
+    const paths = command.mock.calls.map(([path]) => path);
+    expect(paths.indexOf('Macros Macro Activate')).toBeGreaterThanOrEqual(0);
+    expect(paths.indexOf('Macros Runtime Restart')).toBeGreaterThan(paths.indexOf('Macros Macro Activate'));
+    expect(progress.at(-1)).toBe('Restarting the Macro Runtime');
+  });
+
   it('continues a clean installation without a remove command when generated storage is absent', async () => {
     const command = vi.fn().mockResolvedValue(undefined);
     const xapi = { command } as unknown as CompanionDeviceXapi;

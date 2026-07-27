@@ -55,12 +55,20 @@ A person with administrative access to the RoomOS device WebUI and Macro Editor 
 _Avoid_: In-Room User, room operator
 
 **Companion Installer**:
-A browser-based deployment tool used by a Device Administrator to configure and install the solution onto a Companion Device. A Parent Room Device is never its installation target; from Complete Setup it may optionally start the Companion Device-owned Installer Parent Room Registration workflow zero or more times.
+A browser-based deployment tool used by a Device Administrator to configure and install the solution onto one Companion Device at a time. A Parent Room Device is never its installation target; from Complete Setup it may inspect saved Parent Room state and optionally start Companion Device-owned Installer Parent Room Registration or Installer Parent Room Deregistration.
 _Avoid_: Parent installer, room installer
 
 **Installer Parent Room Registration**:
 The optional post-installation Device Administrator workflow that starts Parent Room Registration from the Companion Installer while the Companion Device performs the normal verification, Parent Room macro installation, and durable registration. It uses the authenticated Device Administrator session instead of PIN Mode and does not display the in-room registration experience.
 _Avoid_: Direct Parent Room Device installation, remote Parent Room Device configuration, PIN bypass
+
+**Installer Parent Room Deregistration**:
+The optional post-installation Device Administrator workflow that starts Parent Room Deregistration from the Companion Installer while the Companion Device performs the normal Standalone transition, durable local retirement, remote cleanup, Pending Deregistration retention, and retry behavior. It uses the authenticated Device Administrator session instead of PIN Mode and does not directly edit generated storage or control a Parent Room Device.
+_Avoid_: Delete Parent, remove storage record, direct Parent Room cleanup
+
+**Installer Parent Room Inventory**:
+The credential-free Complete Setup view of saved Parent Room Registrations and Pending Deregistrations returned by the connected Companion Device. It identifies each Parent Room Device by name, host, and serial and never returns its stored RoomOS username or password.
+_Avoid_: Parent discovery, credential export, live Parent Room scan
 
 **Installer Credentials**:
 The administrator account used only by the Companion Installer to connect to and deploy onto a Companion Device.
@@ -83,12 +91,16 @@ The installation contract published with a Custom Companion release. It identifi
 _Avoid_: package manifest, file listing
 
 **Release Contract**:
-The build-time agreement that keeps the Release Manifest, eligible macro set, stable installer anchors, synchronized runtime project version, relative macro imports, JavaScript syntax, Companion Device initialization messages, and Installer Parent Room Registration route/result identifiers consistent before an installation snapshot can be packaged.
+The build-time agreement that keeps the Release Manifest, eligible macro set, stable installer anchors, synchronized runtime project version, relative macro imports, JavaScript syntax, Companion Device initialization messages, and Installer Parent Room Registration, Inventory, and Deregistration route/result identifiers consistent before an installation snapshot can be packaged.
 _Avoid_: Manifest only, installer assumptions
 
-**Clean Installation**:
-The explicit Companion Installer choice that removes `Custom-Campanion-Storage` before installing the selected Custom Companion release. It discards the Companion Device's saved Parent Room Devices, active Parent Room Device selection, PIN Mode state, and captured Standalone Paired Environment and standby preferences. Generated storage remains outside the Release Manifest and is never removed by a Standard Installation.
-_Avoid_: Legacy purge, factory reset, normal upgrade
+**Install or Update — Keep Saved Data**:
+The Companion Installer choice for installing on a new endpoint or updating an existing installation while preserving `Custom-Campanion-Storage` and its saved Custom Companion state.
+_Avoid_: Standard Installation, non-destructive install
+
+**Fresh Installation — Erase Saved Data**:
+The explicit Companion Installer choice that removes `Custom-Campanion-Storage` before installing the selected Custom Companion release. It discards the Companion Device's saved Parent Room Devices, Pending Deregistrations, active Parent Room Device selection, PIN Mode state, and captured Standalone Paired Environment and standby preferences. Generated storage remains outside the Release Manifest.
+_Avoid_: Clean Installation, Legacy purge, factory reset, normal upgrade
 
 **Legacy Project Macro**:
 An installed `Custom-Campanion_*_2026` macro that is absent from the selected Release Manifest. The Companion Installer lists these files explicitly, deactivates retained files, and checks its purge option by default; generated storage and unrelated macros are never Legacy Project Macros.

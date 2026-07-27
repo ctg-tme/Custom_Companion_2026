@@ -12,6 +12,7 @@ import boardRegistrationUsername from './assets/board-parent-registration/05-ent
 import boardRegistrationPassword from './assets/board-parent-registration/06-enter-password.png';
 import boardRegistrationConfirmPassword from './assets/board-parent-registration/07-confirm-password.png';
 import boardRegistrationConfirmRegistration from './assets/board-parent-registration/08-confirm-registration.png';
+import installerPackage from '../package.json';
 import {
   configPathId,
   formatConfigPath,
@@ -41,6 +42,12 @@ import {
 import { validateManifest } from './manifest';
 import { renderMermaidDiagrams } from './mermaid';
 import {
+  ParentAdministrationMonitor,
+  createParentDeregistrationRequest,
+  createParentInventoryRequest,
+  sendParentAdministrationRequest,
+} from './parent-administration';
+import {
   ParentRegistrationMonitor,
   createParentRegistrationRequest,
   sendParentRegistrationRequest,
@@ -58,15 +65,20 @@ import {
   type InstallResource,
   type InstallationType,
   type InstalledMacro,
+  type ParentAdministrationRequest,
+  type ParentDeregistrationOutcome,
+  type ParentInventory,
   type ParentRegistrationForm,
   type ParentRegistrationOutcome,
   type ParentRegistrationRequest,
+  type RegisteredParentSummary,
   type ReleaseDiscovery,
   type ReleaseSource,
   type SourceSnapshot,
 } from './types';
 
 const STEPS = ['Introduction', 'Release', 'Connect', 'Configure', 'Installation Type', 'Review', 'Install', 'Complete Setup'];
+const INSTALLER_VERSION = installerPackage.version;
 const TEAM_ICON_URL = 'https://avatars.githubusercontent.com/u/159071680?s=200&v=4';
 const TEAM_GITHUB_URL = 'https://github.com/ctg-tme';
 const CISCO_SAMPLE_CODE_LICENSE_URL = 'https://developer.cisco.com/docs/licenses';
@@ -190,6 +202,14 @@ export class InstallerApp {
   private parentRegistrationMonitor?: ParentRegistrationMonitor;
   private parentRegistrationLogs: string[] = [];
   private parentRegistrationModalOpen = false;
+  private disconnectModalOpen = false;
+  private parentInventory: ParentInventory = { registered: [], pending: [] };
+  private parentInventoryLoading = false;
+  private parentInventoryError = '';
+  private parentAdministrationMonitor?: ParentAdministrationMonitor;
+  private parentDeregistrationTarget?: RegisteredParentSummary;
+  private parentDeregistrationOutcome?: ParentDeregistrationOutcome;
+  private parentAdministrationBusy = false;
   private readonly localReviewEnabled = isLocalReviewHost(window.location.hostname);
   private localReviewMode = false;
 
@@ -244,15 +264,18 @@ export class InstallerApp {
         <aside class="rail">
           <a class="brand" href="./" aria-label="Custom Companion installer home">
             <img class="brand-avatar" src="${TEAM_ICON_URL}" alt="Collaboration TME team icon">
-            <span><strong>Custom Companion</strong><small>Companion Device installer</small></span>
+            <span><strong>Custom Companion</strong><small>Companion Device installer · v${escapeHtml(INSTALLER_VERSION)}</small></span>
           </a>
           <nav aria-label="Installation progress">
             <ol class="step-list">
-              ${STEPS.map((label, index) => `
-                <li class="step ${index === this.step ? 'current' : ''} ${index < this.step ? 'complete' : ''}" ${index === this.step ? 'aria-current="step"' : ''}>
-                  <span class="step-number">${index < this.step ? checkIcon : index + 1}</span>
-                  <span>${label}</span>
-                </li>`).join('')}
+              ${STEPS.map((label, index) => {
+                const canNavigate = index < this.step && this.step < 6 && !this.busy && !this.localReviewMode;
+                const content = `<span class="step-number">${index < this.step ? checkIcon : index + 1}</span><span>${label}</span>`;
+                return `
+                  <li class="step ${index === this.step ? 'current' : ''} ${index < this.step ? 'complete' : ''}" ${index === this.step ? 'aria-current="step"' : ''}>
+                    ${canNavigate ? `<button type="button" data-workflow-step="${index}" aria-label="Return to ${escapeHtml(label)}">${content}</button>` : `<span class="step-content">${content}</span>`}
+                  </li>`;
+              }).join('')}
             </ol>
           </nav>
           ${this.renderLocalReviewTools()}
@@ -265,11 +288,13 @@ export class InstallerApp {
           </div>
           ${actions ? `<div class="workspace-actions">${actions}</div>` : ''}
           <footer class="site-footer">
-            <span>© ${year} Cisco Systems, Inc. || Created by the Collaboration TME team</span>
+            <span>© ${year} Cisco Systems, Inc. || Created by the Collaboration TME team · Installer version ${escapeHtml(INSTALLER_VERSION)}</span>
             <span><a href="${CISCO_SAMPLE_CODE_LICENSE_URL}" target="_blank" rel="noopener noreferrer">Cisco Sample Code License</a> · Credentials remain in this browser session and are cleared when you disconnect.</span>
           </footer>
         </main>
         ${this.parentRegistrationModalOpen ? this.renderParentRegistrationModal() : ''}
+        ${this.disconnectModalOpen ? this.renderDisconnectModal() : ''}
+        ${this.parentDeregistrationTarget ? this.renderParentDeregistrationModal() : ''}
       </div>`;
     this.bindEvents();
     this.bindReadmeEvents();
@@ -310,10 +335,16 @@ export class InstallerApp {
       return `<div class="actions intro-actions"><button class="button primary" id="start-installer" ${this.readmeLoading ? 'disabled' : ''}>Start installation</button></div>`;
     }
     if (this.step === 1) {
+      if (this.companionDevice) {
+        return '<div class="actions split"><button class="button ghost" id="back-introduction">Back to introduction</button><button class="button primary" id="source-continue">Return to connection</button></div>';
+      }
       const disabled = !this.discovery || this.busy || (source?.kind === 'main' && !this.betaAcknowledged);
       return `<div class="actions split"><button class="button ghost" id="back-introduction">Back to introduction</button><button class="button primary" id="source-continue" ${disabled ? 'disabled' : ''}>${this.busy ? '<span class="spinner inverse"></span>Preparing source…' : 'Continue'}</button></div>`;
     }
     if (this.step === 2) {
+      if (this.companionDevice) {
+        return '<div class="actions split"><button class="button ghost" id="back-release">Back</button><span class="action-group"><button class="button secondary" id="disconnect-device">Disconnect</button><button class="button primary" id="return-to-config">Continue to configuration</button></span></div>';
+      }
       const label = this.localReviewMode ? 'Connect disabled in local review' : this.busy ? '<span class="spinner inverse"></span>Connecting…' : 'Connect and verify';
       return `<div class="actions split"><button class="button ghost" id="back-release">Back</button><button class="button primary" id="connect-companion-device" ${this.busy || this.localReviewMode ? 'disabled' : ''}>${label}</button></div>`;
     }
@@ -321,7 +352,7 @@ export class InstallerApp {
       const primary = this.localReviewMode
         ? '<button class="button primary" id="dev-preview-installation-type">Preview installation type</button>'
         : `<button class="button primary" id="config-continue" ${this.busy ? 'disabled' : ''}>${this.busy ? '<span class="spinner inverse"></span>Validating callback account…' : 'Choose installation type'}</button>`;
-      return `<div class="actions split"><button class="button ghost" id="disconnect-config">${this.localReviewMode ? 'Exit local review' : 'Disconnect'}</button>${primary}</div>`;
+      return `<div class="actions split"><button class="button ghost" id="${this.localReviewMode ? 'disconnect-config' : 'disconnect-device'}">${this.localReviewMode ? 'Exit local review' : 'Disconnect'}</button>${primary}</div>`;
     }
     if (this.step === 4) {
       return `<div class="actions split"><button class="button ghost" id="back-config">Back to configuration</button><button class="button primary" id="review-installation" ${this.installationType ? '' : 'disabled'}>Review installation</button></div>`;
@@ -330,7 +361,7 @@ export class InstallerApp {
       return `<div class="actions split"><button class="button ghost" id="back-installation-type">Back to installation type</button><button class="button primary danger-button" id="begin-install" ${this.localReviewMode ? 'disabled' : ''}>${this.localReviewMode ? 'Install disabled in local review' : 'Install on Companion Device'}</button></div>`;
     }
     if (this.step === 7) {
-      return `<div class="actions finish-actions"><button class="button primary" id="finish-setup" ${this.busy ? 'disabled' : ''}>Finish — install another Companion Device</button></div>`;
+      return `<div class="actions finish-actions"><button class="button primary" id="finish-setup" ${this.busy || this.parentAdministrationBusy ? 'disabled' : ''}>Finish — install another Companion Device</button></div>`;
     }
     if (this.localReviewMode) {
       return '<div class="actions centered"><button class="button primary" id="dev-preview-complete">Preview complete setup</button></div>';
@@ -373,6 +404,7 @@ export class InstallerApp {
   private renderRelease(): string {
     const source = this.currentSource();
     const loading = !this.discovery;
+    const sourceLocked = Boolean(this.companionDevice);
     return `
       ${this.pageHeader('Step 2 of 8', 'Choose an installation source', 'Published releases are the safest choice. Main Fork is available as a versioned Beta snapshot of this Pages build.')}
       ${this.errorNotice()}
@@ -380,12 +412,13 @@ export class InstallerApp {
         <div class="panel-heading"><span class="heading-icon">${cloudIcon}</span><div><h2>Release channel</h2><p>Stable releases appear first, followed by Preview builds and the versioned Main Fork (Beta).</p></div></div>
         ${loading ? '<div class="loading-row"><span class="spinner"></span>Checking GitHub releases…</div>' : `
           <label class="field"><span>Installation source</span>
-            <select id="source-select" ${this.busy ? 'disabled' : ''}>
+            <select id="source-select" ${this.busy || sourceLocked ? 'disabled' : ''}>
               ${this.discovery?.unreachableReason ? `<option disabled>Releases unreachable — repository may be private</option>` : ''}
               ${this.discovery?.sources.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === this.selectedSourceId ? 'selected' : ''}>${escapeHtml(item.label)}</option>`).join('')}
             </select>
           </label>
           ${source ? `<a class="resource-link" href="${escapeHtml(source.resourceUrl)}" target="_blank" rel="noopener noreferrer"><span>${cloudIcon}</span><span><strong>View ${escapeHtml(source.label)}</strong><small>${escapeHtml(source.resourceUrl)}</small></span></a>` : ''}
+          ${sourceLocked ? '<div class="notice success"><span>${checkIcon}</span><div><strong>Installation source locked for this connection</strong><p>Disconnect from the Companion Device before selecting a different release.</p></div></div>' : ''}
           ${this.discovery?.unreachableReason ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Published releases could not be listed</strong><p>${escapeHtml(this.discovery.unreachableReason)} Main Fork (Beta) remains available from this Pages build.</p></div></div>` : ''}
           ${source?.kind === 'main' ? `
             <div class="beta-consent">
@@ -396,16 +429,19 @@ export class InstallerApp {
   }
 
   private renderConnect(): string {
+    const connected = Boolean(this.companionDevice);
+    const locked = connected ? 'disabled' : '';
     return `
       ${this.pageHeader('Step 3 of 8', 'Connect to the Companion Device', 'Sign in with the Companion Device administrator account used only for installation. If certificate trust blocks sign-in, a recovery link appears after the failed attempt.')}
       ${this.errorNotice()}
+      ${connected ? `<div class="notice success"><span>${checkIcon}</span><div><strong>Connected to this Companion Device</strong><p>The verified connection is locked to prevent multiple simultaneous device sessions. Disconnect before connecting to another Companion Device.</p></div></div>` : ''}
       <section class="panel connect-panel">
         <div class="panel-heading"><span class="heading-icon">${deviceIcon}</span><div><h2>Companion Device connection</h2><p>Enter the device identity and administrator credentials. The serial comparison confirms the intended device before installation.</p></div></div>
         <div class="connection-fields">
-          <label class="field"><span>Companion Device host address</span><input id="companion-device-host" inputmode="url" placeholder="companion.example.com or 10.0.0.120" value="${escapeHtml(this.adminCredentials.host)}" autocomplete="off"></label>
-          <label class="field"><span>Companion Device Serial</span><input id="expected-serial" value="${escapeHtml(this.expectedSerial)}" autocomplete="off" spellcheck="false"><small>The serial is used for Device Verification prior to Installation</small></label>
-          <label class="field"><span>Companion Device Username</span><input id="admin-username" value="${escapeHtml(this.adminCredentials.username)}" autocomplete="username"></label>
-          <label class="field"><span>Companion Device Password</span><input id="admin-password" type="password" value="${escapeHtml(this.adminCredentials.password)}" autocomplete="current-password"></label>
+          <label class="field"><span>Companion Device host address</span><input id="companion-device-host" inputmode="url" placeholder="companion.example.com or 10.0.0.120" value="${escapeHtml(this.adminCredentials.host)}" autocomplete="off" ${locked}></label>
+          <label class="field"><span>Companion Device Serial</span><input id="expected-serial" value="${escapeHtml(this.expectedSerial)}" autocomplete="off" spellcheck="false" ${locked}><small>The serial is used for Device Verification prior to Installation</small></label>
+          <label class="field"><span>Companion Device Username</span><input id="admin-username" value="${escapeHtml(this.adminCredentials.username)}" autocomplete="username" ${locked}></label>
+          <label class="field"><span>Companion Device Password</span><input id="admin-password" type="password" value="${escapeHtml(this.adminCredentials.password)}" autocomplete="current-password" ${locked}></label>
         </div>
         ${this.certificatePromptVisible ? `<div class="certificate-recovery"><span>${certificateIcon}</span><div><strong>Certificate trust may be blocking sign-in</strong><p>Open the Companion Device address, accept its self-signed certificate warning, then try connecting again.</p><button class="button secondary" id="trust-certificate" type="button">Open Companion Device certificate page</button></div></div>` : ''}
       </section>`;
@@ -484,27 +520,27 @@ export class InstallerApp {
 
   private renderInstallationType(): string {
     return `
-      ${this.pageHeader('Step 5 of 8', 'Choose an installation type', 'Choose whether the installer should preserve existing Custom Companion state or begin with a clean generated storage file.')}
+      ${this.pageHeader('Step 5 of 8', 'Choose an installation type', 'Choose whether to keep existing Custom Companion saved data or erase it for a fresh installation.')}
       ${this.errorNotice()}
       <section class="installation-type-grid" aria-label="Installation type">
-        <label class="installation-type-card ${this.installationType === 'standard' ? 'selected' : ''}">
-          <input type="radio" name="installation-type" value="standard" ${this.installationType === 'standard' ? 'checked' : ''}>
+        <label class="installation-type-card ${this.installationType === 'preserve' ? 'selected' : ''}">
+          <input type="radio" name="installation-type" value="preserve" ${this.installationType === 'preserve' ? 'checked' : ''}>
           <span class="installation-type-copy">
-            <small>Standard installation</small>
-            <strong>Install Custom Companion 2026 Macros</strong>
-            <em>Preserves <code>${GENERATED_STORAGE_MACRO}</code> and its existing Companion Device-local Custom Companion state.</em>
+            <small>Recommended</small>
+            <strong>Install or Update — Keep Saved Data</strong>
+            <em>Use for a new endpoint or an update. Preserves <code>${GENERATED_STORAGE_MACRO}</code> and any existing Companion Device-local Custom Companion state.</em>
           </span>
         </label>
-        <label class="installation-type-card clean ${this.installationType === 'clean' ? 'selected' : ''}">
-          <input type="radio" name="installation-type" value="clean" ${this.installationType === 'clean' ? 'checked' : ''}>
+        <label class="installation-type-card clean ${this.installationType === 'fresh' ? 'selected' : ''}">
+          <input type="radio" name="installation-type" value="fresh" ${this.installationType === 'fresh' ? 'checked' : ''}>
           <span class="installation-type-copy">
-            <small>Clean installation</small>
-            <strong>Purge ${GENERATED_STORAGE_MACRO} and Install Custom Companion 2026 Macros</strong>
+            <small>Destructive reset</small>
+            <strong>Fresh Installation — Erase Saved Data</strong>
             <em>Deletes saved Parent Room Devices, Pending Deregistration cleanup records, the active Parent Room Device selection, PIN Mode state, and captured Standalone Paired Environment and standby preferences before installation.</em>
           </span>
         </label>
       </section>
-      ${this.installationType === 'clean' ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Clean installation permanently removes stored state</strong><p>The generated storage macro is not part of the Release Manifest and cannot be restored by this forward-only installer.</p></div></div>` : ''}`;
+      ${this.installationType === 'fresh' ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Fresh Installation permanently removes saved data</strong><p>The generated storage macro is not part of the Release Manifest and cannot be restored by this forward-only installer.</p></div></div>` : ''}`;
   }
 
   private currentLegacy(): InstalledMacro[] {
@@ -514,7 +550,7 @@ export class InstallerApp {
   private renderReview(): string {
     const source = this.snapshot?.source;
     const legacy = this.currentLegacy();
-    const cleanInstallation = this.installationType === 'clean';
+    const freshInstallation = this.installationType === 'fresh';
     const storageInstalled = this.installed.some((macro) => macro.name === GENERATED_STORAGE_MACRO);
     const config = this.configDocument
       ? humanizeConfigForReview(redactConfig(withLeafValues(this.configDocument, this.configValues)))
@@ -526,7 +562,7 @@ export class InstallerApp {
         <div class="summary-item"><small>Installation source</small><strong>${escapeHtml(source?.label ?? '')}</strong><span title="${escapeHtml(this.snapshot?.commitSha ?? '')}">${escapeHtml((this.snapshot?.commitSha ?? '').slice(0, 12))}</span></div>
         <div class="summary-item"><small>Target Companion Device</small><strong>${escapeHtml(this.adminCredentials.host)}</strong><span>Serial match confirmed</span></div>
         <div class="summary-item"><small>Files ready</small><strong>${this.preparedResources.length}</strong><span>${this.snapshot?.manifest.Files.length ?? 0} project · ${this.snapshot?.manifest.ExternalDependencies.length ?? 0} external</span></div>
-        <div class="summary-item"><small>Installation type</small><strong>${cleanInstallation ? 'Clean installation' : 'Standard installation'}</strong><span>${cleanInstallation ? (storageInstalled ? `${GENERATED_STORAGE_MACRO} will be removed` : 'No generated storage macro was found') : 'Generated storage will be preserved'}</span></div>
+        <div class="summary-item"><small>Installation type</small><strong>${freshInstallation ? 'Fresh Installation — Erase Saved Data' : 'Install or Update — Keep Saved Data'}</strong><span>${freshInstallation ? (storageInstalled ? `${GENERATED_STORAGE_MACRO} will be removed` : 'No generated storage macro was found') : 'Generated storage will be preserved'}</span></div>
       </section>
       <section class="panel legacy-panel">
         <div class="panel-heading"><span class="heading-icon warning-color">${warningIcon}</span><div><h2>Legacy project macros</h2><p>These are installed Custom-Campanion files that are not part of the selected release.</p></div></div>
@@ -537,7 +573,7 @@ export class InstallerApp {
         <header><div><h2 id="config-preview-title">Configuration summary</h2><p>Every generated setting is shown with human-facing labels. Credential values remain masked in this review.</p></div></header>
         <pre><code>${escapeHtml(JSON.stringify(config, null, 2))}</code></pre>
       </section>
-      <div class="notice danger"><span>${warningIcon}</span><div><strong>No automatic rollback</strong><p>${cleanInstallation ? `${GENERATED_STORAGE_MACRO} and its stored Companion Device state will be permanently removed before matching macros are overwritten.` : 'Matching macros will be overwritten while generated Companion Device storage is preserved.'} Installation continues forward and reports the macro runtime result.</p></div></div>`;
+      <div class="notice danger"><span>${warningIcon}</span><div><strong>No automatic rollback</strong><p>${freshInstallation ? `${GENERATED_STORAGE_MACRO} and its stored Companion Device state will be permanently removed before matching macros are overwritten.` : 'Matching macros will be overwritten while generated Companion Device storage is preserved.'} Installation continues forward and reports the macro runtime result.</p></div></div>`;
   }
 
   private renderInstall(): string {
@@ -596,6 +632,83 @@ export class InstallerApp {
       </div>`;
   }
 
+  private renderDisconnectModal(): string {
+    return `
+      <div class="modal-backdrop safeguard-modal">
+        <section class="safeguard-dialog" role="dialog" aria-modal="true" aria-labelledby="disconnect-title">
+          <span class="dialog-icon warning-dialog-icon">${warningIcon}</span>
+          <h2 id="disconnect-title">Disconnect from this Companion Device?</h2>
+          <p>The installer will close its only device session and clear the administrator credentials, verified device identity, and device-derived configuration. The selected release remains prepared.</p>
+          <div class="dialog-actions">
+            <button class="button ghost" id="cancel-disconnect" type="button">Keep connection</button>
+            <button class="button danger-button" id="confirm-disconnect" type="button">Disconnect</button>
+          </div>
+        </section>
+      </div>`;
+  }
+
+  private renderParentDeregistrationModal(): string {
+    const target = this.parentDeregistrationTarget;
+    if (!target) return '';
+    const outcome = this.parentDeregistrationOutcome;
+    const outcomeNotice = outcome?.kind === 'completed'
+      ? `<div class="notice success"><span>${checkIcon}</span><div><strong>Parent Room Device deregistered</strong><p>${escapeHtml(outcome.detail || 'The Companion Device completed local and remote cleanup.')}</p></div></div>`
+      : outcome?.kind === 'pending'
+        ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Remote cleanup is pending</strong><p>${escapeHtml(outcome.detail || 'The registration was removed locally and will remain visible under Pending Deregistrations until remote cleanup succeeds.')}</p></div></div>`
+        : outcome?.kind === 'failed' || outcome?.kind === 'timeout'
+          ? `<div class="notice error"><span>${warningIcon}</span><div><strong>Deregistration was not completed</strong><p>${escapeHtml(outcome.detail)}</p></div></div>`
+          : '';
+    const actions = outcome
+      ? '<div class="dialog-actions"><button class="button primary" id="close-parent-deregistration" type="button">Close</button></div>'
+      : `<div class="dialog-actions"><button class="button ghost" id="cancel-parent-deregistration" type="button" ${this.parentAdministrationBusy ? 'disabled' : ''}>Cancel</button><button class="button danger-button" id="confirm-parent-deregistration" type="button" ${this.parentAdministrationBusy ? 'disabled' : ''}>${this.parentAdministrationBusy ? '<span class="spinner inverse"></span>Deregistering…' : 'Deregister Parent'}</button></div>`;
+    return `
+      <div class="modal-backdrop safeguard-modal">
+        <section class="safeguard-dialog parent-deregistration-dialog" role="dialog" aria-modal="true" aria-labelledby="parent-deregistration-title">
+          <span class="dialog-icon warning-dialog-icon">${warningIcon}</span>
+          <h2 id="parent-deregistration-title">Deregister Parent Room Device?</h2>
+          <p><strong>${escapeHtml(target.name)}</strong><br><code>${escapeHtml(target.host)}</code> · Serial ${escapeHtml(target.serial)}</p>
+          ${target.active && !outcome ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>This is the active Parent Room Device</strong><p>The Companion Device will leave any active Companion call and return to Standalone before removing the registration.</p></div></div>` : ''}
+          ${!outcome ? '<p>This uses the Companion Device’s existing deregistration flow. If the Parent Room Device is unreachable, local removal completes and remote cleanup is retained under Pending Deregistrations.</p>' : ''}
+          ${outcomeNotice}
+          ${actions}
+        </section>
+      </div>`;
+  }
+
+  private renderParentInventory(): string {
+    const registered = this.parentInventory.registered;
+    const pending = this.parentInventory.pending;
+    const registeredRows = registered.length
+      ? `<ul class="parent-inventory-list">${registered.map((parent) => `
+          <li>
+            <span class="parent-inventory-copy"><strong>${escapeHtml(parent.name)}</strong><small>${escapeHtml(parent.host)} · Serial ${escapeHtml(parent.serial)}</small></span>
+            ${parent.active ? '<span class="status-badge active">Active</span>' : '<span class="status-badge">Registered</span>'}
+            <button class="button secondary compact-button" type="button" data-remove-parent="${escapeHtml(parent.serial)}" ${this.parentAdministrationBusy || this.localReviewMode ? 'disabled' : ''}>Remove</button>
+          </li>`).join('')}</ul>`
+      : '<p class="empty-state">No Parent Room Registrations are saved on this Companion Device.</p>';
+    const pendingRows = pending.length
+      ? `<ul class="parent-inventory-list pending-list">${pending.map((parent) => `
+          <li>
+            <span class="parent-inventory-copy"><strong>${escapeHtml(parent.name)}</strong><small>${escapeHtml(parent.host)} · Serial ${escapeHtml(parent.serial)}${parent.createdAt ? ` · Pending since ${escapeHtml(parent.createdAt)}` : ''}</small></span>
+            <span class="status-badge pending">Cleanup pending</span>
+          </li>`).join('')}</ul>`
+      : '<p class="empty-state compact-empty">No remote cleanup is pending.</p>';
+    return `
+      <section class="panel parent-inventory-panel" aria-labelledby="parent-inventory-title">
+        <div class="parent-inventory-heading">
+          <div><span class="eyebrow">Companion Device state</span><h2 id="parent-inventory-title">Parent Room Registrations</h2><p>Review registrations already saved on this Companion Device before adding or removing Parent Room Devices.</p></div>
+          <button class="button secondary" id="refresh-parent-inventory" type="button" ${this.parentInventoryLoading || this.parentAdministrationBusy || this.localReviewMode ? 'disabled' : ''}>${this.parentInventoryLoading ? '<span class="spinner"></span>Refreshing…' : 'Refresh'}</button>
+        </div>
+        ${this.parentInventoryError ? `<div class="notice error"><span>${warningIcon}</span><div><strong>Unable to load Parent Room Registrations</strong><p>${escapeHtml(this.parentInventoryError)}</p></div></div>` : ''}
+        ${this.parentInventoryLoading && !registered.length && !pending.length ? '<div class="loading-row"><span class="spinner"></span>Reading Companion Device storage…</div>' : registeredRows}
+        <div class="pending-inventory">
+          <h3>Pending Deregistrations</h3>
+          <p>These registrations were removed locally and are waiting for remote Parent Room Device cleanup.</p>
+          ${pendingRows}
+        </div>
+      </section>`;
+  }
+
   private renderCompleteSetup(): string {
     const host = this.completionHost || this.adminCredentials.host;
     return `
@@ -616,11 +729,12 @@ export class InstallerApp {
               ${BOARD_REGISTRATION_WALKTHROUGH.map((step) => `<li><figure><a href="${step.src}" target="_blank" rel="noopener noreferrer"><img src="${step.src}" alt="${step.alt}" loading="lazy"></a><figcaption>${step.caption}</figcaption></figure></li>`).join('')}
             </ol>
           </details>
-          <section class="browser-parent-option" aria-labelledby="browser-parent-option-title">
-            <div><span class="eyebrow">Browser alternative</span><h3 id="browser-parent-option-title">Add a Parent from this installer</h3><p>Use the signed-in Device Administrator session to start the same Companion Device-owned registration workflow without using the Board interface. You can add multiple Parent Room Devices this way, but Board registration is recommended.</p></div>
-            <button class="button secondary" id="add-parent" type="button" ${this.parentRegistrationModalOpen || this.busy ? 'disabled' : ''}>Add Parent</button>
-          </section>
         </div>
+      </section>
+      ${this.renderParentInventory()}
+      <section class="browser-parent-option" aria-labelledby="browser-parent-option-title">
+        <div><span class="eyebrow">Browser alternative</span><h3 id="browser-parent-option-title">Add a Parent from this installer</h3><p>Use the signed-in Device Administrator session to start the same Companion Device-owned registration workflow without using the Board interface. You can add multiple Parent Room Devices this way, but Board registration is recommended.</p></div>
+        <button class="button secondary" id="add-parent" type="button" ${this.parentRegistrationModalOpen || this.busy || this.parentAdministrationBusy ? 'disabled' : ''}>Add Parent</button>
       </section>`;
   }
 
@@ -632,7 +746,10 @@ export class InstallerApp {
     this.byId('dev-preview-installation-type')?.addEventListener('click', () => void this.navigateLocalReview(4));
     this.byId('dev-preview-complete')?.addEventListener('click', () => void this.navigateLocalReview(7));
     this.byId('start-installer')?.addEventListener('click', () => { this.step = 1; this.error = ''; this.render(); });
-    this.byId('back-introduction')?.addEventListener('click', () => { this.step = 0; this.error = ''; this.render(); });
+    for (const control of this.root.querySelectorAll<HTMLButtonElement>('[data-workflow-step]')) {
+      control.addEventListener('click', () => this.navigateBackward(Number(control.dataset.workflowStep)));
+    }
+    this.byId('back-introduction')?.addEventListener('click', () => this.navigateBackward(0));
     this.byId('source-select')?.addEventListener('change', (event) => {
       this.selectedSourceId = (event.target as HTMLSelectElement).value;
       this.betaAcknowledged = false;
@@ -645,18 +762,39 @@ export class InstallerApp {
     });
     this.byId('source-continue')?.addEventListener('click', () => {
       if (this.localReviewMode) void this.navigateLocalReview(2);
+      else if (this.companionDevice) {
+        this.step = 2;
+        this.error = '';
+        this.render();
+      }
       else void this.prepareSource();
     });
-    this.byId('back-release')?.addEventListener('click', () => { this.step = 1; this.error = ''; this.render(); });
+    this.byId('back-release')?.addEventListener('click', () => this.navigateBackward(1));
+    this.byId('return-to-config')?.addEventListener('click', () => {
+      if (!this.companionDevice) return;
+      this.step = 3;
+      this.error = '';
+      this.render();
+    });
     this.byId('trust-certificate')?.addEventListener('click', () => this.openCertificate());
     this.byId('connect-companion-device')?.addEventListener('click', () => void this.connectCompanionDevice());
     this.byId('reuse-admin')?.addEventListener('change', (event) => this.reuseAdminCredentials((event.target as HTMLInputElement).checked));
     this.byId('config-continue')?.addEventListener('click', () => void this.validateConfiguration());
     this.byId('disconnect-config')?.addEventListener('click', () => this.reset());
-    this.byId('back-config')?.addEventListener('click', () => { this.step = 3; this.error = ''; this.render(); });
+    this.byId('disconnect-device')?.addEventListener('click', () => {
+      if (!this.companionDevice || this.busy) return;
+      this.disconnectModalOpen = true;
+      this.render();
+    });
+    this.byId('cancel-disconnect')?.addEventListener('click', () => {
+      this.disconnectModalOpen = false;
+      this.render();
+    });
+    this.byId('confirm-disconnect')?.addEventListener('click', () => this.disconnectDevice());
+    this.byId('back-config')?.addEventListener('click', () => this.navigateBackward(3));
     for (const control of this.root.querySelectorAll<HTMLInputElement>('input[name="installation-type"]')) {
       control.addEventListener('change', () => {
-        if (control.checked && (control.value === 'standard' || control.value === 'clean')) {
+        if (control.checked && (control.value === 'preserve' || control.value === 'fresh')) {
           this.installationType = control.value;
           this.error = '';
           this.render();
@@ -672,9 +810,7 @@ export class InstallerApp {
     this.byId('back-installation-type')?.addEventListener('click', () => {
       const purgeControl = this.byId('purge-legacy') as HTMLInputElement | null;
       this.purgeLegacy = purgeControl?.checked ?? this.purgeLegacy;
-      this.step = 4;
-      this.error = '';
-      this.render();
+      this.navigateBackward(4);
     });
     this.byId('begin-install')?.addEventListener('click', () => void this.beginInstall());
     this.byId('finish-install')?.addEventListener('click', () => this.continueToCompleteSetup());
@@ -691,6 +827,20 @@ export class InstallerApp {
     this.byId('register-parent')?.addEventListener('click', () => void this.beginParentRegistration());
     this.byId('keep-waiting-parent')?.addEventListener('click', () => void this.waitForParentRegistration());
     this.byId('register-another-parent')?.addEventListener('click', () => this.resetParentRegistrationForm());
+    this.byId('refresh-parent-inventory')?.addEventListener('click', () => void this.refreshParentInventory());
+    for (const control of this.root.querySelectorAll<HTMLButtonElement>('[data-remove-parent]')) {
+      control.addEventListener('click', () => {
+        const serial = normalizeSerial(control.dataset.removeParent ?? '');
+        const target = this.parentInventory.registered.find((parent) => parent.serial === serial);
+        if (!target || this.parentAdministrationBusy || this.localReviewMode) return;
+        this.parentDeregistrationTarget = target;
+        this.parentDeregistrationOutcome = undefined;
+        this.render();
+      });
+    }
+    this.byId('cancel-parent-deregistration')?.addEventListener('click', () => this.closeParentDeregistration());
+    this.byId('close-parent-deregistration')?.addEventListener('click', () => this.closeParentDeregistration());
+    this.byId('confirm-parent-deregistration')?.addEventListener('click', () => void this.beginParentDeregistration());
     this.byId('finish-setup')?.addEventListener('click', () => this.reset());
     this.byId('disconnect-install')?.addEventListener('click', () => this.reset());
     this.byId('keep-waiting')?.addEventListener('click', () => void this.waitForInitialization());
@@ -699,6 +849,29 @@ export class InstallerApp {
 
   private byId(id: string): HTMLElement | null {
     return this.root.querySelector(`#${id}`);
+  }
+
+  private navigateBackward(targetStep: number): void {
+    if (
+      this.localReviewMode
+      || this.busy
+      || !Number.isInteger(targetStep)
+      || targetStep < 0
+      || targetStep >= this.step
+      || this.step >= 6
+    ) return;
+    try {
+      if (this.step === 3) this.configValues = this.readConfigValues();
+      if (this.step === 5) {
+        const purgeControl = this.byId('purge-legacy') as HTMLInputElement | null;
+        this.purgeLegacy = purgeControl?.checked ?? this.purgeLegacy;
+      }
+      this.step = targetStep;
+      this.error = '';
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
+    }
+    this.render();
   }
 
   private async navigateLocalReview(targetStep: number): Promise<void> {
@@ -781,7 +954,29 @@ export class InstallerApp {
         { name: 'Custom-Campanion_Legacy_2026', active: false },
       ];
     }
-    this.installationType ??= 'standard';
+    this.installationType ??= 'preserve';
+    this.parentInventory = {
+      registered: [
+        {
+          serial: 'PARENTROOM001',
+          name: 'Training Room',
+          host: 'training-room.local',
+          active: true,
+        },
+        {
+          serial: 'PARENTROOM002',
+          name: 'Executive Briefing Center',
+          host: 'ebc-room.local',
+          active: false,
+        },
+      ],
+      pending: [{
+        serial: 'PARENTROOM003',
+        name: 'Project Room',
+        host: 'project-room.local',
+        createdAt: '2026-07-27T12:00:00.000Z',
+      }],
+    };
     this.installProgress = 'Local review mode · no device changes will be made.';
   }
 
@@ -839,6 +1034,7 @@ export class InstallerApp {
   }
 
   private async connectCompanionDevice(): Promise<void> {
+    if (this.companionDevice) return;
     this.captureConnectFields();
     this.error = '';
     try {
@@ -960,7 +1156,7 @@ export class InstallerApp {
 
   private async beginInstall(): Promise<void> {
     if (!this.companionDevice || !this.installationType) return;
-    if (this.installationType === 'clean') {
+    if (this.installationType === 'fresh') {
       try {
         const latestInstalled = await listInstalledMacros(this.companionDevice);
         const latestStorage = latestInstalled.find((macro) => macro.name === GENERATED_STORAGE_MACRO);
@@ -968,7 +1164,7 @@ export class InstallerApp {
         if (latestStorage) this.installed.push(latestStorage);
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
-        this.error = `Unable to confirm ${GENERATED_STORAGE_MACRO} before the clean installation. No files were changed. ${detail}`;
+        this.error = `Unable to confirm ${GENERATED_STORAGE_MACRO} before the Fresh Installation. No files were changed. ${detail}`;
         this.render();
         return;
       }
@@ -998,7 +1194,7 @@ export class InstallerApp {
         this.installed,
         {
           purgeLegacy: this.purgeLegacy,
-          purgeGeneratedStorage: this.installationType === 'clean',
+          purgeGeneratedStorage: this.installationType === 'fresh',
         },
         (message) => { this.installProgress = message; this.render(); },
       );
@@ -1049,6 +1245,47 @@ export class InstallerApp {
     }
   }
 
+  private disconnectDevice(): void {
+    if (!this.companionDevice) return;
+    this.monitor?.close();
+    this.monitor = undefined;
+    this.parentRegistrationMonitor?.close();
+    this.parentRegistrationMonitor = undefined;
+    this.parentAdministrationMonitor?.close();
+    this.parentAdministrationMonitor = undefined;
+    this.companionDevice.close();
+    this.companionDevice = undefined;
+    this.compatibility = undefined;
+    this.installed = [];
+    this.adminCredentials = { host: '', username: '', password: '' };
+    this.expectedSerial = '';
+    this.activeCallConfirmed = false;
+    this.configValues = this.configDocument
+      ? new Map(this.configDocument.leaves.map((leaf) => [configPathId(leaf.path), leaf.value]))
+      : new Map();
+    this.preparedResources = [];
+    this.installationType = undefined;
+    this.purgeLegacy = true;
+    this.installProgress = '';
+    this.installOutcome = undefined;
+    this.installError = '';
+    this.macroLogs = [];
+    this.parentRegistrationModalOpen = false;
+    this.resetParentRegistrationForm(false);
+    this.parentInventory = { registered: [], pending: [] };
+    this.parentInventoryLoading = false;
+    this.parentInventoryError = '';
+    this.parentDeregistrationTarget = undefined;
+    this.parentDeregistrationOutcome = undefined;
+    this.parentAdministrationBusy = false;
+    this.disconnectModalOpen = false;
+    this.certificatePromptVisible = false;
+    this.completionHost = '';
+    this.error = '';
+    this.step = 2;
+    this.render();
+  }
+
   private continueToCompleteSetup(): void {
     this.monitor?.close();
     this.monitor = undefined;
@@ -1057,6 +1294,90 @@ export class InstallerApp {
     this.installError = '';
     this.step = 7;
     this.render();
+    void this.refreshParentInventory();
+  }
+
+  private async refreshParentInventory(): Promise<void> {
+    if (this.localReviewMode || !this.companionDevice || this.parentAdministrationBusy) return;
+    let request: ParentAdministrationRequest;
+    try {
+      request = createParentInventoryRequest(this.expectedSerial);
+    } catch (error) {
+      this.parentInventoryError = error instanceof Error ? error.message : String(error);
+      this.render();
+      return;
+    }
+
+    this.parentAdministrationMonitor?.close();
+    const monitor = new ParentAdministrationMonitor(this.companionDevice, request.transactionId);
+    this.parentAdministrationMonitor = monitor;
+    this.parentInventoryLoading = true;
+    this.parentAdministrationBusy = true;
+    this.parentInventoryError = '';
+    this.render();
+    try {
+      await sendParentAdministrationRequest(this.companionDevice, request);
+      this.parentInventory = await monitor.waitForInventory();
+    } catch (error) {
+      this.parentInventoryError = error instanceof Error ? error.message : String(error);
+    } finally {
+      monitor.close();
+      if (this.parentAdministrationMonitor === monitor) this.parentAdministrationMonitor = undefined;
+      this.parentInventoryLoading = false;
+      this.parentAdministrationBusy = false;
+      this.render();
+    }
+  }
+
+  private closeParentDeregistration(): void {
+    if (this.parentAdministrationBusy) return;
+    this.parentDeregistrationTarget = undefined;
+    this.parentDeregistrationOutcome = undefined;
+    this.render();
+  }
+
+  private async beginParentDeregistration(): Promise<void> {
+    const target = this.parentDeregistrationTarget;
+    if (!target || !this.companionDevice || this.localReviewMode || this.parentAdministrationBusy) return;
+    let request: ParentAdministrationRequest;
+    try {
+      request = createParentDeregistrationRequest(this.expectedSerial, target.serial);
+    } catch (error) {
+      this.parentDeregistrationOutcome = {
+        kind: 'failed',
+        detail: error instanceof Error ? error.message : String(error),
+      };
+      this.render();
+      return;
+    }
+
+    this.parentAdministrationMonitor?.close();
+    const monitor = new ParentAdministrationMonitor(this.companionDevice, request.transactionId);
+    this.parentAdministrationMonitor = monitor;
+    this.parentAdministrationBusy = true;
+    this.parentDeregistrationOutcome = undefined;
+    this.render();
+    try {
+      await sendParentAdministrationRequest(this.companionDevice, request);
+      this.parentDeregistrationOutcome = await monitor.waitForDeregistration();
+    } catch (error) {
+      this.parentDeregistrationOutcome = {
+        kind: 'failed',
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      monitor.close();
+      if (this.parentAdministrationMonitor === monitor) this.parentAdministrationMonitor = undefined;
+      this.parentAdministrationBusy = false;
+      this.render();
+    }
+
+    if (
+      this.parentDeregistrationOutcome?.kind === 'completed'
+      || this.parentDeregistrationOutcome?.kind === 'pending'
+    ) {
+      await this.refreshParentInventory();
+    }
   }
 
   private openParentRegistration(): void {
@@ -1068,9 +1389,11 @@ export class InstallerApp {
 
   private closeParentRegistration(): void {
     if (this.busy || this.parentRegistrationOutcome?.kind === 'timeout') return;
+    const refreshInventory = this.parentRegistrationOutcome?.kind === 'succeeded';
     this.parentRegistrationModalOpen = false;
     this.resetParentRegistrationForm(false);
     this.render();
+    if (refreshInventory) void this.refreshParentInventory();
   }
 
   private async beginParentRegistration(): Promise<void> {
@@ -1163,6 +1486,8 @@ export class InstallerApp {
     this.monitor = undefined;
     this.parentRegistrationMonitor?.close();
     this.parentRegistrationMonitor = undefined;
+    this.parentAdministrationMonitor?.close();
+    this.parentAdministrationMonitor = undefined;
     this.companionDevice?.close();
     this.companionDevice = undefined;
     this.step = 0;
@@ -1193,6 +1518,13 @@ export class InstallerApp {
     this.parentRegistrationOutcome = undefined;
     this.parentRegistrationLogs = [];
     this.parentRegistrationModalOpen = false;
+    this.disconnectModalOpen = false;
+    this.parentInventory = { registered: [], pending: [] };
+    this.parentInventoryLoading = false;
+    this.parentInventoryError = '';
+    this.parentDeregistrationTarget = undefined;
+    this.parentDeregistrationOutcome = undefined;
+    this.parentAdministrationBusy = false;
     this.betaAcknowledged = false;
     this.localReviewMode = false;
     this.certificatePromptVisible = false;

@@ -17,7 +17,7 @@ Custom Companion separates installation, runtime ownership, and in-room operatio
 
 | Component or role | Owns | Does not own |
 | --- | --- | --- |
-| Companion Installer | Connects to one Companion Device, verifies its expected serial, writes the selected release and configuration, controls the installation type, and optionally starts Parent Room Registration after initialization. | It never connects to or directly changes a Parent Room Device. |
+| Companion Installer | Connects to one Companion Device, verifies its expected serial, writes the selected release and configuration, controls the installation type, and optionally inventories, registers, or deregisters Parent Room Devices after initialization. | It never connects to or directly changes a Parent Room Device. |
 | Companion Device runtime | Stores registrations and Standalone preferences, renders Companion Device Select, changes the Companion Device between Standalone and Paired, provisions registered Parent Room Devices, and coordinates supported calls. | It does not turn PIN Mode into device authentication and does not automatically coordinate non-Webex calls. |
 | Parent Room Device runtime | Recognizes registered Companion Devices, stores their callback configuration, reports call and standby state, admits validated Companion Device guests when allowed, and reconciles deregistration. | It does not own the Companion Device configuration or remove its shared macro package when one Companion Device deregisters. |
 | Device Administrator | Controls device accounts, network and certificate policy, installation and upgrades, source configuration, maintenance windows, validation, logs, recovery, and secure access to macros and storage. | Administrator access is not restricted by PIN Mode. |
@@ -68,10 +68,10 @@ Follow the [Installation Guide](installation-guide.md) for the complete hosted, 
 
 | Installation type | Effect |
 | --- | --- |
-| Standard Installation | Installs the selected source snapshot and preserves the generated `Custom-Campanion-Storage` macro, registrations, Pending Deregistrations, active selection, PIN Mode state, and Standalone Preference Snapshots. |
-| Clean Installation | Deactivates the existing project runtime, removes only `Custom-Campanion-Storage` when present, and installs the selected source snapshot. This permanently discards the saved Custom Companion state listed above. |
+| Install or Update — Keep Saved Data | Installs the selected source snapshot on a new endpoint or upgrades an existing installation while preserving the generated `Custom-Campanion-Storage` macro, registrations, Pending Deregistrations, active selection, PIN Mode state, and Standalone Preference Snapshots. |
+| Fresh Installation — Erase Saved Data | Deactivates the existing project runtime, removes only `Custom-Campanion-Storage` when present, and installs the selected source snapshot. This permanently discards the saved Custom Companion state listed above. |
 
-A Clean Installation is not a factory reset, but it is destructive to solution state. If it is performed while the Companion Device is Paired, the RoomOS configurations already enforced for Paired mode remain persistent while the deleted Standalone Preference Snapshots are no longer available for restoration. Return to Standalone and verify restoration before considering a Clean Installation.
+A Fresh Installation is not a factory reset, but it is destructive to solution state. If it is performed while the Companion Device is Paired, the RoomOS configurations already enforced for Paired mode remain persistent while the deleted Standalone Preference Snapshots are no longer available for restoration. Return to Standalone and verify restoration before considering a Fresh Installation.
 
 The installer also identifies installed `Custom-Campanion_*_2026` files that are absent from the selected release as Legacy Project Macros. It can remove those explicitly listed files or retain them inactive. It never treats generated storage or unrelated macros as legacy project files.
 
@@ -121,7 +121,7 @@ The current PIN, registered Parent Room Devices, active selection, Pending Dereg
 
 ### Edit Config after installation
 
-The preferred time to edit deployment configuration is during a Standard Installation or upgrade. If an on-device edit is required:
+The preferred time to edit deployment configuration is during Install or Update — Keep Saved Data. If an on-device edit is required:
 
 1. Return the Companion Device to Standalone and confirm there are no active calls.
 2. Open the device Macro Editor and keep `Custom-Campanion_2_Config_2026` inactive.
@@ -232,7 +232,7 @@ The capture lifecycle is:
 
 Do not establish a new preference while Paired. The current Paired value is policy state, not a Standalone preference, and the runtime will normally correct the change.
 
-Do not hand-edit `Custom-Campanion-Storage`. It can contain credentials, transaction state, snapshot schemas, and registrations that must remain internally consistent. A Standard Installation is the supported way to preserve it across upgrades. A Clean Installation is the explicit way to remove it, but it resets all Custom Companion state rather than one field.
+Do not hand-edit `Custom-Campanion-Storage`. It can contain credentials, transaction state, snapshot schemas, and registrations that must remain internally consistent. Install or Update — Keep Saved Data is the supported way to preserve it across upgrades. Fresh Installation — Erase Saved Data is the explicit way to remove it, but it resets all Custom Companion state rather than one field.
 
 Unsupported or unavailable xAPI paths are logged and skipped. A newly discovered non-camera connector is not changed while Paired until its own `PresentationSelection` has been observed in Standalone.
 
@@ -244,6 +244,8 @@ Parent Room Registration may be started in either of two supported ways:
 - Use the Companion Device interface as described in the [User Guide](user-guide.md).
 
 Both routes keep provisioning owned by the Companion Device and perform the same live Parent Room Device serial verification, capacity checks, macro installation, peripheral connection, readiness acknowledgement, configuration acceptance, and durable commit.
+
+Complete Setup first lists the connected Companion Device's saved Parent Room Registrations and Pending Deregistrations without returning stored Parent Room credentials. **Remove** requires confirmation and starts Installer Parent Room Deregistration through the same Companion Device-owned flow described below. The browser never edits generated storage or contacts a Parent Room Device directly.
 
 Important administration rules:
 
@@ -270,7 +272,7 @@ When cleanup is pending:
 4. Restart the Companion Device Macro Runtime during a safe window to trigger another initialization-time attempt, or allow a valid message from that Parent Room Device to trigger reconciliation.
 5. Confirm the later success notice and matching logs before treating capacity as reclaimed.
 
-A Clean Installation deletes tombstones and abandons any remote cleanup that was not acknowledged.
+A Fresh Installation deletes tombstones and abandons any remote cleanup that was not acknowledged.
 
 ## 8. Routine maintenance and upgrades
 
@@ -281,15 +283,15 @@ Use this sequence for an upgrade or configuration maintenance window:
 3. Resolve Pending Deregistrations when practical.
 4. Confirm intended Parent Room Devices are online if they must receive updated sources or callback configuration.
 5. Record current project versions, macro activation state, Config values, registrations, and governed Standalone values.
-6. Use the [Installation Guide](installation-guide.md) and choose Standard Installation unless a deliberate full state reset is required.
-7. Review every generated Config value before installation. A Standard Installation preserves storage but still installs the selected Config source.
+6. Use the [Installation Guide](installation-guide.md) and choose Install or Update — Keep Saved Data unless a deliberate full state reset is required.
+7. Review every generated Config value before installation. Install or Update preserves storage but still installs the selected Config source.
 8. Allow Companion Device initialization and online Parent Room Device provisioning to finish.
 9. Verify macro inventory, activation state, initialization messages, registrations, and device behavior.
 10. Record source verification and device validation as separate results.
 
 Never update only a subset of numbered runtime macros. A release is one synchronized, unbundled source set. Keep Main, Config, RoomReference, the Release Manifest, imports, and version anchors together.
 
-The installer is forward-only and does not restore overwritten macros after failure. It subscribes to macro logs before activation:
+The installer is forward-only and does not restore overwritten macros after failure. It subscribes to macro logs before activation, saves and activates Main, explicitly issues `Macros Runtime Restart`, and then waits for:
 
 - Initialization complete produces Companion Device Installation Ready.
 - Initialization stopped or a JavaScript runtime error produces failure.
@@ -345,8 +347,8 @@ Use the least destructive recovery that addresses the fault:
 
 1. Correct the account, network, certificate, xAPI, or source problem.
 2. Restart Macro Runtime only after checking active calls and the impact on registered Parent Room Devices.
-3. Use Standard Installation to restore a complete synchronized source set while preserving state.
-4. Use Clean Installation only when intentionally abandoning all registrations, PIN state, Pending Deregistrations, active selection, and Standalone Preference Snapshots.
+3. Use Install or Update — Keep Saved Data to restore a complete synchronized source set while preserving state.
+4. Use Fresh Installation — Erase Saved Data only when intentionally abandoning all registrations, PIN state, Pending Deregistrations, active selection, and Standalone Preference Snapshots.
 
 Additional limits administrators must account for:
 

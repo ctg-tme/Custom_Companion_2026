@@ -235,6 +235,21 @@ export async function verifyReleaseContract(repositoryDirectory) {
     }
   }
 
+  const installerParentAdministrationValues = [
+    requireString(contract.InstallerParentInventoryAction, 'InstallerParentInventoryAction'),
+    requireString(contract.InstallerParentInventorySuccessMessage, 'InstallerParentInventorySuccessMessage'),
+    requireString(contract.InstallerParentInventoryFailureMessage, 'InstallerParentInventoryFailureMessage'),
+    requireString(contract.InstallerParentDeregistrationAction, 'InstallerParentDeregistrationAction'),
+    requireString(contract.InstallerParentDeregistrationSuccessMessage, 'InstallerParentDeregistrationSuccessMessage'),
+    requireString(contract.InstallerParentDeregistrationPendingMessage, 'InstallerParentDeregistrationPendingMessage'),
+    requireString(contract.InstallerParentDeregistrationFailureMessage, 'InstallerParentDeregistrationFailureMessage'),
+  ];
+  for (const value of installerParentAdministrationValues) {
+    if (!allProjectSource.includes(value)) {
+      throw new Error(`The deployable source does not contain the Installer Parent Room administration contract value: ${value}`);
+    }
+  }
+
   return {
     contract,
     manifest,

@@ -29,5 +29,5 @@ Parent Room Deregistration retires the selectable Parent Room Device record imme
 - Deregistration is responsive in the Companion Device UI even when the Parent Room Device is offline, while remote state converges when communication returns.
 - Parent Room macros remain available to other Companion Devices, and the Parent Room Device's registered-device limit is eventually reclaimed.
 - Credentials can remain in hidden Companion Device storage after deregistration until explicit Parent Room Deregistration cleanup is proven. Device Administrators must continue protecting Macro Editor and generated storage access.
-- Clean Installation can erase tombstones and therefore abandons any unconfirmed remote cleanup; this remains an explicit administrator reset.
+- Fresh Installation — Erase Saved Data can erase tombstones and therefore abandons any unconfirmed remote cleanup; this remains an explicit administrator reset.
 - Parent Room Device validation cannot infer deregistration from a missing response. Only a Companion Device that still has an active registration or tombstone can provide explicit evidence.

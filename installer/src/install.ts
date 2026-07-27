@@ -163,4 +163,6 @@ export async function installResources(
 
   onProgress(`Activating ${mainMacro}`);
   await xapi.command('Macros Macro Activate', { Name: mainMacro });
+  onProgress('Restarting the Macro Runtime');
+  await xapi.command('Macros Runtime Restart');
 }

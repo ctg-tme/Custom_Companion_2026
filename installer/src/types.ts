@@ -8,10 +8,17 @@ export const INITIALIZATION_STOPPED_MESSAGE = releaseContract.InitializationStop
 export const INSTALLER_PARENT_REGISTRATION_ACTION = releaseContract.InstallerParentRegistrationAction;
 export const INSTALLER_PARENT_REGISTRATION_SUCCESS_MESSAGE = releaseContract.InstallerParentRegistrationSuccessMessage;
 export const INSTALLER_PARENT_REGISTRATION_FAILURE_MESSAGE = releaseContract.InstallerParentRegistrationFailureMessage;
+export const INSTALLER_PARENT_INVENTORY_ACTION = releaseContract.InstallerParentInventoryAction;
+export const INSTALLER_PARENT_INVENTORY_SUCCESS_MESSAGE = releaseContract.InstallerParentInventorySuccessMessage;
+export const INSTALLER_PARENT_INVENTORY_FAILURE_MESSAGE = releaseContract.InstallerParentInventoryFailureMessage;
+export const INSTALLER_PARENT_DEREGISTRATION_ACTION = releaseContract.InstallerParentDeregistrationAction;
+export const INSTALLER_PARENT_DEREGISTRATION_SUCCESS_MESSAGE = releaseContract.InstallerParentDeregistrationSuccessMessage;
+export const INSTALLER_PARENT_DEREGISTRATION_PENDING_MESSAGE = releaseContract.InstallerParentDeregistrationPendingMessage;
+export const INSTALLER_PARENT_DEREGISTRATION_FAILURE_MESSAGE = releaseContract.InstallerParentDeregistrationFailureMessage;
 export const GENERATED_STORAGE_MACRO = releaseContract.GeneratedStorageMacro;
 export const PROJECT_MACRO_PATTERN = /^Custom-Campanion_.*_2026$/;
 
-export type InstallationType = 'standard' | 'clean';
+export type InstallationType = 'preserve' | 'fresh';
 
 export interface ExternalDependency {
   Name: string;
@@ -123,3 +130,33 @@ export interface ParentRegistrationOutcome {
   kind: ParentRegistrationOutcomeKind;
   message?: string;
 }
+
+export interface ParentAdministrationRequest {
+  transactionId: string;
+  text: string;
+}
+
+export interface RegisteredParentSummary {
+  serial: string;
+  name: string;
+  host: string;
+  active: boolean;
+}
+
+export interface PendingDeregistrationSummary {
+  serial: string;
+  name: string;
+  host: string;
+  createdAt: string;
+}
+
+export interface ParentInventory {
+  registered: RegisteredParentSummary[];
+  pending: PendingDeregistrationSummary[];
+}
+
+export type ParentDeregistrationOutcome =
+  | { kind: 'completed'; detail: string }
+  | { kind: 'pending'; detail: string }
+  | { kind: 'failed'; detail: string }
+  | { kind: 'timeout'; detail: string };

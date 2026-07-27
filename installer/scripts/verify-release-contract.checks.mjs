@@ -16,10 +16,24 @@ const contract = {
   InstallerParentRegistrationAction: 'InstallerParentRegistrationRequest',
   InstallerParentRegistrationSuccessMessage: 'Companion Installer Parent Room Registration completed',
   InstallerParentRegistrationFailureMessage: 'Companion Installer Parent Room Registration failed',
+  InstallerParentInventoryAction: 'InstallerParentInventoryRequest',
+  InstallerParentInventorySuccessMessage: 'Companion Installer Parent Room Inventory completed',
+  InstallerParentInventoryFailureMessage: 'Companion Installer Parent Room Inventory failed',
+  InstallerParentDeregistrationAction: 'InstallerParentDeregistrationRequest',
+  InstallerParentDeregistrationSuccessMessage: 'Companion Installer Parent Room Deregistration completed',
+  InstallerParentDeregistrationPendingMessage: 'Companion Installer Parent Room Deregistration pending',
+  InstallerParentDeregistrationFailureMessage: 'Companion Installer Parent Room Deregistration failed',
 };
 
 function header(value = version) {
   return `/**\n * Version:                 ${value}\n */\n`;
+}
+
+function runtimeContractSource(keys = Object.keys(contract)) {
+  return keys
+    .filter((key) => key.startsWith('Initialization') || key.startsWith('InstallerParent'))
+    .map((key) => `console.log('${contract[key]}');`)
+    .join('\n') + '\n';
 }
 
 async function createFixture(overrides = {}) {
@@ -28,7 +42,7 @@ async function createFixture(overrides = {}) {
   await mkdir(installerDirectory, { recursive: true });
 
   const sources = {
-    [contract.MainMacroFile]: `${header()}console.log('${contract.InitializationSuccessMessage}');\nconsole.log('${contract.InitializationStoppedMessage}');\nconsole.log('${contract.InstallerParentRegistrationAction}');\nconsole.log('${contract.InstallerParentRegistrationSuccessMessage}');\nconsole.log('${contract.InstallerParentRegistrationFailureMessage}');\n`,
+    [contract.MainMacroFile]: `${header()}${runtimeContractSource()}`,
     [contract.ConfigMacroFile]: `${header()}const config = { version: '${version}' };\nexport { config };\n`,
     [contract.RoomReferenceMacroFile]: `${header()}export const roomReference = true;\n`,
     ...overrides.sources,
@@ -113,16 +127,41 @@ test('rejects initialization-message drift', async (t) => {
 test('rejects Installer Parent Room Registration contract drift', async (t) => {
   const repositoryDirectory = await withFixture(t, {
     sources: {
-      [contract.MainMacroFile]: `${header()}console.log('${contract.InitializationSuccessMessage}');\nconsole.log('${contract.InitializationStoppedMessage}');\n`,
+      [contract.MainMacroFile]: `${header()}${runtimeContractSource([
+        'InitializationSuccessMessage',
+        'InitializationStoppedMessage',
+        'InstallerParentInventoryAction',
+        'InstallerParentInventorySuccessMessage',
+        'InstallerParentInventoryFailureMessage',
+        'InstallerParentDeregistrationAction',
+        'InstallerParentDeregistrationSuccessMessage',
+        'InstallerParentDeregistrationPendingMessage',
+        'InstallerParentDeregistrationFailureMessage',
+      ])}`,
     },
   });
   await assert.rejects(verifyReleaseContract(repositoryDirectory), /Installer Parent Room Registration contract value/i);
 });
 
+test('rejects Installer Parent Room administration contract drift', async (t) => {
+  const repositoryDirectory = await withFixture(t, {
+    sources: {
+      [contract.MainMacroFile]: `${header()}${runtimeContractSource([
+        'InitializationSuccessMessage',
+        'InitializationStoppedMessage',
+        'InstallerParentRegistrationAction',
+        'InstallerParentRegistrationSuccessMessage',
+        'InstallerParentRegistrationFailureMessage',
+      ])}`,
+    },
+  });
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /Installer Parent Room administration contract value/i);
+});
+
 test('rejects newline characters in UserInterface Message Title and Text fields', async (t) => {
   const repositoryDirectory = await withFixture(t, {
     sources: {
-      [contract.MainMacroFile]: `${header()}console.log('${contract.InitializationSuccessMessage}');\nconsole.log('${contract.InitializationStoppedMessage}');\nconsole.log('${contract.InstallerParentRegistrationAction}');\nconsole.log('${contract.InstallerParentRegistrationSuccessMessage}');\nconsole.log('${contract.InstallerParentRegistrationFailureMessage}');\nxapi.Command.UserInterface.Message.Prompt.Display({ Title: 'Review', Text: 'Line one\\nLine two' });\n`,
+      [contract.MainMacroFile]: `${header()}${runtimeContractSource()}xapi.Command.UserInterface.Message.Prompt.Display({ Title: 'Review', Text: 'Line one\\nLine two' });\n`,
     },
   });
   await assert.rejects(verifyReleaseContract(repositoryDirectory), /UserInterface Message Title and Text fields cannot contain newline characters/i);
