@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.57
+ * Version:                 0.1.2.58
  *
  * Description:             Inactive Parent Room entry source for registration, pairing-state
  *                          validation, Registered Companion Devices UI and alerts,
@@ -65,9 +65,7 @@ const REGISTERED_COMPANION_DEVICES_ICON_URL = 'https://ctg-tme.github.io/Custom_
 const PAIRING_VALIDATION_ATTEMPT_COUNT = 3;
 const PAIRING_VALIDATION_RESPONSE_DELAY_MS = 2000;
 const PAIRING_ALERT_DURATION_SECONDS = 10;
-const HTTP_CLIENT_BASE_CONFIG = {
-	mode: 'On',
-	allowInsecureHTTPS: false,
+const HTTP_TRANSPORT_CONFIG = {
 	maxConcurrentRequests: 3
 };
 const STANDBY_SYNC_DEBOUNCE_MS = 250;
@@ -91,24 +89,14 @@ const parentCallCoordinationController = parentCallCoordination.create({
 	log: log,
 	utils: utils,
 	deviceComms: deviceComms,
-	getHttpClientConfigForCompanion: getHttpClientConfigForCompanion,
 	sendRegistrationResponse: sendRegistrationResponse,
 	normalizeCompanionDeviceRecord: normalizeCompanionDeviceRecord
 });
 
 async function init() {
 	try {
-		try {
-			await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_BASE_CONFIG);
-		} catch (error) {
-			utils.hardError({
-				Code: 'CC26-INIT-HTTPCLIENT',
-				Component: 'RoomReference',
-				Context: 'Failed to initialize RoomOS HTTPClient',
-				Remediation: 'Correct the HTTPClient configuration or macro permissions, then restart the Macro Runtime.',
-				Error: error
-			});
-		}
+		await validateLocalHttpClientPrerequisites();
+		deviceComms.initializeHttpTransport(HTTP_TRANSPORT_CONFIG);
 
 		try {
 			await mem.init();
@@ -139,6 +127,30 @@ async function init() {
 			Component: diagnostic.Component || 'RoomReference',
 			Context: diagnostic.Context || 'Unhandled initialization failure',
 			Remediation: diagnostic.Remediation || 'Diagnose the logged xAPI failure, then restart the Macro Runtime.',
+			Error: error
+		});
+	}
+}
+
+async function validateLocalHttpClientPrerequisites() {
+	try {
+		const posture = await deviceComms.validateHttpClientPrerequisites(xapi);
+		log.info({
+			Message: 'RoomOS HTTPClient Trust Posture observed',
+			Mode: posture.mode,
+			TrustPosture: posture.trustPosture
+		});
+	} catch (error) {
+		const isModeFailure = error && error.code === 'CC26-HTTPCLIENT-MODE';
+		utils.hardError({
+			Code: isModeFailure ? 'CC26-INIT-HTTPCLIENT-MODE' : 'CC26-INIT-HTTPCLIENT-TRUST-POSTURE',
+			Component: 'RoomReference',
+			Context: isModeFailure
+				? 'RoomOS HTTPClient Mode is unavailable or disabled.'
+				: 'RoomOS HTTPClient Trust Posture is unavailable.',
+			Remediation: isModeFailure
+				? 'A Device Administrator must set xConfiguration HttpClient Mode: On and restart the Macro Runtime.'
+				: 'A Device Administrator must verify xConfiguration HttpClient AllowInsecureHTTPS is readable and restart the Macro Runtime.',
 			Error: error
 		});
 	}
@@ -686,7 +698,6 @@ async function applyRegisteredCompanionDevicesPanelIcon() {
 async function handleDeregisterRequest(message) {
 	const companionDeviceRecord = normalizeCompanionDeviceRecord(message);
 	const peripheralId = String(message.Payload && message.Payload.PeripheralId || companionDeviceRecord.MacAddress || companionDeviceRecord.Serial || '');
-	const httpClientConfig = getHttpClientConfigForCompanion(companionDeviceRecord.Serial, message);
 
 	await purgeCompanionDevicePeripheral(peripheralId);
 	registeredCompanionDevices = registeredCompanionDevices.filter(companionDevice => companionDevice.Serial !== companionDeviceRecord.Serial);
@@ -701,7 +712,7 @@ async function handleDeregisterRequest(message) {
 	await sendRegistrationResponse('DeregistrationAccepted', message, companionDeviceRecord, withTransaction(message, {
 		Status: 'Deregistered',
 		PeripheralId: peripheralId
-	}), true, httpClientConfig);
+	}), true);
 	await renderRegisteredCompanionDevicesPanel();
 	log.info({ Message: 'Companion Device deregistered from Parent Room Device', Serial: companionDeviceRecord.Serial, PeripheralId: peripheralId, RegisteredCompanionDeviceCount: registeredCompanionDevices.length });
 }
@@ -793,21 +804,7 @@ function createTransactionId(prefix, serial) {
 	return `${prefix}:${serial}:${Date.now()}`;
 }
 
-function getHttpClientConfigForCompanion(serial, inboundMessage) {
-	const inboundConfig = inboundMessage
-		&& inboundMessage.Payload
-		&& inboundMessage.Payload.Config
-		&& inboundMessage.Payload.Config.httpClient;
-	const savedConfig = companionDeviceConfigs[serial] && companionDeviceConfigs[serial].httpClient;
-	const httpClientConfig = inboundConfig || savedConfig || {};
-	return {
-		mode: 'On',
-		allowInsecureHTTPS: httpClientConfig.allowInsecureHTTPS === true,
-		maxConcurrentRequests: 3
-	};
-}
-
-async function sendRegistrationResponse(action, inboundMessage, companionDeviceRecord, payload, isAccepted, requestHttpClientConfig) {
+async function sendRegistrationResponse(action, inboundMessage, companionDeviceRecord, payload, isAccepted) {
 	const parentIdentity = await Promise.all([
 		getParentSource(),
 		getParentSerial()
@@ -819,14 +816,12 @@ async function sendRegistrationResponse(action, inboundMessage, companionDeviceR
 		username: companionDeviceRecord.Username,
 		password: companionDeviceRecord.Password
 	};
-	const httpClientConfig = requestHttpClientConfig || getHttpClientConfigForCompanion(companionDeviceRecord.Serial, inboundMessage);
-
 	try {
 		await deviceComms.sendMessageCommand(xapi, companionDevice, action, payload, {
 			app: 'Companion Board 2026',
 			serial: parentSerial,
 			source: parentSource
-		}, httpClientConfig);
+		});
 		return true;
 	} catch (error) {
 		if (action === 'ConfigAccepted' || action === 'ConfigDenied') {

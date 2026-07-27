@@ -49,6 +49,7 @@ Developers and maintainers should also use the canonical terminology in [CONTEXT
 ## Current requirements and limits
 
 - Minimum RoomOS version: `11.32.1.1`
+- `HttpClient Mode` must be `On` on every participating device; Custom Companion verifies but never changes the Device Administrator-owned HTTPClient Trust Posture
 - Up to 6 registered Parent Room Devices per Companion Device
 - Up to 3 registered Companion Devices per Parent Room Device
 - One active Parent Room Device per Companion Device

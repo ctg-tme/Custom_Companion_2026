@@ -86,6 +86,9 @@ export interface DeviceCompatibility {
   productSupported: boolean;
   deskSeriesWarning: boolean;
   activeCalls: number;
+  httpClientMode: 'On';
+  httpClientAllowsInsecureHTTPS: boolean;
+  httpClientTrustPosture: 'Strict certificate validation' | 'Untrusted/self-signed certificates permitted';
 }
 
 export interface InstalledMacro {

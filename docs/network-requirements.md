@@ -17,6 +17,19 @@ These endpoints support communication between registered Companion Devices and P
 
 `{registered-parent-host}` and `{registered-device-host}` are the administrator-supplied hostnames or IP addresses saved through Parent Room Registration and Companion Device Callback configuration. Traffic can run from the Companion Device to a Parent Room Device or from a Parent Room Device to its registered Companion Devices, depending on the workflow.
 
+### HTTPClient trust prerequisites
+
+Every participating device must have `xConfiguration HttpClient Mode: On`. Custom Companion and the Companion Installer read this prerequisite and never change it. A disabled or unreadable Mode stops that device's runtime before transport, registration, provisioning, heartbeat, standby, or call-coordination work begins.
+
+The Device Administrator chooses one device-wide HTTPClient Trust Posture per sending device:
+
+| Posture | RoomOS configuration | Certificate and addressing requirement |
+| --- | --- | --- |
+| Production | `HttpClient Mode: On`, `HttpClient AllowInsecureHTTPS: False` | Each sending device trusts the remote certificate's issuing CA chain. The host name or IP used in every registered URL is present in the remote certificate SAN. This must be prepared in both Companion-to-Parent and Parent-to-Companion directions. |
+| Lab | `HttpClient Mode: On`, `HttpClient AllowInsecureHTTPS: True` | Untrusted and self-signed remote certificates are permitted for every qualifying HTTPClient destination reached by that device. This is a device-wide exception, not a per-registration exception. |
+
+Custom Companion explicitly supplies request-level `AllowInsecureHTTPS=True` on every HTTPClient GET and POST. RoomOS still validates certificates when the sending device's device-wide `AllowInsecureHTTPS` configuration is `False`; the request option does not override the stricter administrator-owned gate.
+
 ## Optional Macro Network Features
 
 These endpoints are introduced by configurable user-interface features. The core Companion Device and Parent Room Device transport described above does not depend on them.
@@ -51,6 +64,8 @@ The optional **Use Computer Location** and **Use Computer Time Zone** controls u
 | Installer team image | `https://avatars.githubusercontent.com/u/159071680?s=200&v=4` | Supplies the Collaboration TME team image displayed by the installer. | Loaded with the hosted installer interface; it is not used for device installation commands. |
 
 `{release-tag}`, `{commit-sha}`, `{resource}`, and `{companion-device-host}` are resolved from the selected release and administrator input. The installer connects directly to the Companion Device and never opens its own direct connection to a Parent Room Device.
+
+Browser trust for `wss://{companion-device-host}` and RoomOS HTTPClient trust are independent. Opening the Companion Device HTTPS page can establish trust for the installer browser, but it does not install a RoomOS CA or validate either direction of the device-to-device paths above. After the WSS session is connected, installer preflight reads and reports the Companion Device HTTPClient Trust Posture without changing it.
 
 ## Scope Notes
 

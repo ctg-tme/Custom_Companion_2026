@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.57
+ * Version:                 0.1.2.58
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -75,14 +75,13 @@ const INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS = 5;
 const ALLOW_STANDALONE_DURING_ACTIVE_CALL = true;
 const PERIPHERAL_TYPE = 'ControlSystem';
 const UNHEALTHY_INFO_TEXT = 'Companion Device controls are unavailable. Contact a Device Administrator.';
+const HTTPCLIENT_MODE_UNHEALTHY_INFO_TEXT = 'Custom Companion is unavailable because device-to-device communication is disabled. Ask a Device Administrator to enable HTTPClient Mode and restart the Macro Runtime.';
 const CONFIG_DENIED_PROMPT_ID = 'cc26_config_denied';
 const ACTIVE_CALL_STANDALONE_BLOCKED_PROMPT_ID = 'cc26_active_call_standalone_blocked';
 const PARENT_UNAVAILABLE_PROMPT_ID = 'cc26_parent_unavailable';
 const SELECTION_PROGRESS_ALERT_OWNER = 'main:selection-progress';
 const SELECTION_PROGRESS_ALERT_DURATION_SECONDS = 60;
-const HTTP_CLIENT_CONFIG = {
-	mode: 'On',
-	allowInsecureHTTPS: config.httpClient.allowInsecureHTTPS,
+const HTTP_TRANSPORT_CONFIG = {
 	maxConcurrentRequests: 3
 };
 const MESSAGE_CONFIG = {
@@ -121,6 +120,7 @@ let companionPeripheralId = '';
 let isHandlingSelection = false;
 let selectionProgressAlertToken = null;
 let isUnhealthy = false;
+let unhealthyInfoText = UNHEALTHY_INFO_TEXT;
 let unhealthyReleasePending = false;
 let areUiEventHandlersRegistered = false;
 let isPairingStatusSynchronizationEnabled = false;
@@ -144,7 +144,6 @@ const parentConnectivityController = parentConnectivity.create({
 	xapi: xapi,
 	mem: mem,
 	deviceComms: deviceComms,
-	httpClientConfig: HTTP_CLIENT_CONFIG,
 	parentDevicesStorageKey: companionState.PARENT_DEVICES_STORAGE_KEY,
 	log: log,
 	utils: utils,
@@ -223,7 +222,6 @@ const standbyCoordinationController = standbyCoordination.create({
 	mem: mem,
 	storageKey: companionState.STANDALONE_STANDBY_CONFIG_STORAGE_KEY,
 	deviceComms: deviceComms,
-	httpClientConfig: HTTP_CLIENT_CONFIG,
 	companionUi: companionUi,
 	log: log,
 	utils: utils,
@@ -244,7 +242,6 @@ const standbyCoordinationController = standbyCoordination.create({
 const companionDeviceCallSyncController = companionDeviceCallSync.create({
 	xapi: xapi,
 	deviceComms: deviceComms,
-	httpClientConfig: HTTP_CLIENT_CONFIG,
 	activeCallDetailsRoute: MESSAGE_CONFIG.routes.activeCallDetailsRequest,
 	meetingPasswordRequestRoute: MESSAGE_CONFIG.routes.meetingPasswordRequest,
 	companionUi: companionUi,
@@ -279,7 +276,6 @@ const parentRegistrationController = parentRegistration.create({
 	pinModeController: pinModeController,
 	parentDevicesStorageKey: companionState.PARENT_DEVICES_STORAGE_KEY,
 	pendingStorageKey: companionState.PENDING_DEREGISTRATIONS_STORAGE_KEY,
-	httpClientConfig: HTTP_CLIENT_CONFIG,
 	installConfig: PARENT_INSTALL_CONFIG,
 	configVersion: projectVersion,
 	peripheralType: PERIPHERAL_TYPE,
@@ -316,19 +312,10 @@ const parentRegistrationController = parentRegistration.create({
 
 async function init() {
 	try {
+		await validateLocalHttpClientPrerequisites();
+		deviceComms.initializeHttpTransport(HTTP_TRANSPORT_CONFIG);
 		registerUiEventHandlers();
 		validateCompanionDeviceCallbackConfiguration();
-		try {
-			await deviceComms.initializeHttpClient(xapi, HTTP_CLIENT_CONFIG);
-		} catch (error) {
-			utils.hardError({
-				Code: 'CC26-INIT-HTTPCLIENT',
-				Component: 'CompanionDeviceMain',
-				Context: 'Failed to initialize RoomOS HTTPClient',
-				Remediation: 'Correct the HTTPClient configuration or macro permissions, then restart the Macro Runtime.',
-				Error: error
-			});
-		}
 
 		try {
 			await mem.init();
@@ -380,6 +367,33 @@ async function init() {
 	}
 }
 
+async function validateLocalHttpClientPrerequisites() {
+	try {
+		const posture = await deviceComms.validateHttpClientPrerequisites(xapi);
+		log.info({
+			Message: 'RoomOS HTTPClient Trust Posture observed',
+			Mode: posture.mode,
+			TrustPosture: posture.trustPosture
+		});
+	} catch (error) {
+		const isModeFailure = error && error.code === 'CC26-HTTPCLIENT-MODE';
+		if (isModeFailure) {
+			unhealthyInfoText = HTTPCLIENT_MODE_UNHEALTHY_INFO_TEXT;
+		}
+		utils.hardError({
+			Code: isModeFailure ? 'CC26-INIT-HTTPCLIENT-MODE' : 'CC26-INIT-HTTPCLIENT-TRUST-POSTURE',
+			Component: 'CompanionDeviceMain',
+			Context: isModeFailure
+				? 'RoomOS HTTPClient Mode is unavailable or disabled.'
+				: 'RoomOS HTTPClient Trust Posture is unavailable.',
+			Remediation: isModeFailure
+				? 'A Device Administrator must set xConfiguration HttpClient Mode: On and restart the Macro Runtime.'
+				: 'A Device Administrator must verify xConfiguration HttpClient AllowInsecureHTTPS is readable and restart the Macro Runtime.',
+			Error: error
+		});
+	}
+}
+
 function validateCompanionDeviceCallbackConfiguration() {
 	const callbackConfiguration = config.CompanionDeviceInformation;
 	const requiredFields = ['host', 'username', 'password'];
@@ -408,6 +422,7 @@ function validateCompanionDeviceCallbackConfiguration() {
 async function handleInitializationFailure(error) {
 	const diagnostic = error.Diagnostic || {};
 	isUnhealthy = true;
+	registerUiEventHandlers();
 	await pinModeController.stop();
 	parentConnectivityController.stop();
 	log.error({
@@ -532,7 +547,6 @@ async function installParentMacrosOnOnlineParents() {
 		parentDeviceStatus: parentDeviceStatus,
 		findParentDeviceByHost: findParentDeviceByHost,
 		installConfig: PARENT_INSTALL_CONFIG,
-		httpClientConfig: HTTP_CLIENT_CONFIG,
 		log: log
 	});
 }
@@ -546,7 +560,6 @@ async function connectPeripheralToOnlineParents() {
 		companionDeviceInformation: getConfiguredCompanionDeviceInformation(),
 		configVersion: projectVersion,
 		peripheralType: PERIPHERAL_TYPE,
-		httpClientConfig: HTTP_CLIENT_CONFIG,
 		initialHeartbeatTimeout: INITIAL_PERIPHERAL_HEARTBEAT_TIMEOUT_SECONDS,
 		sendParentReadyRequest: sendParentReadyRequest,
 		log: log
@@ -996,14 +1009,11 @@ function getXapiValue(value) {
 }
 
 function getRuntimeInfo3Text() {
-	return (isUnhealthy ? UNHEALTHY_INFO_TEXT : '') || parentConnectivityController.getInfoText() || companionDeviceCallSyncController.getInfoText() || standbyCoordinationController.getInfoText();
+	return (isUnhealthy ? unhealthyInfoText : '') || parentConnectivityController.getInfoText() || companionDeviceCallSyncController.getInfoText() || standbyCoordinationController.getInfoText();
 }
 
 async function sendParentReadyRequest(parentDevice, companionDeviceInformation) {
 	await deviceComms.sendMessageCommand(xapi, parentDevice, MESSAGE_CONFIG.routes.parentReadyRequest, {
-		Config: {
-			httpClient: config.httpClient
-		},
 		Board: {
 			Username: companionDeviceInformation.username,
 			Password: companionDeviceInformation.password
@@ -1017,7 +1027,7 @@ async function sendParentReadyRequest(parentDevice, companionDeviceInformation) 
 			Host: companionDeviceInformation.host,
 			MacAddress: companionDeviceInformation.macAddress
 		}
-	}, HTTP_CLIENT_CONFIG);
+	});
 }
 
 async function sendParentConfigMessage(message) {
@@ -1051,7 +1061,7 @@ async function sendParentConfigMessage(message) {
 			Host: companionDeviceInformation.host,
 			MacAddress: companionDeviceInformation.macAddress
 		}
-	}, HTTP_CLIENT_CONFIG);
+	});
 }
 
 async function publishPairingTransition(previousParentDevice, activeParentDevice, reason) {
@@ -1102,7 +1112,7 @@ async function sendPairingStatus(parentDevice, pairingState, reason) {
 				Host: companionDeviceInformation.host,
 				MacAddress: companionDeviceInformation.macAddress
 			}
-		}, HTTP_CLIENT_CONFIG);
+		});
 		log.debug({ Message: 'Companion Device pairing status sent', ParentRoomDeviceSerial: parentDevice.serial, PairingState: pairingState, Reason: reason || '' });
 	} catch (error) {
 		log.debug({
@@ -1124,7 +1134,6 @@ function getParentSyncConfig() {
 	return {
 		version: projectVersion,
 		CompanionDeviceInformation: config.CompanionDeviceInformation,
-		httpClient: config.httpClient,
 		UserInterface: config.UserInterface
 	};
 }

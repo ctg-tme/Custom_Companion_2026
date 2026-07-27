@@ -483,6 +483,16 @@ export class InstallerApp {
     </div>`;
   }
 
+  private renderHttpClientTrustPosture(): string {
+    if (!this.compatibility) return '';
+    const strict = !this.compatibility.httpClientAllowsInsecureHTTPS;
+    return `
+      <section class="panel">
+        <div class="panel-heading"><span class="heading-icon">${certificateIcon}</span><div><h2>HTTPClient Trust Posture</h2><p><strong>${escapeHtml(this.compatibility.httpClientTrustPosture)}</strong>. This device-wide posture is owned by the Device Administrator and applies to every Custom Companion HTTP request sent by this Companion Device. The installer reads it but never changes it.</p></div></div>
+        ${strict ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Trusted, host-matching certificates are required</strong><p>The installer sign-in host becomes the Companion callback host and must match the Companion Device certificate SAN. An IP address is valid only when it is present as an IP SAN. Every Parent Room Device must trust the issuing CA chain.</p></div></div>` : ''}
+      </section>`;
+  }
+
   private renderConfigField(leaf: ConfigLeaf): string {
     const id = configPathId(leaf.path);
     const value = this.configValues.get(id) ?? leaf.value;
@@ -582,6 +592,7 @@ export class InstallerApp {
       ${this.pageHeader('Step 4 of 8', 'Configure the Companion Device runtime', 'Every value is generated from the selected Config macro. Per-install edits remain in memory and never change repository files.')}
       ${this.errorNotice()}
       ${this.renderCompatibility()}
+      ${this.renderHttpClientTrustPosture()}
       ${this.compatibility?.deskSeriesWarning ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Desk Series is not recommended</strong><p>This platform is available for testing and special use cases.</p></div></div>` : ''}
       ${this.compatibility?.activeCalls ? `<div class="notice danger"><span>${warningIcon}</span><div><strong>Active call detected</strong><p>Installing and restarting macros during a call may change Companion Device behavior.</p><label class="check-row compact"><input id="active-call-confirm" type="checkbox" ${this.activeCallConfirmed ? 'checked' : ''}><span>I understand and want to continue during the active call.</span></label></div></div>` : ''}
       <section class="panel callback-panel">
@@ -635,9 +646,11 @@ export class InstallerApp {
         <div class="summary-item"><small>Installation source</small><strong>${escapeHtml(source?.label ?? '')}</strong><span title="${escapeHtml(this.snapshot?.commitSha ?? '')}">Version ${escapeHtml(source?.version ?? 'Unavailable')} · ${escapeHtml((this.snapshot?.commitSha ?? '').slice(0, 12))}</span></div>
         <div class="summary-item"><small>Installer compatibility</small><strong>Contract ${escapeHtml(this.snapshot?.manifest.CompanionInstaller.ContractVersion ?? '')}</strong><span>Tested with installer v${escapeHtml(this.snapshot?.manifest.CompanionInstaller.TestedVersion ?? '')} · ${this.snapshot?.manifest.CompanionInstaller.Capabilities.length ?? 0} capabilities</span></div>
         <div class="summary-item"><small>Target Companion Device</small><strong>${escapeHtml(this.adminCredentials.host)}</strong><span>Serial match confirmed</span></div>
+        <div class="summary-item"><small>HTTPClient Trust Posture</small><strong>${escapeHtml(this.compatibility?.httpClientTrustPosture ?? 'Unavailable')}</strong><span>Administrator-owned device-wide setting</span></div>
         <div class="summary-item"><small>Files ready</small><strong>${this.preparedResources.length}</strong><span>${this.snapshot?.manifest.Files.length ?? 0} project · ${this.snapshot?.manifest.ExternalDependencies.length ?? 0} external</span></div>
         <div class="summary-item"><small>Installation type</small><strong>${freshInstallation ? 'Fresh Installation — Erase Saved Data' : 'Install or Update — Keep Saved Data'}</strong><span>${freshInstallation ? (storageInstalled ? `${GENERATED_STORAGE_MACRO} will be removed` : 'No generated storage macro was found') : 'Generated storage will be preserved'}</span></div>
       </section>
+      ${this.renderHttpClientTrustPosture()}
       <section class="panel legacy-panel">
         <div class="panel-heading"><span class="heading-icon warning-color">${warningIcon}</span><div><h2>Legacy project macros</h2><p>These are installed Custom-Campanion files that are not part of the selected release.</p></div></div>
         ${legacy.length ? `<ul class="file-list">${legacy.map((macro) => `<li><code>${escapeHtml(macro.name)}</code><span>Legacy</span></li>`).join('')}</ul>
@@ -688,6 +701,7 @@ export class InstallerApp {
         <section class="parent-registration-dialog" role="dialog" aria-modal="true" aria-labelledby="parent-registration-title">
           <button class="dialog-close" id="close-parent-registration" type="button" aria-label="Close Parent Room Device registration" ${canClose ? '' : 'disabled'}>Close</button>
           <div class="panel-heading"><span class="heading-icon">${deviceIcon}</span><div><span class="eyebrow">Optional setup</span><h2 id="parent-registration-title">Add Parent Room Device</h2><p>Use the signed-in Device Administrator session to start the existing Parent Room Registration workflow. Nothing is shown in the Companion Device in-room interface.</p></div></div>
+          <div class="notice warning"><span>${certificateIcon}</span><div><strong>Verify Parent Room Device trust before registration</strong><p>The Parent host must match the Parent certificate SAN, and the Companion Device must trust its issuing CA chain when strict validation is active. The installer never connects to or changes the Parent Room Device directly.</p></div></div>
           ${this.errorNotice()}
           ${outcomeNotice}
           <form id="parent-registration-form" class="parent-registration-form">
@@ -1030,6 +1044,9 @@ export class InstallerApp {
       productSupported: true,
       deskSeriesWarning: false,
       activeCalls: 0,
+      httpClientMode: 'On',
+      httpClientAllowsInsecureHTTPS: false,
+      httpClientTrustPosture: 'Strict certificate validation',
     };
     this.configValues = new Map(this.configDocument.leaves.map((leaf) => [configPathId(leaf.path), leaf.value]));
     this.configValues = setLockedInstallerValues(this.configDocument, this.configValues, this.adminCredentials.host);

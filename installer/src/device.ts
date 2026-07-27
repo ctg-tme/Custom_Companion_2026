@@ -83,15 +83,29 @@ export async function validateConnectedCompanionDevice(
   manifest: InstallManifest,
   expectedSerial: string,
 ): Promise<DeviceCompatibility> {
-  const [actualSerialValue, roomOsValue, productValue, activeCallsValue] = await Promise.all([
+  const [
+    actualSerialValue,
+    roomOsValue,
+    productValue,
+    activeCallsValue,
+    httpClientModeValue,
+    httpClientAllowInsecureHTTPSValue,
+  ] = await Promise.all([
     xapi.status.get('SystemUnit Hardware Module SerialNumber'),
     xapi.status.get('SystemUnit Software Version'),
     xapi.status.get('SystemUnit ProductPlatform'),
     xapi.status.get('SystemUnit State NumberOfActiveCalls'),
+    xapi.config.get('HttpClient Mode'),
+    xapi.config.get('HttpClient AllowInsecureHTTPS'),
   ]);
   const roomOsVersion = scalarString(roomOsValue);
   const productPlatform = scalarString(productValue);
   const activeCalls = Number(scalarString(activeCallsValue));
+  const httpClientMode = scalarString(httpClientModeValue);
+  if (httpClientMode !== 'On') {
+    throw new Error('Set xConfiguration HttpClient Mode to On, then reconnect.');
+  }
+  const httpClientAllowsInsecureHTTPS = scalarString(httpClientAllowInsecureHTTPSValue).toLowerCase() === 'true';
   return {
     roomOsVersion,
     productPlatform,
@@ -100,6 +114,11 @@ export async function validateConnectedCompanionDevice(
     productSupported: isProductSupported(productPlatform, manifest.ProductPlatform),
     deskSeriesWarning: isDeskSeries(productPlatform),
     activeCalls: Number.isFinite(activeCalls) ? activeCalls : 0,
+    httpClientMode: 'On',
+    httpClientAllowsInsecureHTTPS,
+    httpClientTrustPosture: httpClientAllowsInsecureHTTPS
+      ? 'Untrusted/self-signed certificates permitted'
+      : 'Strict certificate validation',
   };
 }
 

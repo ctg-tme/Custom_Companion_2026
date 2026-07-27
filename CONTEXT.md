@@ -136,6 +136,10 @@ _Avoid_: Device Administrator, system administrator
 A solution-wide condition in which a required local prerequisite is unavailable and companion selection cannot operate reliably. Initialization prerequisite failures, invalid saved PIN Mode state, and failures of required Paired microphone, volume, or incoming-call isolation enforcement enter this state. An individual Parent Room Device being unavailable and an unsupported optional UI feature-policy path are not an Unhealthy State.
 _Avoid_: Parent offline, room unavailable
 
+**HTTPClient Trust Posture**:
+The administrator-owned, device-wide RoomOS policy that governs certificate validation for every Custom Companion HTTP request sent by one device. `HttpClient Mode` must be `On`. `HttpClient AllowInsecureHTTPS=False` is the production posture and requires a trusted issuing CA plus a requested host name or IP address present in the remote certificate SAN; `True` is the explicitly permissive lab posture. The runtime observes this posture and never changes it. One sending device has one posture for all destinations, not a per-Companion Device or per-Parent Room Device exception.
+_Avoid_: Per-device request policy, Config HTTPClient setting, browser certificate trust
+
 **Call Preservation State**:
 A temporary Paired condition in which the Companion Device preserves an active call while communication with its Parent Room Device is unavailable. Communication is considered restored only after the selected Parent Room Device returns a valid identity response whose serial number matches the selected Parent Room Device serial; normal heartbeat and call-state synchronization then resume through their existing paths.
 _Avoid_: Standalone, disconnected call
@@ -188,7 +192,7 @@ _Avoid_: Current PIN, Default PIN, master PIN
 
 The companion WebWidget `info3` field is solution-owned runtime status space and is not editable deployment configuration. It displays active messages in this order: Unhealthy State, parent connectivity and Call Preservation, call synchronization, then standby. This is display precedence only; lower-priority behaviors continue while their messages are hidden and become visible again when the higher-priority condition clears.
 
-During the Unhealthy State, `info3` persistently tells the In-Room User that Companion Device controls are unavailable and to contact a Device Administrator. Failure to update an unavailable Web Widget is logged but does not create another hard error.
+During the Unhealthy State, `info3` persistently tells the In-Room User that Companion Device controls are unavailable and to contact a Device Administrator. When the cause is unavailable or disabled local `HttpClient Mode`, the more specific message is `Custom Companion is unavailable because device-to-device communication is disabled. Ask a Device Administrator to enable HTTPClient Mode and restart the Macro Runtime.` It retains Unhealthy State precedence and remains visible until a successful runtime restart. Failure to update an unavailable Web Widget is logged but does not create another hard error.
 
 During Call Preservation, `info3` remains visible with `{device} is temporarily unavailable. Your call will continue.` until the selected Parent Room Device is resynchronized or the call ends. The 60-second expiry applies only to the final Standalone connection-failure message.
 
@@ -200,7 +204,9 @@ When a protected Webex meeting requires Guest authentication and no matching Mee
 
 RoomOS HTTPClient requests use an internal three-second timeout. The timeout is an implementation policy in DeviceComms, not deployment configuration, so developers can tune it without expanding the administrator-facing configuration surface.
 
-`httpClient.allowInsecureHTTPS` is Companion Device-owned deployment configuration. Parent-to-Companion requests resolve that option from the configuration stored for the specific Companion Device serial. `ParentReadyRequest` carries the same HTTPClient subset as bootstrap data because the Parent Room Device must send `ParentReady` before the full `ConfigSync` can be accepted. The Parent Room runtime's device-wide HTTPClient configuration remains a safe `false` baseline and is not the authority when several Companion Devices have different certificate policies.
+Each Companion Device and Parent Room Device validates its local administrator-owned HTTPClient prerequisite before initializing transport, registration, provisioning, heartbeat, standby, or call-coordination work. A missing or disabled `HttpClient Mode` stops that device's initialization. The runtime never sets `HttpClient Mode` or `HttpClient AllowInsecureHTTPS`.
+
+Every Custom Companion request explicitly supplies `AllowInsecureHTTPS=True`. That request option supports both administrator-owned postures: RoomOS still validates the remote certificate when the sending device's `HttpClient AllowInsecureHTTPS` is `False`, while the device-wide `True` setting permits the request to accept an untrusted or self-signed certificate. `ParentReadyRequest`, `ConfigSync`, and `DeregisterRequest` do not carry a trust-policy field. Legacy `boardConfigs[*].httpClient` values may remain in stored state after an upgrade, but current code ignores them.
 
 Repeatable periodic parent identity, call-status, and heartbeat requests are coalesced by parent and operation while an equivalent request is queued or in flight. All other state-changing requests are admitted FIFO and are never coalesced.
 
@@ -258,4 +264,4 @@ These known controls are hidden while Paired:
 
 ## Verification
 
-Until the planned RoomOS macro test utility is available, this project does not add a separate automated test harness. Changes are checked with JavaScript syntax validation, diff validation, focused source searches, and documented device acceptance testing. The future utility should cover XML parsing, HTTP response validation and queue policy, Parent Room Device retry and state transitions, Paired Environment Policy decisions and restoration, media enforcement, Unhealthy transitions, user-message precedence, native control visibility, and call integrity through the deployable source-macro interfaces.
+The installer Vitest suite includes deterministic source-macro harnesses for HTTPClient startup prerequisites, request policy, Unhealthy transitions, user-message precedence, and installer preflight, alongside installer and Release Contract coverage. Changes also require JavaScript syntax validation, diff validation, focused source searches, and documented device acceptance testing. Automated tests do not replace hardware validation of Parent Room Device retry and state transitions, Paired Environment Policy decisions and restoration, media enforcement, native control visibility, or call integrity.

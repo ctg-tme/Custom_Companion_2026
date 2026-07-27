@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 09, 2026
- * Revised:                 July 24, 2026
- * Version:                 1.0.15
+ * Revised:                 July 27, 2026
+ * Version:                 1.0.16
  *
  * Description:             Device-to-device transport, queue policy, Message envelopes, putxml
  *                          builders, response validation, and dependency-free XML parsing.
@@ -47,6 +47,9 @@ let maxConcurrentRequests = 3;
 const queuedRequests = [];
 const coalescedRequestPromises = {};
 const COMPANION_APP = 'Companion Board 2026';
+// Request-level True supports both administrator-owned postures: RoomOS still
+// validates certificates whenever the device-wide AllowInsecureHTTPS gate is False.
+const HTTP_REQUEST_ALLOW_INSECURE_HTTPS = 'True';
 const HTTP_TRANSPORT_POLICY = {
 	timeoutSeconds: 3,
 	maxPendingRequests: 50,
@@ -54,40 +57,77 @@ const HTTP_TRANSPORT_POLICY = {
 };
 
 /**
- * Sets RoomOS HTTPClient configuration used by this solution.
+ * Configures only the in-memory Custom Companion transport queue.
+ * @param {object} options Internal transport options.
+ * @returns {object} HTTP transport initialization status.
+ */
+function initializeHttpTransport(options = {}) {
+	maxConcurrentRequests = Number(options.maxConcurrentRequests) || 3;
+
+	return { Status: 'OK', Message: 'HTTP transport initialized' };
+}
+
+/**
+ * Validates the administrator-owned RoomOS HTTPClient prerequisite and observes
+ * the device-wide trust posture without changing either configuration.
  * @param {object} XAPIObject The RoomOS xapi object.
- * @param {object} httpClientConfig HTTPClient configuration values.
- * @returns {Promise<object>} HTTPClient initialization status.
+ * @returns {Promise<object>} Observed HTTPClient prerequisite and trust posture.
  * @roomosxapi [xConfiguration HttpClient Mode](https://roomos.cisco.com/xapi/Configuration.HttpClient.Mode/)
  * @roomosxapi [xConfiguration HttpClient AllowInsecureHTTPS](https://roomos.cisco.com/xapi/Configuration.HttpClient.AllowInsecureHTTPS/)
  */
-async function initializeHttpClient(XAPIObject, httpClientConfig) {
-	const config = httpClientConfig || {};
-	maxConcurrentRequests = Number(config.maxConcurrentRequests) || 3;
+async function validateHttpClientPrerequisites(XAPIObject) {
+	let mode;
+	try {
+		mode = normalizeConfigValue(await XAPIObject.Config.HttpClient.Mode.get());
+	} catch (error) {
+		throw buildError('RoomOS HTTPClient Mode could not be read', {
+			Code: 'CC26-HTTPCLIENT-MODE',
+			Cause: error && (error.message || error.code) || 'Unknown HttpClient Mode read error'
+		});
+	}
 
-	await XAPIObject.Config.HttpClient.Mode.set(config.mode || 'On');
-	await XAPIObject.Config.HttpClient.AllowInsecureHTTPS.set(config.allowInsecureHTTPS ? 'True' : 'False');
+	if (mode !== 'On') {
+		throw buildError('RoomOS HTTPClient Mode is disabled', {
+			Code: 'CC26-HTTPCLIENT-MODE',
+			ObservedMode: String(mode || 'Unavailable')
+		});
+	}
 
-	return { Status: 'OK', Message: 'HTTPClient initialized' };
+	let allowInsecureHTTPS;
+	try {
+		allowInsecureHTTPS = normalizeConfigValue(await XAPIObject.Config.HttpClient.AllowInsecureHTTPS.get());
+	} catch (error) {
+		throw buildError('RoomOS HTTPClient AllowInsecureHTTPS could not be read', {
+			Code: 'CC26-HTTPCLIENT-TRUST-POSTURE',
+			Cause: error && (error.message || error.code) || 'Unknown HttpClient AllowInsecureHTTPS read error'
+		});
+	}
+
+	const permitsUntrustedCertificates = String(allowInsecureHTTPS).toLowerCase() === 'true';
+	return {
+		mode: 'On',
+		allowInsecureHTTPS: permitsUntrustedCertificates,
+		trustPosture: permitsUntrustedCertificates
+			? 'Untrusted/self-signed certificates permitted'
+			: 'Strict certificate validation'
+	};
 }
 
 /**
  * Gets identifying data from a Parent Room Device and validates that HTTP credentials work.
  * @param {object} XAPIObject The RoomOS xapi object.
  * @param {object} parentDevice Parent Room Device connection details.
- * @param {number} timeoutSeconds Peripheral heartbeat timeout in seconds.
- * @param {object} httpClientConfig HTTPClient request configuration.
  * @returns {Promise<object>} Parent Room Device identity with serial and BroadcastName.
  * @roomosxapi [xCommand HttpClient Get](https://roomos.cisco.com/xapi/Command.HttpClient.Get/)
  */
-async function parentInitializationRequest(XAPIObject, parentDevice, httpClientConfig) {
+async function parentInitializationRequest(XAPIObject, parentDevice) {
 	validateParentDevice(parentDevice);
 
 	const url = `https://${parentDevice.host}/getxml?location=/Status/SystemUnit`;
 	const response = await queuedHttpRequest(() => XAPIObject.Command.HttpClient.Get({
 		Url: url,
 		Header: buildHeaders(parentDevice),
-		AllowInsecureHTTPS: getAllowInsecureHTTPS(httpClientConfig),
+		AllowInsecureHTTPS: HTTP_REQUEST_ALLOW_INSECURE_HTTPS,
 		ResultBody: 'PlainText',
 		Timeout: HTTP_TRANSPORT_POLICY.timeoutSeconds
 	}), buildHttpRequestContext('GET', parentDevice.host, '/getxml?location=/Status/SystemUnit', `parent-identity:${parentDevice.host}`));
@@ -114,14 +154,14 @@ async function parentInitializationRequest(XAPIObject, parentDevice, httpClientC
 	};
 }
 
-async function parentStandbyStateRequest(XAPIObject, parentDevice, httpClientConfig) {
+async function parentStandbyStateRequest(XAPIObject, parentDevice) {
 	validateParentDevice(parentDevice);
 
 	const url = `https://${parentDevice.host}/getxml?location=/Status/Standby/State`;
 	const response = await queuedHttpRequest(() => XAPIObject.Command.HttpClient.Get({
 		Url: url,
 		Header: buildHeaders(parentDevice),
-		AllowInsecureHTTPS: getAllowInsecureHTTPS(httpClientConfig),
+		AllowInsecureHTTPS: HTTP_REQUEST_ALLOW_INSECURE_HTTPS,
 		ResultBody: 'PlainText',
 		Timeout: HTTP_TRANSPORT_POLICY.timeoutSeconds
 	}), buildHttpRequestContext('GET', parentDevice.host, '/getxml?location=/Status/Standby/State', `parent-standby:${parentDevice.host}`));
@@ -147,11 +187,10 @@ async function parentStandbyStateRequest(XAPIObject, parentDevice, httpClientCon
  * @param {object} parentDevice Parent Room Device connection details.
  * @param {object} macroPayloads Macro content keyed by target purpose.
  * @param {object} installConfig Macro name configuration.
- * @param {object} httpClientConfig HTTPClient request configuration.
  * @returns {Promise<object>} Parent install status.
  * @roomosxapi [xCommand HttpClient Post](https://roomos.cisco.com/xapi/Command.HttpClient.Post/)
  */
-async function installParentMacros(XAPIObject, parentDevice, macroPayloads, installConfig, httpClientConfig) {
+async function installParentMacros(XAPIObject, parentDevice, macroPayloads, installConfig) {
 	validateParentDevice(parentDevice);
 
 	const config = installConfig || {};
@@ -163,7 +202,7 @@ async function installParentMacros(XAPIObject, parentDevice, macroPayloads, inst
 		{ Name: config.memoryStorageMacroName || 'Memory-Storage-Functions-V2', Content: macroPayloads.memoryStorage }
 	];
 
-	await sendPutXml(XAPIObject, parentDevice, buildParentMacroInstallXml(macros, config.roomReferenceTargetMacroName || 'Custom-Campanion_Room_2026'), httpClientConfig);
+	await sendPutXml(XAPIObject, parentDevice, buildParentMacroInstallXml(macros, config.roomReferenceTargetMacroName || 'Custom-Campanion_Room_2026'));
 
 	return { Status: 'OK', Message: 'Parent Room macros installed', Host: parentDevice.host };
 }
@@ -175,16 +214,15 @@ async function installParentMacros(XAPIObject, parentDevice, macroPayloads, inst
  * @param {string} route Custom Companion route name.
  * @param {object} payload Route payload.
  * @param {object} messageConfig Message service configuration.
- * @param {object} httpClientConfig HTTPClient request configuration.
  * @returns {Promise<object>} HTTPClient response.
  * @roomosxapi [xCommand Message Send](https://roomos.cisco.com/xapi/Command.Message.Send/)
  */
-async function sendMessageCommand(XAPIObject, parentDevice, route, payload, messageConfig, httpClientConfig) {
+async function sendMessageCommand(XAPIObject, parentDevice, route, payload, messageConfig) {
 	validateParentDevice(parentDevice);
 
 	const message = buildCompanionMessage(route, payload, messageConfig || {});
 
-	return sendPutXml(XAPIObject, parentDevice, buildMessageSendXml(message), httpClientConfig);
+	return sendPutXml(XAPIObject, parentDevice, buildMessageSendXml(message));
 }
 
 function buildCompanionMessage(action, payload, options = {}) {
@@ -234,15 +272,14 @@ function parseCompanionMessage(text) {
  * @param {object} XAPIObject The RoomOS xapi object.
  * @param {object} parentDevice Parent Room Device connection details.
  * @param {object} peripheralInfo Companion Device peripheral registration details.
- * @param {object} httpClientConfig HTTPClient request configuration.
  * @returns {Promise<object>} HTTPClient response.
  * @roomosxapi [xCommand Peripherals Connect](https://roomos.cisco.com/xapi/Command.Peripherals.Connect/)
  */
-async function connectPeripheral(XAPIObject, parentDevice, peripheralInfo, httpClientConfig) {
+async function connectPeripheral(XAPIObject, parentDevice, peripheralInfo) {
 	validateParentDevice(parentDevice);
 	validatePeripheralInfo(peripheralInfo);
 
-	return sendPutXml(XAPIObject, parentDevice, buildPeripheralConnectXml(peripheralInfo), httpClientConfig);
+	return sendPutXml(XAPIObject, parentDevice, buildPeripheralConnectXml(peripheralInfo));
 }
 
 /**
@@ -250,29 +287,28 @@ async function connectPeripheral(XAPIObject, parentDevice, peripheralInfo, httpC
  * @param {object} XAPIObject The RoomOS xapi object.
  * @param {object} parentDevice Parent Room Device connection details.
  * @param {string} peripheralId Unique peripheral ID.
- * @param {object} httpClientConfig HTTPClient request configuration.
  * @returns {Promise<object>} HTTPClient response.
  * @roomosxapi [xCommand Peripherals HeartBeat](https://roomos.cisco.com/xapi/Command.Peripherals.HeartBeat/)
  */
-async function sendPeripheralHeartbeat(XAPIObject, parentDevice, peripheralId, timeoutSeconds, httpClientConfig) {
+async function sendPeripheralHeartbeat(XAPIObject, parentDevice, peripheralId, timeoutSeconds) {
 	validateParentDevice(parentDevice);
 
 	if (!peripheralId) {
 		throw buildError('Peripheral heartbeat requires a peripheral ID', { Code: 'cc.peripheral-heartbeat.1', Host: parentDevice.host });
 	}
 
-	return sendPutXml(XAPIObject, parentDevice, buildPeripheralHeartbeatXml(peripheralId, timeoutSeconds), httpClientConfig, {
+	return sendPutXml(XAPIObject, parentDevice, buildPeripheralHeartbeatXml(peripheralId, timeoutSeconds), {
 		coalesceKey: `peripheral-heartbeat:${parentDevice.host}:${peripheralId}`
 	});
 }
 
-async function getCallStatus(XAPIObject, device, httpClientConfig) {
+async function getCallStatus(XAPIObject, device) {
 	validateParentDevice(device);
 
 	const response = await queuedHttpRequest(() => XAPIObject.Command.HttpClient.Get({
 		Url: `https://${device.host}/getxml?location=/Status/Call`,
 		Header: buildHeaders(device),
-		AllowInsecureHTTPS: getAllowInsecureHTTPS(httpClientConfig),
+		AllowInsecureHTTPS: HTTP_REQUEST_ALLOW_INSECURE_HTTPS,
 		ResultBody: 'PlainText',
 		Timeout: HTTP_TRANSPORT_POLICY.timeoutSeconds
 	}), buildHttpRequestContext('GET', device.host, '/getxml?location=/Status/Call', `call-status:${device.host}`));
@@ -451,15 +487,18 @@ function buildHeaders(parentDevice) {
 	];
 }
 
-function getAllowInsecureHTTPS(httpClientConfig) {
-	return httpClientConfig && httpClientConfig.allowInsecureHTTPS ? 'True' : 'False';
+function normalizeConfigValue(value) {
+	if (value && typeof value === 'object' && value.Value !== undefined) {
+		return value.Value;
+	}
+	return value;
 }
 
-function sendPutXml(XAPIObject, parentDevice, xmlBody, httpClientConfig, requestOptions = {}) {
+function sendPutXml(XAPIObject, parentDevice, xmlBody, requestOptions = {}) {
 	return queuedHttpRequest(() => XAPIObject.Command.HttpClient.Post({
 		Url: `https://${parentDevice.host}/putxml`,
 		Header: buildHeaders(parentDevice),
-		AllowInsecureHTTPS: getAllowInsecureHTTPS(httpClientConfig),
+		AllowInsecureHTTPS: HTTP_REQUEST_ALLOW_INSECURE_HTTPS,
 		ResultBody: 'PlainText',
 		Timeout: HTTP_TRANSPORT_POLICY.timeoutSeconds
 	}, xmlBody), buildHttpRequestContext('POST', parentDevice.host, '/putxml', requestOptions.coalesceKey, true));
@@ -823,7 +862,8 @@ function buildError(message, context) {
 }
 
 const deviceComms = {
-	initializeHttpClient,
+	initializeHttpTransport,
+	validateHttpClientPrerequisites,
 	parentInitializationRequest,
 	parentStandbyStateRequest,
 	installParentMacros,

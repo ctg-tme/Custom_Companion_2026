@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 10, 2026
- * Revised:                 July 24, 2026
- * Version:                 1.0.29
+ * Revised:                 July 27, 2026
+ * Version:                 1.0.30
  *
  * Description:             Companion Device provisioning payloads, peripheral identity, and runtime device-identity services.
  *
@@ -56,7 +56,7 @@ async function installParentMacrosOnOnlineParents(options) {
 		}
 
 		try {
-			await options.deviceComms.installParentMacros(options.xapi, parentDevice, macroPayloads, options.installConfig, options.httpClientConfig);
+			await options.deviceComms.installParentMacros(options.xapi, parentDevice, macroPayloads, options.installConfig);
 			options.log.info({ Message: 'Parent Room Device macro installation completed', Host: parentDevice.host, MacroName: options.installConfig.roomReferenceTargetMacroName });
 		} catch (error) {
 			options.log.warn({ Message: 'Parent Room Device macro installation failed', Host: parentDevice.host, Error: error.code || error.message || 'Unknown Parent Room Device macro installation error', ErrorContext: error.Context || {} });
@@ -102,8 +102,8 @@ async function connectPeripheralToOnlineParents(options) {
 		}
 
 		try {
-			const connectResponse = await options.deviceComms.connectPeripheral(options.xapi, parentDevice, peripheralInfo, options.httpClientConfig);
-			const heartbeatResponse = await options.deviceComms.sendPeripheralHeartbeat(options.xapi, parentDevice, peripheralInfo.ID, options.initialHeartbeatTimeout, options.httpClientConfig);
+			const connectResponse = await options.deviceComms.connectPeripheral(options.xapi, parentDevice, peripheralInfo);
+			const heartbeatResponse = await options.deviceComms.sendPeripheralHeartbeat(options.xapi, parentDevice, peripheralInfo.ID, options.initialHeartbeatTimeout);
 			await options.sendParentReadyRequest(parentDevice, companionDeviceInformation);
 			options.log.debug({ Message: 'Companion Device peripheral connect HTTP response', Host: parentDevice.host, Response: sanitizeHttpResponse(connectResponse) });
 			options.log.debug({ Message: 'Companion Device initial peripheral heartbeat HTTP response', Host: parentDevice.host, Response: sanitizeHttpResponse(heartbeatResponse), Timeout: options.initialHeartbeatTimeout });

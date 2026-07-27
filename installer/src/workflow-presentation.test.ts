@@ -17,6 +17,20 @@ describe('installer workflow presentation', () => {
     expect(source).not.toContain('The serial read from the Companion Device is never displayed or logged.');
   });
 
+  it('keeps HTTPClient preflight and browser WSS certificate recovery distinct', async () => {
+    const appSource = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
+    const deviceSource = await readFile(new URL('./device.ts', import.meta.url), 'utf8');
+
+    expect(deviceSource).toContain('Set xConfiguration HttpClient Mode to On, then reconnect.');
+    expect(deviceSource).toContain("xapi.config.get('HttpClient Mode')");
+    expect(deviceSource).toContain("xapi.config.get('HttpClient AllowInsecureHTTPS')");
+    expect(deviceSource).not.toContain("xapi.config.set('HttpClient");
+    expect(appSource).toContain('HTTPClient Trust Posture');
+    expect(appSource).toContain('The installer reads it but never changes it.');
+    expect(appSource).toContain('Certificate trust may be blocking sign-in');
+    expect(appSource).toContain('Open Companion Device certificate page');
+  });
+
   it('keeps installer Parent Room Registration optional from Complete Setup', async () => {
     const source = await readFile(new URL('./app.ts', import.meta.url), 'utf8');
 

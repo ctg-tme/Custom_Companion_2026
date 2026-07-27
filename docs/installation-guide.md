@@ -35,7 +35,12 @@ Use [Network Requirements](network-requirements.md) for the complete endpoint ta
 - Trust the Companion Device's HTTPS certificate in the same browser before connecting. The installer opens `wss://<companion-host>` and cannot bypass browser certificate validation.
 - Permit HTTPS connectivity, normally TCP 443, from the administrator workstation to the Companion Device and in both directions between the Companion Device and every Parent Room Device.
 - Ensure the host names or IP addresses entered during configuration and Parent Room Registration are reachable from the RoomOS devices that will use them.
-- Enable the RoomOS Macro Runtime on each participating device. The Custom Companion runtime enables and configures RoomOS HTTPClient during initialization, so the device account and configuration policy must permit those xAPI changes.
+- Enable the RoomOS Macro Runtime on each participating device.
+- Before installation or Parent Room Registration, a Device Administrator must set `xConfiguration HttpClient Mode: On` on every participating Companion Device and Parent Room Device. Custom Companion reads this prerequisite and never changes it.
+- Choose one administrator-owned HTTPClient Trust Posture per sending device:
+  - Production: `xConfiguration HttpClient AllowInsecureHTTPS: False`. Install the remote device's issuing CA in RoomOS and use a requested FQDN or IP address present in the remote certificate SAN in both directions.
+  - Lab: `xConfiguration HttpClient AllowInsecureHTTPS: True`. This permits untrusted or self-signed certificates for every qualifying HTTPClient destination on that sending device, not only Custom Companion peers.
+- Treat browser WSS trust and RoomOS HTTPClient trust as separate paths. Accepting the Companion Device certificate in the installer browser does not install a CA on either RoomOS device or prove device-to-device certificate validation.
 - Record the expected serial number for the Companion Device and for each Parent Room Device before installation.
 - Prepare an administrator account on the Companion Device for Installer Credentials. RoomOS restricts macro save and activation to an administrator role.
 - Prepare an existing local account on the Companion Device for Companion Device Callback Credentials. A dedicated account such as `custom-companion` is recommended for clearer audit activity. The installer verifies authentication but does not create the account or test its permissions. Registered Parent Room Devices store these credentials so they can send runtime messages back to the Companion Device.
@@ -57,6 +62,7 @@ Protect all device credentials and any backup of generated storage. Do not place
 3. Export or otherwise securely back up the existing Custom Companion macros and `Custom-Campanion-Storage` before an upgrade or reset. Generated storage can contain device credentials; handle the backup as sensitive data and never commit it.
 4. Choose one published stable release whenever possible. Use Preview or Main Fork (Beta) only when you accept pre-release risk.
 5. Do not mix files from different tags, branches, or commits. The numbered macros, Config macro, RoomReference source, and external dependency must be installed as one source set.
+6. Read and record `HttpClient Mode` and `HttpClient AllowInsecureHTTPS` on every participating device. Correct the production or lab posture before importing or activating macros.
 
 ## Install with the Companion Installer
 
@@ -65,11 +71,13 @@ Protect all device credentials and any backup of generated storage. Do not place
 3. Enter the Companion Device host address, expected serial number, and Installer Credentials.
 4. If sign-in fails because of certificate trust, open the Companion Device HTTPS page from the installer, accept the browser warning according to your organization's policy, and try again.
 5. Confirm that the installer reports a matching serial number, supported product platform, and supported RoomOS version.
+   - During this signed-in preflight, the installer reads `HttpClient Mode` and `HttpClient AllowInsecureHTTPS` without changing them. If Mode is not `On`, installation stops before any mutation with `Set xConfiguration HttpClient Mode to On, then reconnect.`
+   - Review the reported **HTTPClient Trust Posture**. Under strict validation, confirm that the installer host becomes a callback host that matches the Companion Device certificate SAN and that every Parent Room Device trusts its issuing CA.
    - The verified connection is locked to one Companion Device. To change devices, select **Disconnect**, confirm the safeguard dialog, and reconnect. The selected release remains prepared, while credentials and device-derived state are cleared.
 6. Configure the Companion Device runtime:
    - enter the existing Companion Device Callback Credentials;
    - keep a distinct callback account unless your deployment deliberately reuses the installer account;
-   - review PIN Mode defaults, HTTPClient certificate behavior, and Companion WebWidget settings;
+   - review PIN Mode defaults and Companion WebWidget settings; HTTPClient trust is administrator-owned RoomOS configuration rather than Deployment Configuration;
    - select **Use Computer Location** to copy the Installer Computer's latitude and longitude after granting browser location permission, or enter the coordinates manually;
    - select **Use Computer Time Zone** to copy the Installer Computer's current IANA time zone, or enter it manually;
    - verify each Standalone and Paired `iconUrl` in the image preview; and
@@ -159,7 +167,6 @@ Edit only the Deployment Configuration values in `Custom-Campanion_2_Config_2026
 | `CompanionDeviceInformation.password` | Existing Companion Device Callback Credentials password. The source value is blank and must be supplied. |
 | `pinMode.defaults.enabled` | `true` or `false`. This initializes PIN Mode only when no saved PIN Mode record exists. |
 | `pinMode.defaults.pin` | A quoted 4-8 digit PIN. Do not treat it as an administrator or recovery credential. |
-| `httpClient.allowInsecureHTTPS` | The default `false` requires trusted device certificates and matching host names in both directions. Set `true` only when the deployment explicitly accepts untrusted device certificates. The Parent Room runtime uses this Companion Device-owned value for callbacks to that Companion Device, including `ParentReady`. |
 | `UserInterface.WebWidget` | Review the enabled state, optional URL override, restoration policy, weather location and unit, time zone, mode-specific `userGuidance`, and icon URLs. Weather and time default disabled with blank location/time-zone values. |
 
 Each literal Config value has a trailing source definition that the Companion Installer displays as field help. Preserve these comments and use valid JavaScript string escaping for every value. Never paste a configuration file containing real credentials into a ticket, chat, or source commit.
@@ -168,7 +175,7 @@ Each literal Config value has a trailing source definition that the Companion In
 
 1. Sign in to the Companion Device WebUI with an administrator account.
 2. Open **Settings > Macro Editor** and enable macros if the Macro Editor is disabled.
-3. Confirm the device serial, product platform, RoomOS version, and zero active calls.
+3. Confirm the device serial, product platform, RoomOS version, zero active calls, `HttpClient Mode=On`, and the intended device-wide `HttpClient AllowInsecureHTTPS` posture. The runtime will not change either HTTPClient configuration.
 4. For an upgrade, deactivate `Custom-Campanion_1_Main_2026` before overwriting any project file.
 5. Choose the state-handling path:
    - For the equivalent of Install or Update — Keep Saved Data, leave `Custom-Campanion-Storage` in place and inactive.
@@ -186,7 +193,7 @@ Each literal Config value has a trailing source definition that the Companion In
    - `Custom-Campanion_2_Config_2026` through `Custom-Campanion_15_ParentRegistration_2026`
    - `Custom-Campanion_7_RoomReference_2026`, which is the source later installed on Parent Room Devices as `Custom-Campanion_Room_2026`
 6. Open the Macro Console, then activate `Custom-Campanion_1_Main_2026`.
-7. Wait for `Custom Companion initialized on Companion Device`. Main verifies that `CompanionDeviceInformation.host`, `.username`, and `.password` are configured before enabling the solution; a missing field stops initialization with `CC26-INIT-CALLBACK-CREDENTIALS`. If initialization stops, leave the helper macros inactive, inspect the full diagnostic, correct the named prerequisite, and restart the Macro Runtime only after the fault is understood.
+7. Wait for `Custom Companion initialized on Companion Device`. Main first requires local `HttpClient Mode=On`, then verifies that `CompanionDeviceInformation.host`, `.username`, and `.password` are configured before enabling the solution. Disabled or unreadable Mode stops with `CC26-INIT-HTTPCLIENT-MODE`; a missing callback field stops with `CC26-INIT-CALLBACK-CREDENTIALS`. If initialization stops, leave the helper macros inactive, inspect the full diagnostic, correct the named prerequisite, and restart the Macro Runtime only after the fault is understood.
 
 Do not manually install the Parent Room package. During Parent Room Registration, the Companion Device copies the required source to the Parent Room Device, renames the entry macro to `Custom-Campanion_Room_2026`, activates only that Parent Room entry, and restarts the Parent Room Macro Runtime.
 
@@ -215,6 +222,7 @@ Perform and record these checks separately from source installation:
 - `Custom-Campanion_1_Main_2026` is the only active numbered macro on the Companion Device.
 - All 15 numbered macros and `Memory-Storage-Functions-V2` are present under their exact names.
 - The Macro Console contains the Companion Device initialization success message and no unresolved JavaScript or hard initialization error.
+- Both the Companion Device and each Parent Room Device report the intended administrator-owned HTTPClient Trust Posture; the runtime has not changed `HttpClient Mode` or `HttpClient AllowInsecureHTTPS`.
 - `Custom-Campanion-Storage` is generated and remains inactive after the first successful initialization.
 - **Companion Device Select** appears on the Companion Device.
 - The configured PIN Mode behavior works as intended.
@@ -230,12 +238,14 @@ Command acceptance, file presence, and macro activation do not by themselves pro
 | Symptom | Check |
 | --- | --- |
 | Installer cannot connect | Open the Companion Device HTTPS page in the same browser and trust its certificate; confirm the host, administrator credentials, local network path, and secure WebSocket access. |
+| Installer blocks on HTTPClient Mode | Set `xConfiguration HttpClient Mode` to `On`, then reconnect. The installer reads but never changes this device-wide configuration. |
 | Installer rejects compatibility | Confirm the expected serial, exact product platform, and RoomOS version against the selected release manifest. |
 | Main reports an import or JavaScript error | Confirm all 15 numbered macros and `Memory-Storage-Functions-V2` came from the intended source set, retain exact names, and are saved before Main is activated. |
 | Initialization stops at Companion Device Callback Credentials | Set all three `CompanionDeviceInformation` fields to the callback host, username, and password. For manual installation, verify the account, certificate trust, and bidirectional HTTPS path separately before restarting. |
-| Initialization stops at HTTPClient or memory | Confirm the Macro Runtime and HTTPClient configuration can be changed, the dependency exists under its exact name, and the administrator diagnostic identifies no permissions or storage failure. |
+| Initialization stops with `CC26-INIT-HTTPCLIENT-MODE` | A Device Administrator must set `xConfiguration HttpClient Mode: On` on the affected device and restart the Macro Runtime. Custom Companion does not retry or change the setting. |
+| Initialization stops at HTTPClient Trust Posture or memory | Confirm `HttpClient AllowInsecureHTTPS` is readable and matches the approved production or lab posture, certificate CA/SAN requirements are satisfied in both directions, and the dependency exists under its exact name. |
 | Companion Device Select is replaced by Companion Device Unavailable | Read the hard-error diagnostic, correct the prerequisite or required xAPI path, then restart the Macro Runtime. |
-| Parent Room Registration fails | Confirm host syntax, expected serial, Parent Room Device credentials and permissions, HTTPS reachability in both directions, available registration capacity, and the transaction's macro logs. The terminal installer result identifies the failed stage, stable code, and verified Parent Room Device host; `Waiting for Parent Room Runtime` usually indicates that the Parent could not return `ParentReady`, including a callback certificate-policy mismatch. |
+| Parent Room Registration fails | Confirm host syntax, expected serial, Parent Room Device credentials and permissions, `HttpClient Mode=On` on both devices, HTTPS reachability in both directions, available registration capacity, issuing-CA trust, and requested-host/SAN matching. The terminal installer result identifies the failed stage, stable code, and verified Parent Room Device host; `Waiting for Parent Room Runtime` directs the Device Administrator to the Parent HTTPClient and callback trust path. |
 | WebWidget is absent or incomplete | Confirm it is enabled, its URL and icon resources are reachable from the Companion Device, and the configured weather and time values are valid. |
 | Upgrade loses saved rooms or PIN state | Confirm whether `Custom-Campanion-Storage` was removed. Only Install or Update — Keep Saved Data preserves it; a deleted storage macro cannot be reconstructed by the installer. |
 

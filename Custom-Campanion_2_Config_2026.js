@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 0.1.2.57
+ * Version:                 0.1.2.58
  *
  * Description:             User-facing configuration for the Custom Companion solution on supported Companion Devices.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -41,7 +41,7 @@ or implied.
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
 
-const projectVersion = '0.1.2.57';
+const projectVersion = '0.1.2.58';
 
 const config = {
   CompanionDeviceInformation: {
@@ -54,9 +54,6 @@ const config = {
       enabled: true,                     // Enables PIN Mode when its durable state is first initialized. It does not override changes made using the Companion Device UI.
       pin: '0000'                        // Default PIN. Must be 4–8 digits. This is the initial PIN set on a new installation.
     }
-  },
-  httpClient: {
-    allowInsecureHTTPS: false            // Permits HTTPS connections whose certificates RoomOS does not trust, including typical device self-signed certificates.
   },
   UserInterface: {
     WebWidget: {

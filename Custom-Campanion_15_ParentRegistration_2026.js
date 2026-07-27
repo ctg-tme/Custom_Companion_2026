@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 22, 2026
  * Revised:                 July 27, 2026
- * Version:                 1.0.10
+ * Version:                 1.0.11
  *
  * Description:             Parent Room Registration and Deregistration controller. Owns the
  *                          PIN-authorized wizard, locked provisioning stages, long-hold removal,
@@ -488,7 +488,7 @@ function createParentRegistration(options) {
 		}
 
 		try {
-			const candidate = await runLocalStage('Verifying Parent Room Device', `Checking the host, expected serial number, and credentials for ${credentials.host}.`, () => dependencies.deviceComms.parentInitializationRequest(dependencies.xapi, credentials, dependencies.httpClientConfig));
+			const candidate = await runLocalStage('Verifying Parent Room Device', `Checking the host, expected serial number, and credentials for ${credentials.host}.`, () => dependencies.deviceComms.parentInitializationRequest(dependencies.xapi, credentials));
 			validateExpectedParentSerial(credentials.serial, candidate.serial, credentials.host);
 			operation.candidate = candidate;
 			operation.hadExistingRegistration = !!findParentBySerial(candidate.serial);
@@ -497,14 +497,14 @@ function createParentRegistration(options) {
 
 			await runLocalStage('Installing Parent Room Runtime', `Installing and starting the shared Custom Companion Parent Room macros on ${candidate.name}.`, async () => {
 				const macroPayloads = await dependencies.companionDeviceServices.getParentInstallMacroPayloads(dependencies.xapi, dependencies.installConfig);
-				await dependencies.deviceComms.installParentMacros(dependencies.xapi, candidate, macroPayloads, dependencies.installConfig, dependencies.httpClientConfig);
+				await dependencies.deviceComms.installParentMacros(dependencies.xapi, candidate, macroPayloads, dependencies.installConfig);
 			});
 
 			const companionDeviceInformation = await callbacks.getRuntimeCompanionDeviceInformation();
 			const peripheralInfo = dependencies.companionDeviceServices.buildCompanionPeripheralInfo(companionDeviceInformation, dependencies.configVersion, dependencies.peripheralType);
 			await runLocalStage('Connecting Companion Device', `Registering this Companion Device as a peripheral on ${candidate.name}.`, async () => {
-				await dependencies.deviceComms.connectPeripheral(dependencies.xapi, candidate, peripheralInfo, dependencies.httpClientConfig);
-				await dependencies.deviceComms.sendPeripheralHeartbeat(dependencies.xapi, candidate, peripheralInfo.ID, dependencies.initialHeartbeatTimeout, dependencies.httpClientConfig);
+				await dependencies.deviceComms.connectPeripheral(dependencies.xapi, candidate, peripheralInfo);
+				await dependencies.deviceComms.sendPeripheralHeartbeat(dependencies.xapi, candidate, peripheralInfo.ID, dependencies.initialHeartbeatTimeout);
 			});
 
 			await runMessageStage('Waiting for Parent Room Runtime', `${candidate.name} is starting the Parent Room runtime and confirming readiness.`, 'ParentReady', () => sendParentReadyRequest(candidate, companionDeviceInformation, transactionId));
@@ -1050,9 +1050,8 @@ function createParentRegistration(options) {
 		await dependencies.deviceComms.sendMessageCommand(dependencies.xapi, tombstone, 'DeregisterRequest', {
 			TransactionId: tombstone.transactionId,
 			PeripheralId: tombstone.peripheralId,
-			Board: buildCompanionDevicePayload(companionDeviceInformation),
-			Config: buildBootstrapConfig()
-		}, buildCompanionDeviceMessageConfig(companionDeviceInformation), dependencies.httpClientConfig);
+			Board: buildCompanionDevicePayload(companionDeviceInformation)
+		}, buildCompanionDeviceMessageConfig(companionDeviceInformation));
 	}
 
 	async function handleDeregistrationAccepted(message) {
@@ -1080,16 +1079,8 @@ function createParentRegistration(options) {
 	async function sendParentReadyRequest(parentDevice, companionDeviceInformation, transactionId) {
 		await dependencies.deviceComms.sendMessageCommand(dependencies.xapi, parentDevice, 'ParentReadyRequest', {
 			TransactionId: transactionId,
-			Board: buildCompanionDevicePayload(companionDeviceInformation),
-			Config: buildBootstrapConfig()
-		}, buildCompanionDeviceMessageConfig(companionDeviceInformation), dependencies.httpClientConfig);
-	}
-
-	function buildBootstrapConfig() {
-		const parentSyncConfig = callbacks.getParentSyncConfig();
-		return {
-			httpClient: parentSyncConfig && parentSyncConfig.httpClient || {}
-		};
+			Board: buildCompanionDevicePayload(companionDeviceInformation)
+		}, buildCompanionDeviceMessageConfig(companionDeviceInformation));
 	}
 
 	async function sendConfigSync(parentDevice, companionDeviceInformation, transactionId) {
@@ -1105,7 +1096,7 @@ function createParentRegistration(options) {
 				CanMuteVideo: true,
 				CanReceiveMessages: true
 			}
-		}, buildCompanionDeviceMessageConfig(companionDeviceInformation), dependencies.httpClientConfig);
+		}, buildCompanionDeviceMessageConfig(companionDeviceInformation));
 	}
 
 	async function sendRegistrationValidated(parentDevice, message) {
@@ -1116,7 +1107,7 @@ function createParentRegistration(options) {
 			Status: 'Registered',
 			PairingState: getPairingStateForParent(runtimeContext, message.Serial),
 			ActiveParentSerial: runtimeContext.mode === 'Paired' ? runtimeContext.activeParentSerial : ''
-		}, buildCompanionDeviceMessageConfig(companionDeviceInformation), dependencies.httpClientConfig);
+		}, buildCompanionDeviceMessageConfig(companionDeviceInformation));
 	}
 
 	function getPairingStateForParent(runtimeContext, parentSerial) {
@@ -1441,6 +1432,9 @@ function createParentRegistration(options) {
 			return buildOperationError('The Parent Room Device did not confirm cleanup within 60 seconds.', 'CC26-DEREGISTRATION-TIMEOUT');
 		}
 		const stage = operation && operation.currentStage || 'The current registration stage';
+		if (stage === 'Waiting for Parent Room Runtime') {
+			return buildOperationError('Waiting for Parent Room Runtime did not complete within 60 seconds. Verify Parent HttpClient Mode is On, certificate trust and hostname/SAN matching are correct, and Parent-to-Companion reachability is available.', 'CC26-REGISTRATION-TIMEOUT');
+		}
 		return buildOperationError(`${stage} did not complete within 60 seconds.`, 'CC26-REGISTRATION-TIMEOUT');
 	}
 

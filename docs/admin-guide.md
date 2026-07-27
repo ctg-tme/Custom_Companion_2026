@@ -51,7 +51,9 @@ Before deployment, confirm all of the following:
 7. The browser can reach the Companion Device over secure WebSocket and trusts the device certificate.
 8. The Companion Device can reach every Parent Room Device over HTTPS, and every Parent Room Device can reach the configured Companion Device callback host over HTTPS.
 9. DNS names, routing, firewalls, and certificates are correct for both directions. A successful browser connection proves only the installer-to-Companion Device path.
-10. A maintenance window is available with no active calls on devices whose Macro Runtime may restart.
+10. `HttpClient Mode` is `On` on every participating device. The runtime and installer read but never change this Device Administrator-owned prerequisite.
+11. Each sending device has an approved HTTPClient Trust Posture: production uses `AllowInsecureHTTPS=False` with trusted issuing CAs and requested-host/SAN matching; lab may use `True` only with acceptance that the permissive device-wide policy applies to every qualifying HTTPClient destination.
+12. A maintenance window is available with no active calls on devices whose Macro Runtime may restart.
 
 For a safer change window:
 
@@ -112,13 +114,12 @@ The administrator-facing source configuration is in `Custom-Campanion_2_Config_2
 | `CompanionDeviceInformation.host` | Companion Device callback host distributed to Parent Room Devices. | It is blank in source and must be an address reachable from every Parent Room Device. The Companion Installer injects the connected Companion Device host automatically. Update it if network addressing changes. |
 | `CompanionDeviceInformation.username` and `.password` | Existing local Companion Device Callback Credentials. | Username defaults to `custom-companion`; password is blank. Both credentials and the host are required. Create or update the account first. Initialization stops if a required callback field is blank. Protect the Config macro because these values are stored in source. |
 | `pinMode.defaults.enabled` and `.pin` | Bootstrap state used only when no durable PIN Mode record exists. | The PIN must contain 4–8 digits. These values do not replace a healthy current PIN after initialization. |
-| `httpClient.allowInsecureHTTPS` | Sets the Companion Device's RoomOS `HttpClient AllowInsecureHTTPS` and the per-Companion request option used in both device-to-device HTTPS directions. | Defaults to `false`. Keep it `false` with trusted certificates and matching host names; set `true` only when explicitly accepting untrusted device certificates. The Parent Room runtime receives this value during registration and stores it by Companion Device serial. |
 | `UserInterface.WebWidget.urlOverride` | Replaces the built-in Simple-WebWidget base URL. | Leave empty for the release default. Validate any custom page on every supported display. |
 | `UserInterface.WebWidget.CompanionWidget.enabled` | Enables solution management of the Companion WebWidget. | Disable only if the deployment does not need the widget or its runtime status field. |
 | `restoreStandaloneExisting` | Restores the WebWidget captured before Paired mode while Standalone. | Configure the intended existing WebWidget before its first Standalone capture. The original is saved as durable internal state, not continuously rediscovered. |
 | `weather`, `time`, `Standalone`, and `Paired` fields | Configure widget weather, clock, user guidance, and mode-specific WebWidget images. | Weather and time default disabled with blank location/time-zone values. Use valid coordinates, temperature unit, IANA time zone, text, and reachable HTTPS image URLs when enabling them. During installation, Weather and Time may copy one-time values from the Installer Computer, and both mode-specific `iconUrl` fields show a browser preview. The URLs are prefilled with the release image and may be edited independently. Runtime owns heading, theme, `info1`, `info3`, and `hideSettings`; `userGuidance` maps to the widget's `info2` display slot. |
 
-The exported `projectVersion`, current PIN, registered Parent Room Devices, active selection, Pending Deregistrations, and saved Standalone preferences are not Deployment Configuration. The Companion Installer shows the selected source's Project Version separately. Manage durable state through the supported UI and runtime workflows, not by editing Config.
+The exported `projectVersion`, HTTPClient Trust Posture, current PIN, registered Parent Room Devices, active selection, Pending Deregistrations, and saved Standalone preferences are not Deployment Configuration. The Companion Installer shows the selected source's Project Version separately and reports the observed HTTPClient posture without changing it. Manage durable state through the supported UI and runtime workflows, not by editing Config.
 
 ### Edit Config after installation
 
@@ -144,8 +145,8 @@ RoomOS xConfigurations persist across reboots and Macro Runtime restarts. The so
 
 | Surface | While Paired | When returning to Standalone | Preservation class |
 | --- | --- | --- | --- |
-| `HttpClient Mode` | Set to `On`. | Remains `On`. | Device-wide prerequisite; not snapshot-restored. |
-| `HttpClient AllowInsecureHTTPS` | Set from Config. | Remains at the configured value. | Device-wide deployment setting; not snapshot-restored. |
+| `HttpClient Mode` | Must already be `On`; initialization stops before transport or controller startup otherwise. | Never changed. | Device Administrator-owned device-wide prerequisite. |
+| `HttpClient AllowInsecureHTTPS` | Observed and reported as the device's HTTPClient Trust Posture. | Never changed. | Device Administrator-owned device-wide security policy. |
 | Custom panels | `cc26_access` launches protected `cc26_hidden`; its custom icon is downloaded from the release-owned URL in the UI module; `cc26_error` replaces the normal panels during Unhealthy State. | Access and hidden panels remain. Legacy panel `cc26` is removed. The panel icon is not deployment configuration. An icon-download failure leaves the built-in fallback icon and does not create an Unhealthy State. | Solution-owned UI, regenerated by runtime. |
 | Companion WebWidget | `cc26WebWidget` is saved with Paired content and runtime status. | The solution widget remains by default, or the once-captured prior widget is restored when `restoreStandaloneExisting` is enabled. | Solution-owned unless explicit restoration is configured. |
 | Known call, share, whiteboard, and BYOD UI features | Set to the Paired policy values described below. | Exact captured supported values are restored. | Standalone Preference Snapshot. |
@@ -194,8 +195,8 @@ The solution intentionally leaves other device surfaces alone, including Whitebo
 | Surface | Impact |
 | --- | --- |
 | Macro package | Shared Parent Room runtime and dependencies are saved; only `Custom-Campanion_Room_2026` is active. Provisioning restarts the Parent Room Device Macro Runtime. |
-| HTTPClient | Mode is set to `On` and the Parent Room runtime leaves device-wide `AllowInsecureHTTPS` at a safe `false` baseline. Each Parent-to-Companion request uses the policy stored for that Companion Device serial; the initial `ParentReady` callback uses the same value carried in `ParentReadyRequest`. The previous device-wide values are not restored. |
-| Generated storage | `registeredBoards` stores recognized Companion Device records and callback credentials. `boardConfigs` stores the last accepted Companion Device configuration by serial. `companionPairingStates` stores the last Companion-authoritative Paired/Not paired value; Offline remains transient. |
+| HTTPClient | Mode must already be `On`; Parent Room initialization stops otherwise. The runtime observes but never changes device-wide `AllowInsecureHTTPS`. Every request supplies request-level `AllowInsecureHTTPS=True`, while the Parent Room Device's device-wide posture remains the effective certificate-validation gate for all Companion Device destinations. |
+| Generated storage | `registeredBoards` stores recognized Companion Device records and callback credentials. `boardConfigs` stores the last accepted Companion Device configuration by serial; a legacy `httpClient` field can remain after an upgrade but is ignored. `companionPairingStates` stores the last Companion-authoritative Paired/Not paired value; Offline remains transient. |
 | User interface | `Registered Companion Devices` is saved in `ControlPanel` with an information row, one named status row per registration, or an explicit no-registrations row. Ten-second alerts announce authoritative Paired/Not paired changes and exhausted startup validation. |
 | Connected peripherals | The Companion Device is connected and heartbeated as a RoomOS peripheral. Confirmed deregistration purges only that Companion Device peripheral entry. |
 | Calls | The runtime reads call state, reports it to registered Companion Devices, looks up a current booking only when a Meeting Password is requested, and may admit an exact validated Companion Device guest. |
@@ -314,6 +315,7 @@ Stable diagnostic codes begin with `CC26-` for administrator-facing runtime fail
 | Symptom | Meaning | Administrator response |
 | --- | --- | --- |
 | `cc26_error` replaces Companion Device Select | The solution entered an Unhealthy State because a required local prerequisite, saved PIN state, or required Paired media/DND command failed. | Read the first stable error diagnostic, correct the macro/xAPI/capability issue, wait for any active call to end, then restart Macro Runtime. |
+| `CC26-INIT-HTTPCLIENT-MODE` or the device-to-device communication disabled Infoblock appears | Local `HttpClient Mode` could not be read or is not `On`. Initialization stopped before registration, provisioning, heartbeat, standby, call coordination, or Parent selection began. | A Device Administrator must set `xConfiguration HttpClient Mode: On` on that device and restart the Macro Runtime. Do not expect an automatic retry. |
 | A Parent Room Device is offline or unavailable | Parent Connectivity failed. This alone is not an Unhealthy State. An `Offline` entry remains actionable so an In-Room User can request a fresh check. | Check host resolution, routing, HTTPS, credentials, certificate policy, live serial identity, Parent Room macros, and logs on both devices. |
 | `Companion Device Registration Error` appears on a Parent Room Device | The Parent Room Device accepted or denied configuration but could not send its response to the Companion Device. | Verify callback host, callback credentials, permissions, HTTPS reachability, and certificate policy from Parent Room Device to Companion Device. |
 | A Companion Device row shows `Offline` on its Parent Room Device | Three serialized startup validation attempts did not receive an authoritative response within their two-second response windows. The last saved Paired/Not paired state remains preserved. | Check callback reachability and credentials. A later Companion Device status message corrects the row automatically. |
@@ -342,7 +344,9 @@ Treat macro and storage access as privileged:
 
 Use distinct installer and callback accounts where operationally practical so audit activity is attributable. Apply least privilege only after verifying that the account can perform every required runtime callback operation. Rotate credentials in a controlled Standalone maintenance window, update Config or the affected Parent Room Registration, restart safely, and verify both communication directions.
 
-`httpClient.allowInsecureHTTPS` defaults to `false`. This requires trusted certificate chains and matching host names for device-to-device HTTPS. Setting it to `true` supports typical self-signed device certificates but weakens RoomOS HTTPClient certificate validation and should be an explicit deployment decision. Parent Room Devices apply the saved value per Companion Device, including the first registration callback, so registered Companion Devices with different policies do not overwrite one another's request behavior.
+HTTPClient Trust Posture is a Device Administrator-owned RoomOS policy, not Config. Use `HttpClient Mode=On` everywhere. For production, use `HttpClient AllowInsecureHTTPS=False`, install the remote issuing CA on each sending device, and use hosts present in the remote certificate SAN. For an explicitly permissive lab, `True` permits untrusted or self-signed certificates for every qualifying destination reached by that sending device. Custom Companion sets neither value and supports no mixed per-Companion exception.
+
+The Companion Installer browser's WSS certificate trust is separate. Accepting the Companion Device certificate in a browser establishes only browser-to-device trust; it does not install a RoomOS CA, validate Parent-to-Companion callbacks, or alter the administrator-owned HTTPClient posture.
 
 ## 11. Recovery boundaries and known limitations
 

@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 20, 2026
- * Revised:                 July 24, 2026
- * Version:                 1.0.3
+ * Revised:                 July 27, 2026
+ * Version:                 1.0.4
  *
  * Description:             Standby Coordination controller for the Custom Companion solution.
  *                          Owns Standalone standby preference restoration, delayed Parent Room Device
@@ -159,7 +159,7 @@ function createStandbyCoordination(options) {
 
 	async function prefetchSelectedParentSync(parentDevice) {
 		try {
-			const state = await dependencies.deviceComms.parentStandbyStateRequest(dependencies.xapi, parentDevice, dependencies.httpClientConfig);
+			const state = await dependencies.deviceComms.parentStandbyStateRequest(dependencies.xapi, parentDevice);
 			dependencies.log.info({ Message: 'Selected Parent Room Device standby state fetched', Host: parentDevice.host, State: state });
 			return state;
 		} catch (error) {

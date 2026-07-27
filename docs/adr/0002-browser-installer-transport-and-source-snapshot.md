@@ -11,6 +11,8 @@ The Companion Installer must be hosted as a static GitHub Pages site, connect di
 
 Use the browser build of JSXAPI to connect directly to the Companion Device over secure WebSocket. The Device Administrator must first trust the Companion Device's certificate in the browser. The installer never connects to a Parent Room Device; the installed Companion Device runtime remains responsible for Parent Room provisioning.
 
+Browser trust establishes only the installer-to-Companion Device WSS boundary. After sign-in, installer preflight separately reads the administrator-owned RoomOS HTTPClient Trust Posture used for device-to-device traffic and never changes it. See [ADR 0011](0011-administrator-owned-httpclient-trust-posture.md).
+
 Resolve all source resources from one commit SHA before installation so an evolving branch cannot produce a mixed-version deployment. List every published source version in this order: stable releases from newest to oldest, prereleases labeled Preview, then `main` labeled Main Fork (Beta) with its source version. Draft releases are excluded. Default to the newest stable release; if none exists, default to the newest Preview; if no published release exists, default to Main Fork (Beta).
 
 Generate a Main Fork (Beta) installation manifest during the GitHub Pages build and publish that snapshot's installable macros as same-origin static assets. At runtime, attempt to discover and fetch every published GitHub Release directly from the repository. If the private or unreachable repository prevents release discovery, show Releases Unreachable in the selector and allow Main Fork (Beta) only after a visible warning. Anyone who can access the Pages site may download its Main Fork macro sources; the installer does not request or expose a GitHub access token.
@@ -29,6 +31,7 @@ Fetch `Memory-Storage-Functions-V2` from its public `ctg-tme/Memory-Storage-Func
 
 - Companion Device credentials remain in the browser session and are passed directly to JSXAPI rather than through an installer service.
 - Certificate trust and local network reachability are explicit installation prerequisites.
+- Browser WSS certificate trust does not establish or alter RoomOS HTTPClient CA/SAN trust.
 - Resource discovery may evolve independently, but every installation must retain a single resolved source snapshot.
 - Local installer tests, production builds, and the GitHub Pages workflow all run the same Release Contract verification before packaging.
 - Adding or removing an eligible runtime macro is reflected by rebuilding the Pages artifact rather than changing installer code.

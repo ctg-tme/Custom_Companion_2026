@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 20, 2026
  * Revised:                 July 27, 2026
- * Version:                 1.0.4
+ * Version:                 1.0.5
  *
  * Description:             Parent Connectivity controller for the Custom Companion solution.
  *                          Owns Parent Room Device identity refresh, serial-verified retries,
@@ -83,7 +83,7 @@ function createParentConnectivity(options) {
 			const device = parentDevices[index];
 
 			try {
-				const refreshedDevice = await dependencies.deviceComms.parentInitializationRequest(dependencies.xapi, device, dependencies.httpClientConfig);
+				const refreshedDevice = await dependencies.deviceComms.parentInitializationRequest(dependencies.xapi, device);
 				if (device.serial && refreshedDevice.serial !== device.serial) {
 					const mismatchError = new Error('Parent Room Device identity serial changed for an existing Parent Room Device record');
 					mismatchError.code = 'CC26-PARENT-IDENTITY-MISMATCH';
@@ -232,7 +232,7 @@ function createParentConnectivity(options) {
 
 		const peripheralId = callbacks.getPeripheralId ? callbacks.getPeripheralId() : '';
 		try {
-			await dependencies.deviceComms.sendPeripheralHeartbeat(dependencies.xapi, activeParentDevice, peripheralId, policy.heartbeatTimeoutSeconds, dependencies.httpClientConfig);
+			await dependencies.deviceComms.sendPeripheralHeartbeat(dependencies.xapi, activeParentDevice, peripheralId, policy.heartbeatTimeoutSeconds);
 			dependencies.log.debug({ Message: 'Companion Device peripheral heartbeat sent', Host: activeParentDevice.host, PeripheralID: peripheralId, Timeout: policy.heartbeatTimeoutSeconds });
 		} catch (error) {
 			dependencies.log.debug({ Message: 'Companion Device peripheral heartbeat failed', Host: activeParentDevice.host, Error: error.code || error.message || 'Unknown peripheral heartbeat error', ErrorContext: error.Context || {} });
@@ -392,7 +392,7 @@ function createParentConnectivity(options) {
 				return buildAttemptResult(latestStatus, true, attempt);
 			}
 
-			const identityRequest = dependencies.deviceComms.parentInitializationRequest(dependencies.xapi, parentDevice, dependencies.httpClientConfig)
+			const identityRequest = dependencies.deviceComms.parentInitializationRequest(dependencies.xapi, parentDevice)
 				.then(
 					refreshedDevice => ({ refreshedDevice: refreshedDevice, error: null }),
 					error => ({ refreshedDevice: null, error: error })

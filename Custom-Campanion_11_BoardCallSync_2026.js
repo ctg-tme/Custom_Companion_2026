@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 20, 2026
- * Revised:                 July 24, 2026
- * Version:                 1.0.14
+ * Revised:                 July 27, 2026
+ * Version:                 1.0.15
  *
  * Description:             Companion Device Call Synchronization controller for the Custom Companion solution.
  *                          Owns Companion Device call sync classification, Webex join and disconnect behavior,
@@ -296,7 +296,7 @@ function createCompanionDeviceCallSync(options) {
 					Host: companionDeviceInformation.host,
 					MacAddress: companionDeviceInformation.macAddress
 				}
-			}, dependencies.httpClientConfig);
+			});
 			dependencies.log.info({ Message: 'Requested Meeting Password from active Parent Room Device', AuthenticationRequest: request, CallId: callId, RequestId: requestId });
 		} catch (error) {
 			pendingMeetingPasswordRequest = null;
@@ -641,7 +641,7 @@ function createCompanionDeviceCallSync(options) {
 				Host: companionDeviceInformation.host,
 				MacAddress: companionDeviceInformation.macAddress
 			}
-		}, dependencies.httpClientConfig);
+		});
 	}
 
 	async function handleActiveCallDetailsResponse(payload) {

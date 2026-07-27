@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 27, 2026
- * Version:                 1.0.29
+ * Version:                 1.0.30
  *
  * Description:             Companion Device access and hidden panels, custom access-panel icon,
  *                          PIN/registration/status prompts, shared Companion Alert ownership,
@@ -592,7 +592,9 @@ function buildCompanionWebWidgetUrl(options) {
 		heading: 'Custom Companion 2026',
 		info1: options.mode === 'Standalone' ? 'Operating in Standalone' : `Paired to Parent Room Device:\n${options.parentRoomDeviceName || 'Unknown Parent Room Device'}`,
 		info2: contextConfig.userGuidance || '',
-		info3: limitWebWidgetInfoText(options.runtimeInfo3),
+		info3: options.preserveRuntimeInfo3
+			? String(options.runtimeInfo3 || '').trim()
+			: limitWebWidgetInfoText(options.runtimeInfo3),
 		iconUrl: contextConfig.iconUrl || ''
 	};
 

@@ -1,19 +1,153 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
+import {
+  configPathId,
+  formatConfigPath,
+  parseConfigDocument,
+  patchConfigSource,
+} from './config-editor';
+import type { ConfigValue } from './types';
+
+type HttpClientPost = (parameters: Record<string, unknown>, body: string) => Promise<Record<string, unknown>>;
+
+type DeviceCommsModule = {
+  initializeHttpTransport: (options?: Record<string, unknown>) => Record<string, unknown>;
+  validateHttpClientPrerequisites: (xapi: Record<string, unknown>) => Promise<{
+    mode: string;
+    allowInsecureHTTPS: boolean;
+    trustPosture: string;
+  }>;
+  parentInitializationRequest: (
+    xapi: Record<string, unknown>,
+    device: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  parentStandbyStateRequest: (
+    xapi: Record<string, unknown>,
+    device: Record<string, unknown>,
+  ) => Promise<string>;
+  installParentMacros: (
+    xapi: Record<string, unknown>,
+    device: Record<string, unknown>,
+    macros: Record<string, string>,
+    installConfig: Record<string, string>,
+  ) => Promise<Record<string, unknown>>;
+  sendMessageCommand: (
+    xapi: Record<string, unknown>,
+    device: Record<string, unknown>,
+    action: string,
+    payload: Record<string, unknown>,
+    messageConfig: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  connectPeripheral: (
+    xapi: Record<string, unknown>,
+    device: Record<string, unknown>,
+    peripheral: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
+  sendPeripheralHeartbeat: (
+    xapi: Record<string, unknown>,
+    device: Record<string, unknown>,
+    peripheralId: string,
+    timeoutSeconds: number,
+  ) => Promise<Record<string, unknown>>;
+  getCallStatus: (
+    xapi: Record<string, unknown>,
+    device: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>[]>;
+};
 
 type RegistrationController = {
   handleInstallerRegistrationRequest: (message: Record<string, unknown>) => Promise<boolean>;
   handleMessage: (message: Record<string, unknown>) => Promise<boolean>;
 };
 
+async function loadDeviceComms(): Promise<DeviceCommsModule> {
+  const source = await readFile(new URL('../../Custom-Campanion_6_DeviceComms_2026.js', import.meta.url), 'utf8');
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}#${crypto.randomUUID()}`;
+  const loaded = await import(moduleUrl) as { deviceComms: DeviceCommsModule };
+  return loaded.deviceComms;
+}
+
 async function loadParentRegistration() {
   const source = await readFile(new URL('../../Custom-Campanion_15_ParentRegistration_2026.js', import.meta.url), 'utf8');
-  const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}#${crypto.randomUUID()}`;
   return import(moduleUrl) as Promise<{
     parentRegistration: {
       create: (options: Record<string, unknown>) => RegistrationController;
     };
   }>;
+}
+
+function createHttpClientConfigXapi(mode: 'On' | 'Off', allowInsecureHTTPS: 'True' | 'False') {
+  const setMode = vi.fn(async () => undefined);
+  const setAllowInsecureHTTPS = vi.fn(async () => undefined);
+  return {
+    xapi: {
+      Config: {
+        HttpClient: {
+          Mode: {
+            get: vi.fn(async () => mode),
+            set: setMode,
+          },
+          AllowInsecureHTTPS: {
+            get: vi.fn(async () => allowInsecureHTTPS),
+            set: setAllowInsecureHTTPS,
+          },
+        },
+      },
+    },
+    setMode,
+    setAllowInsecureHTTPS,
+  };
+}
+
+function createTransportXapi(options: { deviceWideAllowsInsecure: boolean }) {
+  const requests: Array<{ method: 'GET' | 'POST'; parameters: Record<string, unknown> }> = [];
+  const execute = async (
+    method: 'GET' | 'POST',
+    parameters: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> => {
+    requests.push({ method, parameters });
+    const host = new URL(String(parameters.Url)).hostname;
+    const destinationTrusted = host.startsWith('trusted.');
+    const requestAsksForInsecure = parameters.AllowInsecureHTTPS === 'True';
+    if (!destinationTrusted && !(options.deviceWideAllowsInsecure && requestAsksForInsecure)) {
+      throw new Error('Certificate validation failed');
+    }
+    if (String(parameters.Url).includes('/Status/SystemUnit')) {
+      return {
+        StatusCode: 200,
+        Body: '<Status><SystemUnit><Hardware><Module><SerialNumber>PARENT123</SerialNumber></Module></Hardware><BroadcastName>Parent Room</BroadcastName></SystemUnit></Status>',
+      };
+    }
+    if (String(parameters.Url).includes('/Status/Standby/State')) {
+      return { StatusCode: 200, Body: '<Status><Standby><State>Off</State></Standby></Status>' };
+    }
+    if (String(parameters.Url).includes('/Status/Call')) {
+      return { StatusCode: 200, Body: '<Status><Call id="1"><CallId>1</CallId><Status>Connected</Status></Call></Status>' };
+    }
+    return { StatusCode: 200, Body: '<Command><Success/></Command>' };
+  };
+  const get = vi.fn((parameters: Record<string, unknown>) => execute('GET', parameters));
+  const post: HttpClientPost = vi.fn((parameters: Record<string, unknown>) => execute('POST', parameters));
+  return {
+    xapi: {
+      Command: {
+        HttpClient: {
+          Get: get,
+          Post: post,
+        },
+      },
+    },
+    requests,
+  };
+}
+
+function connection(host: string) {
+  return {
+    host,
+    username: 'admin',
+    password: 'secret',
+  };
 }
 
 function buildInstallerRequest(transactionId: string) {
@@ -60,9 +194,6 @@ async function createRegistrationHarness(options: { acknowledgeMessages: boolean
       username: companion.username,
       password: companion.password,
     },
-    httpClient: {
-      allowInsecureHTTPS: true,
-    },
     UserInterface: {},
   };
   let controller: RegistrationController;
@@ -78,9 +209,7 @@ async function createRegistrationHarness(options: { acknowledgeMessages: boolean
       payload: Record<string, unknown>,
     ) => {
       sentMessages.push({ action, payload });
-      if (!options.acknowledgeMessages) {
-        return;
-      }
+      if (!options.acknowledgeMessages) return;
       if (action === 'ParentReadyRequest') {
         queueMicrotask(() => {
           void controller.handleMessage({
@@ -115,11 +244,6 @@ async function createRegistrationHarness(options: { acknowledgeMessages: boolean
     pinModeController: {},
     parentDevicesStorageKey: 'parents',
     pendingStorageKey: 'pending',
-    httpClientConfig: {
-      mode: 'On',
-      allowInsecureHTTPS: true,
-      maxConcurrentRequests: 3,
-    },
     installConfig: {},
     configVersion: 'test-version',
     peripheralType: 'ControlSystem',
@@ -163,8 +287,113 @@ async function createRegistrationHarness(options: { acknowledgeMessages: boolean
   };
 }
 
-describe('runtime HTTPClient policy handoff', () => {
-  it('bootstraps ParentReady with the Companion Device HTTPClient policy', async () => {
+describe('administrator-owned HTTPClient prerequisites', () => {
+  it.each([
+    ['False', false, 'Strict certificate validation'],
+    ['True', true, 'Untrusted/self-signed certificates permitted'],
+  ] as const)('observes Mode=On with device-wide AllowInsecureHTTPS=%s without mutation', async (
+    allowInsecureHTTPS,
+    expectedAllowInsecureHTTPS,
+    expectedTrustPosture,
+  ) => {
+    const deviceComms = await loadDeviceComms();
+    const harness = createHttpClientConfigXapi('On', allowInsecureHTTPS);
+
+    const result = await deviceComms.validateHttpClientPrerequisites(harness.xapi);
+
+    expect(result).toEqual({
+      mode: 'On',
+      allowInsecureHTTPS: expectedAllowInsecureHTTPS,
+      trustPosture: expectedTrustPosture,
+    });
+    expect(harness.setMode).not.toHaveBeenCalled();
+    expect(harness.setAllowInsecureHTTPS).not.toHaveBeenCalled();
+  });
+
+  it('rejects Mode=Off without changing either device-wide configuration', async () => {
+    const deviceComms = await loadDeviceComms();
+    const harness = createHttpClientConfigXapi('Off', 'False');
+
+    await expect(deviceComms.validateHttpClientPrerequisites(harness.xapi))
+      .rejects.toMatchObject({ code: 'CC26-HTTPCLIENT-MODE' });
+    expect(harness.setMode).not.toHaveBeenCalled();
+    expect(harness.setAllowInsecureHTTPS).not.toHaveBeenCalled();
+  });
+
+  it('rejects a failed Mode read without attempting a write', async () => {
+    const deviceComms = await loadDeviceComms();
+    const harness = createHttpClientConfigXapi('On', 'False');
+    harness.xapi.Config.HttpClient.Mode.get = vi.fn(async () => {
+      throw new Error('Mode path unavailable');
+    });
+
+    await expect(deviceComms.validateHttpClientPrerequisites(harness.xapi))
+      .rejects.toMatchObject({ code: 'CC26-HTTPCLIENT-MODE' });
+    expect(harness.setMode).not.toHaveBeenCalled();
+    expect(harness.setAllowInsecureHTTPS).not.toHaveBeenCalled();
+  });
+});
+
+describe('fixed request-level HTTPClient policy', () => {
+  it('sends AllowInsecureHTTPS=True on every real DeviceComms GET and POST seam', async () => {
+    const deviceComms = await loadDeviceComms();
+    deviceComms.initializeHttpTransport({ maxConcurrentRequests: 3 });
+    const harness = createTransportXapi({ deviceWideAllowsInsecure: true });
+    const device = connection('trusted.parent.example.test');
+
+    await deviceComms.parentInitializationRequest(harness.xapi, device);
+    await deviceComms.parentStandbyStateRequest(harness.xapi, device);
+    await deviceComms.getCallStatus(harness.xapi, device);
+    await deviceComms.connectPeripheral(harness.xapi, device, {
+      ID: 'peripheral-1',
+      Name: 'Companion',
+      Type: 'ControlSystem',
+    });
+    await deviceComms.sendPeripheralHeartbeat(harness.xapi, device, 'peripheral-1', 40);
+    await deviceComms.sendMessageCommand(harness.xapi, device, 'TestAction', {}, {
+      serial: 'COMPANION123',
+    });
+    await deviceComms.installParentMacros(harness.xapi, device, {
+      roomReference: '// room',
+      parentCallCoordination: '// call',
+      utils: '// utils',
+      deviceComms: '// transport',
+      memoryStorage: '// memory',
+    }, {});
+
+    expect(harness.requests.length).toBe(7);
+    expect(harness.requests.every(({ parameters }) => parameters.AllowInsecureHTTPS === 'True')).toBe(true);
+  });
+
+  it('preserves the RoomOS device-wide gate semantics when each request asks for True', async () => {
+    const deviceComms = await loadDeviceComms();
+    deviceComms.initializeHttpTransport();
+    const strictHarness = createTransportXapi({ deviceWideAllowsInsecure: false });
+    await expect(deviceComms.parentInitializationRequest(
+      strictHarness.xapi,
+      connection('trusted.parent.example.test'),
+    )).resolves.toMatchObject({ serial: 'PARENT123' });
+    await expect(deviceComms.parentInitializationRequest(
+      strictHarness.xapi,
+      connection('self-signed.parent.example.test'),
+    )).rejects.toMatchObject({
+      code: 'CC26-HTTP-REQUEST',
+      Context: {
+        Cause: 'Certificate validation failed',
+      },
+    });
+
+    const permissiveHarness = createTransportXapi({ deviceWideAllowsInsecure: true });
+    await expect(deviceComms.parentInitializationRequest(
+      permissiveHarness.xapi,
+      connection('self-signed.parent.example.test'),
+    )).resolves.toMatchObject({ serial: 'PARENT123' });
+    expect(permissiveHarness.requests[0]?.parameters.AllowInsecureHTTPS).toBe('True');
+  });
+});
+
+describe('runtime policy handoff removal', () => {
+  it('omits HTTPClient policy from ParentReady and ConfigSync', async () => {
     const harness = await createRegistrationHarness({ acknowledgeMessages: true });
 
     await harness.controller.handleInstallerRegistrationRequest(
@@ -172,14 +401,13 @@ describe('runtime HTTPClient policy handoff', () => {
     );
 
     const parentReadyRequest = harness.sentMessages.find(({ action }) => action === 'ParentReadyRequest');
-    expect(parentReadyRequest?.payload).toMatchObject({
-      Config: {
-        httpClient: harness.syncConfig.httpClient,
-      },
-    });
+    const configSync = harness.sentMessages.find(({ action }) => action === 'ConfigSync');
+    expect(parentReadyRequest?.payload).not.toHaveProperty('Config');
+    expect(configSync?.payload.Config).toEqual(harness.syncConfig);
+    expect(configSync?.payload.Config).not.toHaveProperty('httpClient');
   });
 
-  it('reports the timed-out registration stage and Parent Room Device host', async () => {
+  it('reports certificate and HTTPClient remediation for a ParentReady timeout', async () => {
     vi.useFakeTimers();
     try {
       const harness = await createRegistrationHarness({ acknowledgeMessages: false });
@@ -199,18 +427,43 @@ describe('runtime HTTPClient policy handoff', () => {
         Stage: 'Waiting for Parent Room Runtime',
         Host: harness.parent.host,
       });
-      expect(outcome?.Detail).toContain('Waiting for Parent Room Runtime');
+      expect(outcome?.Detail).toMatch(/HttpClient Mode/i);
+      expect(outcome?.Detail).toMatch(/certificate trust/i);
+      expect(outcome?.Detail).toMatch(/hostname\/SAN/i);
+      expect(outcome?.Detail).toMatch(/Parent-to-Companion reachability/i);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('keeps Parent-to-Companion HTTP requests under per-Companion policy', async () => {
+  it('does not retain per-Companion HTTP policy selection in Parent runtime callers', async () => {
     const roomReferenceSource = await readFile(new URL('../../Custom-Campanion_7_RoomReference_2026.js', import.meta.url), 'utf8');
     const callCoordinationSource = await readFile(new URL('../../Custom-Campanion_12_ParentCallCoordination_2026.js', import.meta.url), 'utf8');
 
-    expect(roomReferenceSource).toContain('getHttpClientConfigForCompanion');
-    expect(roomReferenceSource).not.toContain('}, HTTP_CLIENT_CONFIG);');
-    expect(callCoordinationSource).toContain('getHttpClientConfigForCompanion(companionDevice.Serial)');
+    expect(roomReferenceSource).not.toContain('getHttpClientConfigForCompanion');
+    expect(callCoordinationSource).not.toContain('getHttpClientConfigForCompanion');
+    expect(callCoordinationSource).not.toContain('dependencies.httpClientConfig');
+  });
+});
+
+describe('source-driven Config compatibility', () => {
+  it('removes the HTTPClient field from the current release Config', async () => {
+    const source = await readFile(new URL('../../Custom-Campanion_2_Config_2026.js', import.meta.url), 'utf8');
+    const document = parseConfigDocument(source);
+    expect(document.leaves.some((leaf) => formatConfigPath(leaf.path) === 'httpClient.allowInsecureHTTPS')).toBe(false);
+  });
+
+  it('still discovers and edits the historical field from an older selected release', () => {
+    const source = "const config = { httpClient: { allowInsecureHTTPS: false } }; export { config };";
+    const document = parseConfigDocument(source);
+    const leaf = document.leaves.find((candidate) => formatConfigPath(candidate.path) === 'httpClient.allowInsecureHTTPS');
+    expect(leaf?.value).toBe(false);
+    const values = new Map<string, ConfigValue>(document.leaves.map((candidate) => [
+      configPathId(candidate.path),
+      candidate.value,
+    ]));
+    if (!leaf) throw new Error('Legacy field was not parsed');
+    values.set(configPathId(leaf.path), true);
+    expect(patchConfigSource(document, values)).toContain('allowInsecureHTTPS: true');
   });
 });

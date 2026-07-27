@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 20, 2026
- * Revised:                 July 24, 2026
- * Version:                 1.0.6
+ * Revised:                 July 27, 2026
+ * Version:                 1.0.7
  *
  * Description:             Paired Environment Policy controller for the Custom Companion solution.
  *                          Owns reversible local configuration policy, Companion Web Widget mode,
@@ -520,6 +520,7 @@ function createPairedEnvironment(options) {
 			themeName: userInterfaceThemeName,
 			urlOverride: webWidgetConfig.urlOverride,
 			runtimeInfo3: context.runtimeInfo3,
+			preserveRuntimeInfo3: context.isUnhealthy,
 			webWidgetConfig: companionWidgetConfig
 		});
 
