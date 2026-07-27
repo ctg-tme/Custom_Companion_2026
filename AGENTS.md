@@ -25,6 +25,17 @@ Before changing anything:
 - Add no unnecessary abstraction, runtime bundling, or external macro dependency.
 - Any macro-set, filename, import, project-version, initialization-message, platform, minimum-RoomOS, or external-dependency change must keep `manifest.json`, `installer/release-contract.json`, the installer, and documentation consistent.
 
+### Release Manifest installer compatibility
+
+- Read `docs/installer-capabilities.md` before creating or changing a Release Manifest or adding Companion Installer behavior.
+- Keep ordinary configuration source-driven. An additive Config field or group already loaded from the selected Config macro does not receive an Installer Capability.
+- Propose a new versioned Installer Capability when an optional installer workflow sends a release-defined runtime action, waits for a release-defined result, and can be safely omitted without blocking baseline installation.
+- Use a new capability version for a backwards-incompatible optional protocol change. Never rename, remove, or change the meaning of a published capability within the same Installer Contract Version.
+- Evaluate an Installer Contract Version change for breaking baseline behavior involving manifest structure, stable anchors, Config parsing invariants, generated storage, destructive installation, activation order, or initialization verification.
+- Treat Tested Installer Version as verification provenance, not an exact dependency. Never infer support from runtime, Config, or installer package versions.
+- Keep `manifest.json`, `installer/release-contract.json`, validator/types, capability gates, verifier, tests, release matrix, and documentation synchronized when capability enforcement is implemented or extended.
+- Capability enforcement is an accepted design but is not active yet. Until the initial implementation is complete, explicitly report that a new manifest capability declaration alone does not protect older releases.
+
 ## Repository release control
 
 - Git commit and push are standing authorized for completed, verified, scoped work. After verification, commit and push without waiting for a separate request.

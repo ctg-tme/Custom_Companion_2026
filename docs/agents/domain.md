@@ -9,5 +9,6 @@ Custom Companion is a single-context repository. The runtime macros and Companio
 - `CONTEXT.md` for canonical domain language and terms to avoid.
 - Relevant ADRs under `docs/adr/` before changing architecture, trust, credentials, storage, transport, standby, pairing, installer, or call-platform decisions.
 - `installer/README.md`, `manifest.json`, and `installer/release-contract.json` for installation and release work.
+- `docs/installer-capabilities.md` before creating a Release Manifest or adding, changing, or removing an installer-to-runtime workflow.
 
 Use `CONTEXT.md` terminology in code, tests, documentation, and user communication. If a required concept is missing or an existing ADR must be reconsidered, use `$grill-with-docs` rather than silently inventing a synonym or overriding the decision.

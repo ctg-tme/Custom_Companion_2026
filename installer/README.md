@@ -2,6 +2,8 @@
 
 Static GitHub Pages installer for deploying a selected Custom Companion release to a Companion Device through browser JSXAPI. Its introduction fetches and renders the current repository README at runtime.
 
+The selected release supplies its own Config macro, so ordinary Config fields are release-specific. Optional browser-to-runtime workflows require the accepted [Companion Installer Compatibility and Capabilities](../docs/installer-capabilities.md) contract. Enforcement is pending: the current installer assumes all current Complete Setup routes, while published Preview `v0.1.2.51` implements Registration but not Inventory or Deregistration.
+
 ## Local preview
 
 ```sh
@@ -18,7 +20,7 @@ npm test
 npm run build
 ```
 
-Run `npm run verify:release` for the focused Release Contract check. It verifies manifest coverage, stable source anchors, synchronized runtime versions, JavaScript syntax, relative macro imports, and the initialization messages used by installer log classification.
+Run `npm run verify:release` for the focused Release Contract check. It verifies manifest coverage, stable source anchors, synchronized runtime versions, JavaScript syntax, relative macro imports, and the initialization messages used by installer log classification. Capability declaration and gating checks described in the accepted design are not implemented yet.
 
 `prepare:assets` runs the same verifier, resolves the Main Fork version, copies the listed macros into an ignored `public/main/` snapshot, and publishes the root README plus the Custom Companion icon as ignored runtime content. The GitHub Pages artifact exposes that icon at the stable public URL used by the Companion Device access panel and WebWidget defaults. A missing, duplicate, stale, unlisted, mismatched, or unresolved deployable source fails both the installer test and build workflows. Stable source filenames and initialization messages shared with the installer live in `release-contract.json`. A release tag must contain its own root `manifest.json`; tagged resources are fetched from one resolved commit SHA at installation time.
 

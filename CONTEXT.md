@@ -89,12 +89,24 @@ The Companion Installer outcome reached when the installed Companion Device entr
 _Avoid_: ParentReady, files uploaded
 
 **Release Manifest**:
-The installation contract published with a Custom Companion release. It identifies the release's required macro resources, minimum supported RoomOS version, and external dependencies that must be satisfied before installation.
+The installation contract published with a Custom Companion release. It identifies the release's required macro resources, supported deployment environment, external dependencies, and declared Companion Installer compatibility.
 _Avoid_: package manifest, file listing
 
 **Release Contract**:
-The build-time agreement that keeps the Release Manifest, eligible macro set, stable installer anchors, synchronized runtime project version, relative macro imports, JavaScript syntax, Companion Device initialization messages, and Installer Parent Room Registration, Inventory, and Deregistration route/result identifiers consistent before an installation snapshot can be packaged.
+The build-time agreement that keeps a release's manifest, deployable source, stable installer anchors, synchronized runtime project version, imports, initialization messages, and declared Installer Capabilities consistent before an installation snapshot can be packaged.
 _Avoid_: Manifest only, installer assumptions
+
+**Installer Contract Version**:
+The compatibility generation of the baseline agreement between a Release Manifest and the Companion Installer. It changes only when fundamental installation semantics are no longer backwards compatible.
+_Avoid_: Installer package version, runtime project version
+
+**Tested Installer Version**:
+The Companion Installer package version verified with a release. It is compatibility evidence, not an exact, minimum, or maximum version dependency.
+_Avoid_: Required Installer Version, Installer Contract Version
+
+**Installer Capability**:
+A versioned promise in a Release Manifest that its runtime supports one optional Companion Installer interaction. An absent capability is unavailable even when the current installer knows how to present it.
+_Avoid_: Config option, runtime version, installer feature flag
 
 **Install or Update — Keep Saved Data**:
 The Companion Installer choice for installing on a new endpoint or updating an existing installation while preserving `Custom-Campanion-Storage` and its saved Custom Companion state.
