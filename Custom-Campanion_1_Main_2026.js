@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 09, 2026
- * Revised:                 July 27, 2026
- * Version:                 0.1.2.62
+ * Revised:                 July 28, 2026
+ * Version:                 0.1.2.63
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -54,7 +54,7 @@ or implied.
 
 import xapi from 'xapi';
 import { MemoryStorage } from './Memory-Storage-Functions-V2';
-import { config, projectVersion } from './Custom-Campanion_2_Config_2026';
+import { config } from './Custom-Campanion_2_Config_2026';
 import { utils } from './Custom-Campanion_3_Utils_2026';
 import { companionUi } from './Custom-Campanion_4_UI_2026';
 import { companionState } from './Custom-Campanion_5_State_2026';
@@ -66,6 +66,8 @@ import { companionDeviceCallSync } from './Custom-Campanion_11_BoardCallSync_202
 import { standbyCoordination } from './Custom-Campanion_13_StandbyCoordination_2026';
 import { pinMode } from './Custom-Campanion_14_PinMode_2026';
 import { parentRegistration } from './Custom-Campanion_15_ParentRegistration_2026';
+
+const projectVersion = '0.1.2.63';
 
 const log = new utils.Logger('Custom-Campanion_Companion_Device_Main');
 

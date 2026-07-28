@@ -69,8 +69,8 @@ async function createFixture(overrides = {}) {
   await mkdir(installerDirectory, { recursive: true });
 
   const sources = {
-    [contract.MainMacroFile]: `${header()}${runtimeContractSource()}`,
-    [contract.ConfigMacroFile]: `${header()}const projectVersion = '${version}';\nconst config = {};\nexport { config, projectVersion };\n`,
+    [contract.MainMacroFile]: `${header()}const projectVersion = '${version}';\n${runtimeContractSource()}`,
+    [contract.ConfigMacroFile]: `${header()}const config = {};\nexport { config };\n`,
     [contract.RoomReferenceMacroFile]: `${header()}export const roomReference = true;\n`,
     ...overrides.sources,
   };
@@ -133,19 +133,28 @@ test('rejects a deployable root macro missing from the Release Manifest', async 
 test('rejects unsynchronized runtime project versions', async (t) => {
   const repositoryDirectory = await withFixture(t, {
     sources: {
-      [contract.ConfigMacroFile]: `${header('9.9.9.9')}const projectVersion = '${version}';\nconst config = {};\nexport { config, projectVersion };\n`,
+      [contract.ConfigMacroFile]: `${header('9.9.9.9')}const config = {};\nexport { config };\n`,
     },
   });
   await assert.rejects(verifyReleaseContract(repositoryDirectory), /versions are not synchronized/i);
 });
 
-test('rejects a Config macro without an exported Project Version dependency', async (t) => {
+test('rejects a Main macro without a declared Project Version', async (t) => {
   const repositoryDirectory = await withFixture(t, {
     sources: {
-      [contract.ConfigMacroFile]: `${header()}const projectVersion = '${version}';\nconst config = {};\nexport { config };\n`,
+      [contract.MainMacroFile]: `${header()}${runtimeContractSource()}`,
     },
   });
-  await assert.rejects(verifyReleaseContract(repositoryDirectory), /does not export projectVersion/i);
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /does not declare projectVersion/i);
+});
+
+test('rejects Project Version ownership in Config', async (t) => {
+  const repositoryDirectory = await withFixture(t, {
+    sources: {
+      [contract.ConfigMacroFile]: `${header()}const projectVersion = '${version}';\nconst config = {};\nexport { config, projectVersion };\n`,
+    },
+  });
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /must not declare or export projectVersion/i);
 });
 
 test('rejects unresolved relative macro imports', async (t) => {
@@ -160,7 +169,7 @@ test('rejects unresolved relative macro imports', async (t) => {
 test('rejects initialization-message drift', async (t) => {
   const repositoryDirectory = await withFixture(t, {
     sources: {
-      [contract.MainMacroFile]: `${header()}console.log('different success message');\nconsole.log('${contract.InitializationStoppedMessage}');\n`,
+      [contract.MainMacroFile]: `${header()}const projectVersion = '${version}';\nconsole.log('different success message');\nconsole.log('${contract.InitializationStoppedMessage}');\n`,
     },
   });
   await assert.rejects(verifyReleaseContract(repositoryDirectory), /does not emit the Release Contract message/i);
@@ -169,7 +178,7 @@ test('rejects initialization-message drift', async (t) => {
 test('rejects Installer Parent Room Registration contract drift', async (t) => {
   const repositoryDirectory = await withFixture(t, {
     sources: {
-      [contract.MainMacroFile]: `${header()}${runtimeContractSource([
+      [contract.MainMacroFile]: `${header()}const projectVersion = '${version}';\n${runtimeContractSource([
         'InitializationSuccessMessage',
         'InitializationStoppedMessage',
         'InstallerParentInventoryAction',
@@ -188,7 +197,7 @@ test('rejects Installer Parent Room Registration contract drift', async (t) => {
 test('rejects Installer Parent Room administration contract drift', async (t) => {
   const repositoryDirectory = await withFixture(t, {
     sources: {
-      [contract.MainMacroFile]: `${header()}${runtimeContractSource([
+      [contract.MainMacroFile]: `${header()}const projectVersion = '${version}';\n${runtimeContractSource([
         'InitializationSuccessMessage',
         'InitializationStoppedMessage',
         'InstallerParentRegistrationAction',
@@ -238,7 +247,7 @@ test('rejects a Release Contract capability with an absent dependency', async (t
 test('rejects newline characters in UserInterface Message Title and Text fields', async (t) => {
   const repositoryDirectory = await withFixture(t, {
     sources: {
-      [contract.MainMacroFile]: `${header()}${runtimeContractSource()}xapi.Command.UserInterface.Message.Prompt.Display({ Title: 'Review', Text: 'Line one\\nLine two' });\n`,
+      [contract.MainMacroFile]: `${header()}const projectVersion = '${version}';\n${runtimeContractSource()}xapi.Command.UserInterface.Message.Prompt.Display({ Title: 'Review', Text: 'Line one\\nLine two' });\n`,
     },
   });
   await assert.rejects(verifyReleaseContract(repositoryDirectory), /UserInterface Message Title and Text fields cannot contain newline characters/i);

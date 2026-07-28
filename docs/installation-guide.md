@@ -160,7 +160,7 @@ The current dependency source is [Memory-Storage-Functions-V2](https://raw.githu
 
 ### 2. Configure the Companion Device
 
-Edit only the Deployment Configuration values in `Custom-Campanion_2_Config_2026.js`. Do not change the exported `projectVersion`.
+Edit only the Deployment Configuration values in `Custom-Campanion_2_Config_2026.js`. The Project Version is owned by Main and is intentionally absent from Config.
 
 | Configuration | Manual value |
 | --- | --- |

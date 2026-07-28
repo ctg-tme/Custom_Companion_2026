@@ -22,12 +22,9 @@ function headerVersion(source, fileName) {
   return version;
 }
 
-function exportedProjectVersion(source, fileName) {
+function declaredProjectVersion(source, fileName) {
   const version = source.match(/\bconst\s+projectVersion\s*=\s*['"]([^'"]+)['"]\s*;/)?.[1];
   if (!version) throw new Error(`${fileName} does not declare projectVersion.`);
-  if (!/\bexport\s*\{[^}]*\bprojectVersion\b[^}]*\}/s.test(source)) {
-    throw new Error(`${fileName} does not export projectVersion.`);
-  }
   return version;
 }
 
@@ -248,10 +245,13 @@ export async function verifyReleaseContract(repositoryDirectory) {
   const mainSource = sourceByFile.get(mainMacroFile);
   const configSource = sourceByFile.get(configMacroFile);
   const roomReferenceSource = sourceByFile.get(roomReferenceMacroFile);
+  if (/\bprojectVersion\b/.test(configSource)) {
+    throw new Error(`${configMacroFile} must not declare or export projectVersion; Main owns the Project Version.`);
+  }
   const versionLocations = {
     [`${mainMacroFile} header`]: headerVersion(mainSource, mainMacroFile),
+    [`${mainMacroFile} projectVersion`]: declaredProjectVersion(mainSource, mainMacroFile),
     [`${configMacroFile} header`]: headerVersion(configSource, configMacroFile),
-    [`${configMacroFile} projectVersion`]: exportedProjectVersion(configSource, configMacroFile),
     [`${roomReferenceMacroFile} header`]: headerVersion(roomReferenceSource, roomReferenceMacroFile),
   };
   const distinctVersions = [...new Set(Object.values(versionLocations))];

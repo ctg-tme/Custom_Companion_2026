@@ -22,7 +22,7 @@ npm test
 npm run build
 ```
 
-Run `npm run verify:release` for the focused Release Contract check. It verifies manifest coverage, stable source anchors, synchronized runtime versions including the exported `projectVersion`, JavaScript syntax, relative macro imports, initialization messages, Installer Contract Version, Tested Installer Version, capability dependencies, and the declared capability-to-runtime identifier mappings.
+Run `npm run verify:release` for the focused Release Contract check. It verifies manifest coverage, stable source anchors, Main ownership of the declared `projectVersion`, synchronized runtime versions, absence of `projectVersion` from Config, JavaScript syntax, relative macro imports, initialization messages, Installer Contract Version, Tested Installer Version, capability dependencies, and the declared capability-to-runtime identifier mappings.
 
 `prepare:assets` runs the same verifier, resolves the Main Fork version, copies the listed macros into an ignored `public/main/` snapshot, and publishes the root README plus the Custom Companion icon as ignored runtime content. The GitHub Pages artifact uses that same icon as the site favicon and exposes it at the stable public URL used by the Companion Device access panel and WebWidget defaults. A missing, duplicate, stale, unlisted, mismatched, or unresolved deployable source fails both the installer test and build workflows. Stable source filenames and initialization messages shared with the installer live in `release-contract.json`. A release tag must contain its own root `manifest.json`; tagged resources are fetched from one resolved commit SHA at installation time.
 

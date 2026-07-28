@@ -35,7 +35,7 @@ describe('generated runtime content', () => {
       readFile(new URL('../../Custom-Campanion_4_UI_2026.js', import.meta.url), 'utf8'),
     ]);
     const snapshot = JSON.parse(snapshotText) as { ref: string; version: string };
-    const currentVersion = configSource.match(/\bconst\s+projectVersion\s*=\s*['"]([^'"]+)['"]/)?.[1];
+    const currentVersion = mainSource.match(/\bconst\s+projectVersion\s*=\s*['"]([^'"]+)['"]/)?.[1];
 
     expect(publishedReadme).toBe(repositoryReadme);
     expect(publishedIcon).toEqual(repositoryIcon);

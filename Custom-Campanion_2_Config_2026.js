@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 09, 2026
- * Revised:                 July 27, 2026
- * Version:                 0.1.2.62
+ * Revised:                 July 28, 2026
+ * Version:                 0.1.2.63
  *
  * Description:             User-facing configuration for the Custom Companion solution on supported Companion Devices.
  *                          This file provides settings intended to be edited for deployment-specific behavior.
@@ -40,8 +40,6 @@ or implied.
  *                          https://github.com/ctg-tme/Bobbys_Macro_AI_Agents/blob/main/AGENTS.md
  *                          Disclaimer: AI-assisted code should be reviewed and tested by qualified engineers before deployment.
  */
-
-const projectVersion = '0.1.2.62';
 
 const config = {
   CompanionDeviceInformation: {
@@ -84,4 +82,4 @@ const config = {
   }
 };
 
-export { config, projectVersion };
+export { config };

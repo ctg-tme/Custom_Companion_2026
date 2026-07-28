@@ -121,7 +121,7 @@ The administrator-facing source configuration is in `Custom-Campanion_2_Config_2
 | `restoreStandaloneExisting` | Restores the latest valid WebWidget captured while Standalone. | `false` replaces any existing WebWidget without retaining it. With `true`, configure the intended WebWidget while Standalone; its URL, ID, name, and refresh interval are saved initially and updated after later UI Extensions layout changes. Changes observed while Paired and the solution-owned `cc26WebWidget` are ignored. An empty restore record is discarded so capture can retry, but an original WebWidget that RoomOS already removed must be recreated before it can be learned. |
 | `weather`, `time`, `Standalone`, and `Paired` fields | Configure widget weather, clock, user guidance, and mode-specific WebWidget images. | Weather and time default disabled with blank location/time-zone values. Use valid coordinates, temperature unit, IANA time zone, text, and reachable HTTPS image URLs when enabling them. During installation, Weather and Time may copy one-time values from the Installer Computer, both mode-specific `iconUrl` fields show a browser preview, and each `userGuidance` value uses a full-width multiline text box. The URLs are prefilled with the release image and may be edited independently. Runtime owns heading, theme, `info1`, `info3`, and `hideSettings`; `userGuidance` maps to the widget's `info2` display slot. |
 
-The exported `projectVersion`, HTTPClient Trust Posture, current PIN, registered Parent Room Devices, active selection, Pending Deregistrations, and saved Standalone preferences are not Deployment Configuration. The Companion Installer shows the selected source's Project Version separately, subscribes read-only to `HttpClient AllowInsecureHTTPS` after connection, and reports the current posture without changing it. Manage durable state through the supported UI and runtime workflows, not by editing Config.
+The Main-owned Project Version, HTTPClient Trust Posture, current PIN, registered Parent Room Devices, active selection, Pending Deregistrations, and saved Standalone preferences are not Deployment Configuration. The Companion Installer shows the selected source's Project Version separately, subscribes read-only to `HttpClient AllowInsecureHTTPS` after connection, and reports the current posture without changing it. Manage durable state through the supported UI and runtime workflows, not by editing Config.
 
 ### Edit Config after installation
 
@@ -129,7 +129,7 @@ The preferred time to edit deployment configuration is during Install or Update 
 
 1. Return the Companion Device to Standalone and confirm there are no active calls.
 2. Open the device Macro Editor and keep `Custom-Campanion_2_Config_2026` inactive.
-3. Change only the intended values. Preserve the object structure, inline definitions, macro filename, imports, compatibility field names, and release-owned `projectVersion`.
+3. Change only the intended values. Preserve the object structure, inline definitions, macro filename, imports, and compatibility field names. The release-owned `projectVersion` is intentionally absent from Config.
 4. If callback host or credentials are changing, make the account and network changes first.
 5. Save Config.
 6. Restart the Macro Runtime so Main reloads the imported values.
