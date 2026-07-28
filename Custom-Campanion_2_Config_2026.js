@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 28, 2026
- * Version:                 0.1.2.64
+ * Version:                 0.1.2.65
  *
  * Description:             User-facing configuration for the Custom Companion solution on supported Companion Devices.
  *                          This file provides settings intended to be edited for deployment-specific behavior.

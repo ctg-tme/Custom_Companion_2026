@@ -18,7 +18,7 @@ describe('release manifest', () => {
     expect(manifest.MinimumRoomOSVersion).toBe('11.32.1.1');
     expect(manifest.CompanionInstaller).toEqual({
       ContractVersion: 1,
-      TestedVersion: '0.1.26',
+      TestedVersion: '0.1.27',
       Capabilities: [
         'installer.parent-deregistration.v1',
         'installer.parent-inventory.v1',

@@ -156,6 +156,10 @@ describe('installer workflow presentation', () => {
     expect(source).toContain('id="refresh-parent-inventory"');
     expect(source).toContain('data-remove-parent');
     expect(source).toContain('Deregister Parent Room Device?');
+    expect(source).toContain('id="keep-waiting-parent-deregistration"');
+    expect(source).toContain('waitForParentDeregistration');
+    expect(source).toContain('this.parentDeregistrationOperation?.close();');
+    expect(source).toContain("this.byId('keep-waiting-parent-deregistration')");
     expect(source).toContain('No Parent Room Registrations are saved on this Companion Device.');
     expect(source).toContain('parentInventoryPlanAfterInstallation');
     expect(source).toContain('this.currentCompleteSetupCapabilities().parentInventory');

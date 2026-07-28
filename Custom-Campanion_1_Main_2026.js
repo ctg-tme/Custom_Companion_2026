@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 28, 2026
- * Version:                 0.1.2.64
+ * Version:                 0.1.2.65
  *
  * Description:             Companion Device entry macro and lifecycle orchestrator. Domain workflows
  *                          are delegated to the numbered controller modules listed below.
@@ -67,7 +67,7 @@ import { standbyCoordination } from './Custom-Campanion_13_StandbyCoordination_2
 import { pinMode } from './Custom-Campanion_14_PinMode_2026';
 import { parentRegistration } from './Custom-Campanion_15_ParentRegistration_2026';
 
-const projectVersion = '0.1.2.64';
+const projectVersion = '0.1.2.65';
 
 const log = new utils.Logger('Custom-Campanion_Companion_Device_Main');
 

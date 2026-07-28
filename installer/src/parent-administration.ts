@@ -163,7 +163,8 @@ function pendingDeregistrations(value: unknown): PendingDeregistrationSummary[] 
 
 export class ParentAdministrationMonitor {
   private payload?: LogPayload;
-  private waiters = new Set<() => void>();
+  private closed = false;
+  private waiters = new Set<(force?: boolean) => void>();
   private readonly stopFeedback: () => void;
 
   constructor(
@@ -172,6 +173,7 @@ export class ParentAdministrationMonitor {
     private readonly onProgress: (progress: ParentWorkflowProgress) => void = () => undefined,
   ) {
     this.stopFeedback = xapi.event.on('Macros Log', (event: unknown) => {
+      if (this.closed) return;
       const payload = logPayload(event);
       if (!payload || payload.TransactionId !== this.transactionId) return;
       if (payload.Message === INSTALLER_PARENT_DEREGISTRATION_PROGRESS_MESSAGE) {
@@ -189,10 +191,11 @@ export class ParentAdministrationMonitor {
   }
 
   private async waitForMessages(messages: ReadonlySet<string>, timeoutMs: number): Promise<LogPayload | undefined> {
+    if (this.closed) return undefined;
     if (!this.payload || !messages.has(stringField(this.payload, 'Message'))) {
       await new Promise<void>((resolve) => {
-        const wake = () => {
-          if (!this.payload || !messages.has(stringField(this.payload, 'Message'))) return;
+        const wake = (force = false) => {
+          if (!force && (!this.payload || !messages.has(stringField(this.payload, 'Message')))) return;
           clearTimeout(timer);
           this.waiters.delete(wake);
           resolve();
@@ -250,7 +253,63 @@ export class ParentAdministrationMonitor {
   }
 
   close(): void {
+    if (this.closed) return;
+    this.closed = true;
     this.stopFeedback();
+    for (const wake of this.waiters) wake(true);
     this.waiters.clear();
+  }
+}
+
+export class ParentDeregistrationOperation {
+  private readonly monitor: ParentAdministrationMonitor;
+  private started = false;
+  private closed = false;
+
+  constructor(
+    private readonly xapi: CompanionDeviceXapi,
+    private readonly request: ParentAdministrationRequest,
+    onProgress: (progress: ParentWorkflowProgress) => void = () => undefined,
+  ) {
+    this.monitor = new ParentAdministrationMonitor(
+      xapi,
+      request.transactionId,
+      onProgress,
+    );
+  }
+
+  async start(timeoutMs = 75_000): Promise<ParentDeregistrationOutcome> {
+    if (this.started) {
+      throw new Error('The Parent Room Deregistration request has already been sent.');
+    }
+    if (this.closed) {
+      throw new Error('The Parent Room Deregistration monitor is closed.');
+    }
+    this.started = true;
+    try {
+      await sendParentAdministrationRequest(this.xapi, this.request);
+    } catch (error) {
+      this.close();
+      throw error;
+    }
+    return this.wait(timeoutMs);
+  }
+
+  async wait(timeoutMs = 75_000): Promise<ParentDeregistrationOutcome> {
+    if (!this.started) {
+      throw new Error('The Parent Room Deregistration request has not been sent.');
+    }
+    if (this.closed) {
+      throw new Error('The Parent Room Deregistration monitor is closed.');
+    }
+    const outcome = await this.monitor.waitForDeregistration(timeoutMs);
+    if (outcome.kind !== 'timeout') this.close();
+    return outcome;
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.monitor.close();
   }
 }

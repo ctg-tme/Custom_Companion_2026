@@ -22,12 +22,6 @@ function headerVersion(source, fileName) {
   return version;
 }
 
-function declaredProjectVersion(source, fileName) {
-  const version = source.match(/\bconst\s+projectVersion\s*=\s*['"]([^'"]+)['"]\s*;/)?.[1];
-  if (!version) throw new Error(`${fileName} does not declare projectVersion.`);
-  return version;
-}
-
 function relativeImports(source) {
   const imports = [];
   const pattern = /^\s*(?:import|export)\s+(?:[^'"]+\s+from\s+)?['"]\.\/([^'"]+)['"];?/gm;
@@ -46,12 +40,15 @@ function verifySyntax(repositoryDirectory, fileName) {
   }
 }
 
-function verifyUserInterfaceMessageFields(source, fileName) {
-  const program = parse(source, {
+function parseMacroSource(source) {
+  return parse(source, {
     ecmaVersion: 'latest',
     locations: true,
     sourceType: 'module',
   });
+}
+
+function verifyUserInterfaceMessageFields(program, fileName) {
   const violations = [];
 
   walkSyntaxTree(program, (node) => {
@@ -77,6 +74,92 @@ function verifyUserInterfaceMessageFields(source, fileName) {
   if (violations.length) {
     throw new Error(`${fileName} UserInterface Message Title and Text fields cannot contain newline characters (${violations.join(', ')}).`);
   }
+}
+
+function topLevelProjectVersion(program, fileName) {
+  const declarations = [];
+  for (const statement of program.body) {
+    const declaration = statement.type === 'ExportNamedDeclaration'
+      ? statement.declaration
+      : statement;
+    if (!declaration || declaration.type !== 'VariableDeclaration') continue;
+    for (const item of declaration.declarations) {
+      if (item.id.type === 'Identifier' && item.id.name === 'projectVersion') {
+        declarations.push(item);
+      }
+    }
+  }
+  if (declarations.length !== 1) {
+    throw new Error(`${fileName} must contain exactly one top-level projectVersion declaration.`);
+  }
+  const initializer = declarations[0].init;
+  if (!initializer || initializer.type !== 'Literal' || typeof initializer.value !== 'string' || !initializer.value) {
+    throw new Error(`${fileName} top-level projectVersion declaration must use a non-empty string literal.`);
+  }
+  return initializer.value;
+}
+
+function patternDeclaresName(pattern, name) {
+  if (!pattern) return false;
+  if (pattern.type === 'Identifier') return pattern.name === name;
+  if (pattern.type === 'RestElement') return patternDeclaresName(pattern.argument, name);
+  if (pattern.type === 'AssignmentPattern') return patternDeclaresName(pattern.left, name);
+  if (pattern.type === 'ArrayPattern') {
+    return pattern.elements.some((element) => patternDeclaresName(element, name));
+  }
+  if (pattern.type === 'ObjectPattern') {
+    return pattern.properties.some((property) => property.type === 'RestElement'
+      ? patternDeclaresName(property.argument, name)
+      : patternDeclaresName(property.value, name));
+  }
+  return false;
+}
+
+function configDeclaresOrExportsProjectVersion(program) {
+  let violation = false;
+  walkSyntaxTree(program, (node) => {
+    if (violation) return;
+    if (node.type === 'VariableDeclarator' && patternDeclaresName(node.id, 'projectVersion')) {
+      violation = true;
+      return;
+    }
+    if (
+      (node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration')
+      && node.id?.name === 'projectVersion'
+    ) {
+      violation = true;
+      return;
+    }
+    if (
+      (node.type === 'ImportSpecifier' || node.type === 'ImportDefaultSpecifier' || node.type === 'ImportNamespaceSpecifier')
+      && node.local?.name === 'projectVersion'
+    ) {
+      violation = true;
+      return;
+    }
+    if (
+      node.type === 'ExportSpecifier'
+      && (node.local?.name === 'projectVersion' || node.exported?.name === 'projectVersion' || node.exported?.value === 'projectVersion')
+    ) {
+      violation = true;
+      return;
+    }
+    if (
+      node.type === 'ExportDefaultDeclaration'
+      && node.declaration?.type === 'Identifier'
+      && node.declaration.name === 'projectVersion'
+    ) {
+      violation = true;
+      return;
+    }
+    if (
+      node.type === 'ExportAllDeclaration'
+      && (node.exported?.name === 'projectVersion' || node.exported?.value === 'projectVersion')
+    ) {
+      violation = true;
+    }
+  });
+  return violation;
 }
 
 function syntaxPropertyName(key) {
@@ -235,24 +318,31 @@ export async function verifyReleaseContract(repositoryDirectory) {
   }
 
   const sourceByFile = new Map();
+  const programByFile = new Map();
+  const headerVersionByFile = new Map();
   for (const file of manifest.Files) {
     const source = await readFile(join(repositoryDirectory, file), 'utf8');
-    sourceByFile.set(file, source);
+    const macroHeaderVersion = headerVersion(source, file);
+    if (!fourPartVersionPattern.test(macroHeaderVersion)) {
+      throw new Error(`${file} header version ${macroHeaderVersion} must contain four numeric components.`);
+    }
     verifySyntax(repositoryDirectory, file);
-    verifyUserInterfaceMessageFields(source, file);
+    const program = parseMacroSource(source);
+    sourceByFile.set(file, source);
+    programByFile.set(file, program);
+    headerVersionByFile.set(file, macroHeaderVersion);
+    verifyUserInterfaceMessageFields(program, file);
   }
 
   const mainSource = sourceByFile.get(mainMacroFile);
-  const configSource = sourceByFile.get(configMacroFile);
-  const roomReferenceSource = sourceByFile.get(roomReferenceMacroFile);
-  if (/\bprojectVersion\b/.test(configSource)) {
+  if (configDeclaresOrExportsProjectVersion(programByFile.get(configMacroFile))) {
     throw new Error(`${configMacroFile} must not declare or export projectVersion; Main owns the Project Version.`);
   }
   const versionLocations = {
-    [`${mainMacroFile} header`]: headerVersion(mainSource, mainMacroFile),
-    [`${mainMacroFile} projectVersion`]: declaredProjectVersion(mainSource, mainMacroFile),
-    [`${configMacroFile} header`]: headerVersion(configSource, configMacroFile),
-    [`${roomReferenceMacroFile} header`]: headerVersion(roomReferenceSource, roomReferenceMacroFile),
+    [`${mainMacroFile} header`]: headerVersionByFile.get(mainMacroFile),
+    [`${mainMacroFile} projectVersion`]: topLevelProjectVersion(programByFile.get(mainMacroFile), mainMacroFile),
+    [`${configMacroFile} header`]: headerVersionByFile.get(configMacroFile),
+    [`${roomReferenceMacroFile} header`]: headerVersionByFile.get(roomReferenceMacroFile),
   };
   const distinctVersions = [...new Set(Object.values(versionLocations))];
   if (distinctVersions.length !== 1) {

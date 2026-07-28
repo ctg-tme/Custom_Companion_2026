@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 28, 2026
- * Version:                 0.1.2.64
+ * Version:                 0.1.2.65
  *
  * Description:             Inactive Parent Room entry source for registration, pairing-state
  *                          validation, Registered Companion Devices UI and alerts,
@@ -423,27 +423,61 @@ async function handleRegistrationValidated(message) {
 		return;
 	}
 
-	const pairingState = message.Payload && message.Payload.PairingState;
-	const wasApplied = await applyAuthoritativePairingState(companionDeviceRecord, pairingState);
-	if (!wasApplied) {
-		log.warn({ Message: 'Companion Device registration validation omitted a valid pairing state', Serial: message.Serial, TransactionId: getTransactionId(message), PairingState: pairingState });
+	const validation = pendingRegistrationValidation;
+	const transactionId = getTransactionId(message);
+	if (!validation || validation.serial !== message.Serial || validation.transactionId !== transactionId) {
+		log.debug({
+			Message: 'Ignored Companion Device registration validation outside the expected transaction',
+			Serial: message.Serial,
+			TransactionId: transactionId
+		});
 		return;
 	}
 
-	const validation = pendingRegistrationValidation;
-	if (validation && validation.serial === message.Serial) {
-		pendingRegistrationValidation = null;
-		if (validation.timeout) {
-			clearTimeout(validation.timeout);
-		}
-		validation.resolve(message);
+	const payload = message.Payload;
+	if (!payload || payload.Status !== 'Registered') {
+		log.warn({
+			Message: 'Ignored Companion Device registration validation without Registered status',
+			Serial: message.Serial,
+			TransactionId: transactionId,
+			Status: payload && payload.Status || ''
+		});
+		return;
 	}
+
+	const pairingStateWasSupplied = Object.prototype.hasOwnProperty.call(payload, 'PairingState');
+	const pairingState = pairingStateWasSupplied ? normalizePairingState(payload.PairingState) : '';
+	if (pairingStateWasSupplied) {
+		if (!pairingState) {
+			log.warn({
+				Message: 'Companion Device registration validation supplied an invalid pairing state',
+				Serial: message.Serial,
+				TransactionId: transactionId,
+				PairingState: payload.PairingState
+			});
+			return;
+		}
+		await applyAuthoritativePairingState(companionDeviceRecord, pairingState);
+	} else {
+		companionDeviceReachability[companionDeviceRecord.Serial] = 'Online';
+		removeStartupAlertCandidate(companionDeviceRecord.Serial);
+		if (!isStartupValidationCollecting) {
+			await renderRegisteredCompanionDevicesPanel();
+		}
+	}
+
+	pendingRegistrationValidation = null;
+	if (validation.timeout) {
+		clearTimeout(validation.timeout);
+	}
+	validation.resolve(message);
 
 	log.info({
 		Message: 'Companion Device confirmed Parent Room Registration',
 		Serial: message.Serial,
-		TransactionId: getTransactionId(message),
-		PairingState: normalizePairingState(pairingState)
+		TransactionId: transactionId,
+		PairingState: pairingState || normalizePairingState(companionDevicePairingStates[message.Serial] && companionDevicePairingStates[message.Serial].State),
+		PairingStateSource: pairingStateWasSupplied ? 'Response' : 'Retained'
 	});
 }
 

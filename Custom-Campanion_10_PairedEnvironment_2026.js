@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 20, 2026
  * Revised:                 July 28, 2026
- * Version:                 0.1.0.11
+ * Version:                 0.1.0.12
  *
  * Description:             Paired Environment Policy controller for the Custom Companion solution.
  *                          Owns reversible local configuration policy, Companion Web Widget mode,
@@ -99,6 +99,7 @@ const PAIRED_ENVIRONMENT_CONFIG_POLICY = [
 
 const RESTORE_VOLUME_PROMPT_ID = 'cc26_restore_volume';
 const STANDALONE_VOLUME_RESTORED_ALERT_OWNER = 'paired-environment:standalone-volume-restored';
+const COMPANION_WEB_WIDGET_PANEL_ID = 'cc26WebWidget';
 
 function createPairedEnvironment(options) {
 	const dependencies = options || {};
@@ -113,6 +114,9 @@ function createPairedEnvironment(options) {
 	let isEnforcingVolume = false;
 	let isVolumeRestorePromptActive = false;
 	let disabledCompanionWebWidgetRemovalAttempted = false;
+	let standaloneWebWidgetLayoutUpdateQueue = Promise.resolve();
+	let standaloneWebWidgetSubscriptionRegistered = false;
+	let userInterfaceThemeSubscriptionRegistered = false;
 	let dndRefreshTimer = null;
 	const subscribedConnectorIds = {};
 
@@ -651,42 +655,53 @@ function createPairedEnvironment(options) {
 		}
 
 		const onlyMissing = !!options.onlyMissing;
+		const candidate = { ...standaloneUiFeatureConfig };
 		let hasUpdates = false;
+		let webWidgetSuccessLog = null;
 
 		for (let index = 0; index < PAIRED_UI_FEATURE_POLICY.length; index++) {
 			const feature = PAIRED_UI_FEATURE_POLICY[index];
-			if (onlyMissing && standaloneUiFeatureConfig[feature.key] !== undefined) {
+			if (onlyMissing && candidate[feature.key] !== undefined) {
 				continue;
 			}
 			const currentValue = await getUiFeatureConfigValue(feature);
-			if (currentValue !== null && standaloneUiFeatureConfig[feature.key] !== currentValue) {
-				standaloneUiFeatureConfig[feature.key] = currentValue;
+			if (currentValue !== null && candidate[feature.key] !== currentValue) {
+				candidate[feature.key] = currentValue;
 				hasUpdates = true;
 			}
 		}
 
-		if (shouldManageWebWidget() && !shouldRestoreStandaloneWebWidget() && (standaloneUiFeatureConfig.webWidget !== undefined || standaloneUiFeatureConfig.webWidgetUrl !== undefined)) {
-			delete standaloneUiFeatureConfig.webWidget;
-			delete standaloneUiFeatureConfig.webWidgetUrl;
+		if (shouldManageWebWidget() && !shouldRestoreStandaloneWebWidget() && (candidate.webWidget !== undefined || candidate.webWidgetUrl !== undefined)) {
+			delete candidate.webWidget;
+			delete candidate.webWidgetUrl;
 			hasUpdates = true;
-			dependencies.log.info({ Message: 'Removed stale Standalone Web Widget restore memory because restoreStandaloneExisting is disabled' });
+			webWidgetSuccessLog = { Message: 'Removed stale Standalone Web Widget restore memory because restoreStandaloneExisting is disabled' };
 		}
 
 		const context = getRuntimeContext();
-		if (shouldManageWebWidget() && shouldRestoreStandaloneWebWidget() && context.mode === 'Standalone' && !getStandaloneWebWidget()) {
-			if (standaloneUiFeatureConfig.webWidget !== undefined || standaloneUiFeatureConfig.webWidgetUrl !== undefined) {
-				delete standaloneUiFeatureConfig.webWidget;
-				delete standaloneUiFeatureConfig.webWidgetUrl;
+		const shouldInventoryWebWidget = shouldManageWebWidget()
+			&& shouldRestoreStandaloneWebWidget()
+			&& context.mode === 'Standalone'
+			&& (!onlyMissing || !getStandaloneWebWidget(candidate));
+		if (shouldInventoryWebWidget) {
+			if (!getStandaloneWebWidget(candidate) && (candidate.webWidget !== undefined || candidate.webWidgetUrl !== undefined)) {
+				delete candidate.webWidget;
+				delete candidate.webWidgetUrl;
 				hasUpdates = true;
-				dependencies.log.info({ Message: 'Removed invalid Standalone Web Widget restore memory so capture can retry' });
+				webWidgetSuccessLog = { Message: 'Removed invalid Standalone Web Widget restore memory so capture can retry' };
 			}
 			try {
 				const currentWebWidget = await dependencies.companionUi.getCurrentWebWidget(dependencies.xapi);
-				if (currentWebWidget && !dependencies.companionUi.isCompanionWebWidget(currentWebWidget) && currentWebWidget.url) {
-					standaloneUiFeatureConfig.webWidget = currentWebWidget;
-					standaloneUiFeatureConfig.webWidgetUrl = currentWebWidget.url;
-					hasUpdates = true;
-					dependencies.log.info({ Message: 'Saved original Standalone Web Widget', PanelId: currentWebWidget.panelId });
+				if (getRuntimeContext().mode !== 'Standalone') {
+					return standaloneUiFeatureConfig;
+				}
+				if (isRestorableUserWebWidget(currentWebWidget)) {
+					if (!webWidgetDefinitionsMatch(getStandaloneWebWidget(candidate), currentWebWidget)) {
+						candidate.webWidget = { ...currentWebWidget };
+						candidate.webWidgetUrl = currentWebWidget.url;
+						hasUpdates = true;
+						webWidgetSuccessLog = { Message: 'Saved original Standalone Web Widget', PanelId: currentWebWidget.panelId };
+					}
 				} else if (currentWebWidget && !dependencies.companionUi.isCompanionWebWidget(currentWebWidget)) {
 					dependencies.log.warn({ Message: 'Current Standalone Web Widget was not saved because its inventory URL is unavailable', PanelId: currentWebWidget.panelId || '' });
 				}
@@ -696,7 +711,14 @@ function createPairedEnvironment(options) {
 		}
 
 		if (hasUpdates) {
-			await dependencies.mem.write(dependencies.storageKey, standaloneUiFeatureConfig);
+			if (getRuntimeContext().mode !== 'Standalone') {
+				return standaloneUiFeatureConfig;
+			}
+			await dependencies.mem.write(dependencies.storageKey, candidate);
+			standaloneUiFeatureConfig = candidate;
+			if (webWidgetSuccessLog) {
+				dependencies.log.info(webWidgetSuccessLog);
+			}
 		}
 		return standaloneUiFeatureConfig;
 	}
@@ -729,7 +751,7 @@ function createPairedEnvironment(options) {
 	}
 
 	function registerStandaloneWebWidgetSubscription() {
-		if (!shouldManageWebWidget() || !shouldRestoreStandaloneWebWidget()) {
+		if (standaloneWebWidgetSubscriptionRegistered || !shouldManageWebWidget() || !shouldRestoreStandaloneWebWidget()) {
 			return;
 		}
 
@@ -742,10 +764,13 @@ function createPairedEnvironment(options) {
 		}
 
 		layoutUpdated.on(() => {
-			handleStandaloneWebWidgetLayoutUpdated().catch(error => {
-				dependencies.utils.softError({ Context: 'Failed to save Standalone Web Widget change', Error: error });
-			});
+			standaloneWebWidgetLayoutUpdateQueue = standaloneWebWidgetLayoutUpdateQueue
+				.then(() => handleStandaloneWebWidgetLayoutUpdated())
+				.catch(error => {
+					dependencies.utils.softError({ Context: 'Failed to save Standalone Web Widget change', Error: error });
+				});
 		});
+		standaloneWebWidgetSubscriptionRegistered = true;
 	}
 
 	async function handleStandaloneWebWidgetLayoutUpdated() {
@@ -754,7 +779,7 @@ function createPairedEnvironment(options) {
 		}
 
 		const currentWebWidget = await dependencies.companionUi.getCurrentWebWidget(dependencies.xapi);
-		if (!currentWebWidget || dependencies.companionUi.isCompanionWebWidget(currentWebWidget) || !currentWebWidget.url) {
+		if (getRuntimeContext().mode !== 'Standalone' || !isRestorableUserWebWidget(currentWebWidget)) {
 			return;
 		}
 
@@ -763,9 +788,16 @@ function createPairedEnvironment(options) {
 			return;
 		}
 
-		standaloneUiFeatureConfig.webWidget = currentWebWidget;
-		standaloneUiFeatureConfig.webWidgetUrl = currentWebWidget.url;
-		await dependencies.mem.write(dependencies.storageKey, standaloneUiFeatureConfig);
+		const candidate = {
+			...standaloneUiFeatureConfig,
+			webWidget: { ...currentWebWidget },
+			webWidgetUrl: currentWebWidget.url
+		};
+		if (getRuntimeContext().mode !== 'Standalone') {
+			return;
+		}
+		await dependencies.mem.write(dependencies.storageKey, candidate);
+		standaloneUiFeatureConfig = candidate;
 		dependencies.log.info({ Message: 'Updated Standalone Web Widget preference', PanelId: currentWebWidget.panelId });
 	}
 
@@ -872,6 +904,9 @@ function createPairedEnvironment(options) {
 	}
 
 	function registerUserInterfaceThemeSubscription() {
+		if (userInterfaceThemeSubscriptionRegistered) {
+			return;
+		}
 		const node = getXapiConfigNode(['UserInterface', 'Theme', 'Name']);
 		if (!node || typeof node.on !== 'function') {
 			dependencies.log.debug({ Message: 'UserInterface Theme Name subscription unavailable' });
@@ -883,6 +918,7 @@ function createPairedEnvironment(options) {
 				dependencies.utils.softError({ Context: 'Failed to apply UserInterface theme change', Error: error });
 			});
 		});
+		userInterfaceThemeSubscriptionRegistered = true;
 	}
 
 	async function handleUserInterfaceThemeChange(value) {
@@ -1119,7 +1155,19 @@ function createPairedEnvironment(options) {
 			return;
 		}
 		disabledCompanionWebWidgetRemovalAttempted = true;
-		await dependencies.companionUi.removeCompanionWebWidget(dependencies.xapi);
+		try {
+			await dependencies.xapi.Command.UserInterface.Extensions.WebWidget.Remove({
+				PanelId: COMPANION_WEB_WIDGET_PANEL_ID
+			});
+		} catch (error) {
+			dependencies.log.warn({
+				Code: 'CC26-WEBWIDGET-DISABLED-REMOVE',
+				Component: 'PairedEnvironment',
+				Message: 'The disabled Companion Web Widget removal attempt did not complete; cc26WebWidget may already be absent.',
+				PanelId: COMPANION_WEB_WIDGET_PANEL_ID,
+				Error: error.message || error.code || 'Unknown Web Widget removal error'
+			});
+		}
 	}
 
 	function shouldRestoreStandaloneWebWidget() {
@@ -1127,19 +1175,31 @@ function createPairedEnvironment(options) {
 		return !!(config && config.WebWidget && config.WebWidget.CompanionWidget && config.WebWidget.CompanionWidget.restoreStandaloneExisting);
 	}
 
-	function getStandaloneWebWidget() {
-		if (standaloneUiFeatureConfig.webWidget && standaloneUiFeatureConfig.webWidget.url) {
-			return standaloneUiFeatureConfig.webWidget;
+	function getStandaloneWebWidget(snapshot = standaloneUiFeatureConfig) {
+		if (snapshot.webWidget && snapshot.webWidget.url) {
+			return snapshot.webWidget;
 		}
-		if (standaloneUiFeatureConfig.webWidgetUrl) {
+		if (snapshot.webWidgetUrl) {
 			return {
-				url: standaloneUiFeatureConfig.webWidgetUrl,
+				url: snapshot.webWidgetUrl,
 				name: 'Web Widget',
 				panelId: 'cc26OriginalWebWidget',
 				refreshInterval: 0
 			};
 		}
 		return null;
+	}
+
+	function isRestorableUserWebWidget(webWidget) {
+		return !!(webWidget
+			&& !dependencies.companionUi.isCompanionWebWidget(webWidget)
+			&& typeof webWidget.panelId === 'string'
+			&& webWidget.panelId.length > 0
+			&& typeof webWidget.name === 'string'
+			&& webWidget.name.length > 0
+			&& Number.isFinite(webWidget.refreshInterval)
+			&& typeof webWidget.url === 'string'
+			&& webWidget.url.length > 0);
 	}
 
 	function webWidgetDefinitionsMatch(first, second) {

@@ -45,6 +45,7 @@ import { completeSetupCapabilities, validateManifest } from './manifest';
 import { renderMermaidDiagrams } from './mermaid';
 import {
   ParentAdministrationMonitor,
+  ParentDeregistrationOperation,
   createParentDeregistrationRequest,
   createParentInventoryRequest,
   parentInventoryPlanAfterInstallation,
@@ -267,6 +268,7 @@ export class InstallerApp {
   private parentInventoryError = '';
   private parentInventoryKnownEmpty = false;
   private parentAdministrationMonitor?: ParentAdministrationMonitor;
+  private parentDeregistrationOperation?: ParentDeregistrationOperation;
   private parentDeregistrationTarget?: RegisteredParentSummary;
   private parentDeregistrationOutcome?: ParentDeregistrationOutcome;
   private parentDeregistrationProgress?: ParentWorkflowProgress;
@@ -923,10 +925,14 @@ export class InstallerApp {
       ? `<div class="notice success"><span>${checkIcon}</span><div><strong>Parent Room Device deregistered</strong><p>${escapeHtml(outcome.detail || 'The Companion Device completed local and remote cleanup.')}</p></div></div>`
       : outcome?.kind === 'pending'
         ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Remote cleanup is pending</strong><p>${escapeHtml(outcome.detail || 'The registration was removed locally and will remain visible under Pending Deregistrations until remote cleanup succeeds.')}</p><div class="device-configuration-link-groups"><span><b>Companion Device</b>${renderDeviceConfigurationLink(this.adminCredentials.host, 'HTTPClient Mode', 'HTTPClient Mode')}${renderDeviceConfigurationLink(this.adminCredentials.host, 'HTTPClient AllowInsecureHTTPS', 'Certificate validation')}</span><span><b>Parent Room Device</b>${renderDeviceConfigurationLink(target.host, 'HTTPClient Mode', 'HTTPClient Mode')}${renderDeviceConfigurationLink(target.host, 'HTTPClient AllowInsecureHTTPS', 'Certificate validation')}</span></div></div></div>`
-        : outcome?.kind === 'failed' || outcome?.kind === 'timeout'
-          ? `<div class="notice error"><span>${warningIcon}</span><div><strong>Deregistration was not completed</strong><p>${escapeHtml(outcome.detail)}</p></div></div>`
+        : outcome?.kind === 'timeout'
+          ? `<div class="notice warning"><span>${warningIcon}</span><div><strong>Monitoring window ended</strong><p>${escapeHtml(outcome.detail)} The original event subscription is still active; keep waiting without sending another deregistration request, or cancel monitoring.</p></div></div>`
+          : outcome?.kind === 'failed'
+            ? `<div class="notice error"><span>${warningIcon}</span><div><strong>Deregistration was not completed</strong><p>${escapeHtml(outcome.detail)}</p></div></div>`
           : '';
-    const actions = outcome
+    const actions = outcome?.kind === 'timeout'
+      ? '<div class="dialog-actions"><button class="button ghost" id="cancel-parent-deregistration" type="button">Cancel monitoring</button><button class="button primary" id="keep-waiting-parent-deregistration" type="button">Keep Waiting</button></div>'
+      : outcome
       ? '<div class="dialog-actions"><button class="button primary" id="close-parent-deregistration" type="button">Close</button></div>'
       : `<div class="dialog-actions"><button class="button ghost" id="cancel-parent-deregistration" type="button" ${this.parentAdministrationBusy ? 'disabled' : ''}>Cancel</button><button class="button danger-button" id="confirm-parent-deregistration" type="button" ${this.parentAdministrationBusy ? 'disabled' : ''}>${this.parentAdministrationBusy ? '<span class="spinner inverse"></span>Deregistering…' : 'Deregister Parent'}</button></div>`;
     return `
@@ -954,7 +960,7 @@ export class InstallerApp {
           <li>
             <span class="parent-inventory-copy"><strong>${escapeHtml(parent.name)}</strong><small>${escapeHtml(parent.host)} · Serial ${escapeHtml(parent.serial)}</small></span>
             ${parent.active ? '<span class="status-badge active">Active</span>' : '<span class="status-badge">Registered</span>'}
-            ${capabilities.parentDeregistration ? `<button class="button secondary compact-button" type="button" data-remove-parent="${escapeHtml(parent.serial)}" ${this.parentAdministrationBusy || this.localReviewMode ? 'disabled' : ''}>Remove</button>` : ''}
+            ${capabilities.parentDeregistration ? `<button class="button secondary compact-button" type="button" data-remove-parent="${escapeHtml(parent.serial)}" ${this.parentAdministrationBusy || this.parentDeregistrationOperation || this.localReviewMode ? 'disabled' : ''}>Remove</button>` : ''}
           </li>`).join('')}</ul>`
       : this.parentInventoryKnownEmpty
         ? '<div class="empty-state known-empty"><strong>No Parent Room Registrations are saved on this Companion Device.</strong><span>Fresh Installation erased the saved Custom Companion state, so there is nothing to fetch. Add a Parent Room Device when ready.</span></div>'
@@ -1141,6 +1147,7 @@ export class InstallerApp {
     this.byId('cancel-parent-deregistration')?.addEventListener('click', () => this.closeParentDeregistration());
     this.byId('close-parent-deregistration')?.addEventListener('click', () => this.closeParentDeregistration());
     this.byId('confirm-parent-deregistration')?.addEventListener('click', () => void this.beginParentDeregistration());
+    this.byId('keep-waiting-parent-deregistration')?.addEventListener('click', () => void this.waitForParentDeregistration());
     this.byId('finish-setup')?.addEventListener('click', () => this.reset());
     this.byId('disconnect-install')?.addEventListener('click', () => this.reset());
     this.byId('keep-waiting')?.addEventListener('click', () => void this.waitForInitialization());
@@ -1691,6 +1698,8 @@ export class InstallerApp {
     this.parentRegistrationMonitor = undefined;
     this.parentAdministrationMonitor?.close();
     this.parentAdministrationMonitor = undefined;
+    this.parentDeregistrationOperation?.close();
+    this.parentDeregistrationOperation = undefined;
     this.companionDevice.close();
     this.companionDevice = undefined;
     this.compatibility = undefined;
@@ -1755,6 +1764,7 @@ export class InstallerApp {
       || this.localReviewMode
       || !this.companionDevice
       || this.parentAdministrationBusy
+      || this.parentDeregistrationOperation
     ) return;
     let request: ParentAdministrationRequest;
     try {
@@ -1789,6 +1799,8 @@ export class InstallerApp {
 
   private closeParentDeregistration(): void {
     if (this.parentAdministrationBusy) return;
+    this.parentDeregistrationOperation?.close();
+    this.parentDeregistrationOperation = undefined;
     this.parentDeregistrationTarget = undefined;
     this.parentDeregistrationOutcome = undefined;
     this.parentDeregistrationProgress = undefined;
@@ -1817,33 +1829,50 @@ export class InstallerApp {
     }
 
     this.parentAdministrationMonitor?.close();
-    const monitor = new ParentAdministrationMonitor(
+    this.parentAdministrationMonitor = undefined;
+    this.parentDeregistrationOperation?.close();
+    const operation = new ParentDeregistrationOperation(
       this.companionDevice,
-      request.transactionId,
+      request,
       (progress) => {
         this.parentDeregistrationProgress = progress;
         this.render();
       },
     );
-    this.parentAdministrationMonitor = monitor;
-    this.parentAdministrationBusy = true;
+    this.parentDeregistrationOperation = operation;
     this.parentDeregistrationOutcome = undefined;
     this.parentDeregistrationProgress = undefined;
+    await this.waitForParentDeregistration(true);
+  }
+
+  private async waitForParentDeregistration(start = false): Promise<void> {
+    const operation = this.parentDeregistrationOperation;
+    if (!operation || this.parentAdministrationBusy) return;
+    this.parentAdministrationBusy = true;
+    this.parentDeregistrationOutcome = undefined;
     this.render();
     try {
-      await sendParentAdministrationRequest(this.companionDevice, request);
-      this.parentDeregistrationOutcome = await monitor.waitForDeregistration();
+      const outcome = start
+        ? await operation.start()
+        : await operation.wait();
+      if (this.parentDeregistrationOperation !== operation) return;
+      this.parentDeregistrationOutcome = outcome;
     } catch (error) {
+      if (this.parentDeregistrationOperation !== operation) return;
       this.parentDeregistrationOutcome = {
         kind: 'failed',
         detail: error instanceof Error ? error.message : String(error),
       };
-    } finally {
-      monitor.close();
-      if (this.parentAdministrationMonitor === monitor) this.parentAdministrationMonitor = undefined;
-      this.parentAdministrationBusy = false;
-      this.render();
+      operation.close();
     }
+
+    if (this.parentDeregistrationOperation !== operation) return;
+    this.parentAdministrationBusy = false;
+    if (this.parentDeregistrationOutcome?.kind !== 'timeout') {
+      operation.close();
+      this.parentDeregistrationOperation = undefined;
+    }
+    this.render();
 
     if (
       this.parentDeregistrationOutcome?.kind === 'completed'
@@ -1967,6 +1996,8 @@ export class InstallerApp {
     this.parentRegistrationMonitor = undefined;
     this.parentAdministrationMonitor?.close();
     this.parentAdministrationMonitor = undefined;
+    this.parentDeregistrationOperation?.close();
+    this.parentDeregistrationOperation = undefined;
     this.companionDevice?.close();
     this.companionDevice = undefined;
     this.step = 0;

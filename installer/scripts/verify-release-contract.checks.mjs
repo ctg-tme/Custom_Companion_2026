@@ -139,19 +139,73 @@ test('rejects unsynchronized runtime project versions', async (t) => {
   await assert.rejects(verifyReleaseContract(repositoryDirectory), /versions are not synchronized/i);
 });
 
+test('rejects a malformed helper macro header version', async (t) => {
+  const repositoryDirectory = await withFixture(t, {
+    sources: {
+      'Custom-Campanion_3_Helper_2026.js': `${header('1.2.3')}export const helper = true;\n`,
+    },
+  });
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /header version.*four numeric components/i);
+});
+
+test('rejects a commented-out Main Project Version declaration', async (t) => {
+  const repositoryDirectory = await withFixture(t, {
+    sources: {
+      [contract.MainMacroFile]: `${header()}// const projectVersion = '${version}';\n${runtimeContractSource()}`,
+    },
+  });
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /exactly one top-level projectVersion declaration/i);
+});
+
+test('rejects a nested Main Project Version declaration', async (t) => {
+  const repositoryDirectory = await withFixture(t, {
+    sources: {
+      [contract.MainMacroFile]: `${header()}function nested() { const projectVersion = '${version}'; return projectVersion; }\n${runtimeContractSource()}`,
+    },
+  });
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /exactly one top-level projectVersion declaration/i);
+});
+
 test('rejects a Main macro without a declared Project Version', async (t) => {
   const repositoryDirectory = await withFixture(t, {
     sources: {
       [contract.MainMacroFile]: `${header()}${runtimeContractSource()}`,
     },
   });
-  await assert.rejects(verifyReleaseContract(repositoryDirectory), /does not declare projectVersion/i);
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /exactly one top-level projectVersion declaration/i);
 });
 
-test('rejects Project Version ownership in Config', async (t) => {
+test('rejects duplicate top-level Main Project Version declarations', async (t) => {
   const repositoryDirectory = await withFixture(t, {
     sources: {
-      [contract.ConfigMacroFile]: `${header()}const projectVersion = '${version}';\nconst config = {};\nexport { config, projectVersion };\n`,
+      [contract.MainMacroFile]: `${header()}var projectVersion = '${version}';\nvar projectVersion = '${version}';\n${runtimeContractSource()}`,
+    },
+  });
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /exactly one top-level projectVersion declaration/i);
+});
+
+test('allows harmless Config comments and strings containing projectVersion', async (t) => {
+  const repositoryDirectory = await withFixture(t, {
+    sources: {
+      [contract.ConfigMacroFile]: `${header()}// projectVersion remains Main-owned.\nconst note = 'projectVersion is not Deployment Configuration';\nconst config = { note };\nexport { config };\n`,
+    },
+  });
+  await assert.doesNotReject(verifyReleaseContract(repositoryDirectory));
+});
+
+test('rejects an actual Project Version declaration in Config', async (t) => {
+  const repositoryDirectory = await withFixture(t, {
+    sources: {
+      [contract.ConfigMacroFile]: `${header()}const projectVersion = '${version}';\nconst config = {};\nexport { config };\n`,
+    },
+  });
+  await assert.rejects(verifyReleaseContract(repositoryDirectory), /must not declare or export projectVersion/i);
+});
+
+test('rejects an actual Project Version export from Config', async (t) => {
+  const repositoryDirectory = await withFixture(t, {
+    sources: {
+      [contract.ConfigMacroFile]: `${header()}const config = {};\nexport { config as projectVersion };\n`,
     },
   });
   await assert.rejects(verifyReleaseContract(repositoryDirectory), /must not declare or export projectVersion/i);

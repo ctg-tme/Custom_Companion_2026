@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CompanionDeviceXapi } from './device';
 import {
   ParentAdministrationMonitor,
+  ParentDeregistrationOperation,
   createParentDeregistrationRequest,
   createParentInventoryRequest,
   parentInventoryPlanAfterInstallation,
@@ -9,8 +10,10 @@ import {
 } from './parent-administration';
 import {
   INSTALLER_PARENT_DEREGISTRATION_ACTION,
+  INSTALLER_PARENT_DEREGISTRATION_FAILURE_MESSAGE,
   INSTALLER_PARENT_DEREGISTRATION_PENDING_MESSAGE,
   INSTALLER_PARENT_DEREGISTRATION_PROGRESS_MESSAGE,
+  INSTALLER_PARENT_DEREGISTRATION_SUCCESS_MESSAGE,
   INSTALLER_PARENT_INVENTORY_ACTION,
   INSTALLER_PARENT_INVENTORY_SUCCESS_MESSAGE,
 } from './types';
@@ -188,5 +191,160 @@ describe('Parent Room administration monitor', () => {
       detail: 'Remote cleanup remains pending.',
     });
     monitor.close();
+  });
+});
+
+describe('Parent Room deregistration operation lifecycle', () => {
+  it('handles a terminal result during the initial wait and closes the monitor', async () => {
+    let listener: ((event: unknown) => void) | undefined;
+    const stopFeedback = vi.fn();
+    const command = vi.fn().mockResolvedValue(undefined);
+    const xapi = {
+      command,
+      event: {
+        on: vi.fn((_path: string, callback: (event: unknown) => void) => {
+          listener = callback;
+          return stopFeedback;
+        }),
+      },
+    } as unknown as CompanionDeviceXapi;
+    const request = {
+      transactionId: 'installer-deregistration:initial',
+      text: '{"request":"initial"}',
+    };
+    const operation = new ParentDeregistrationOperation(xapi, request);
+    const result = operation.start(1_000);
+
+    listener?.({
+      Message: INSTALLER_PARENT_DEREGISTRATION_SUCCESS_MESSAGE,
+      TransactionId: request.transactionId,
+      Detail: 'Cleanup completed.',
+    });
+
+    await expect(result).resolves.toEqual({
+      kind: 'completed',
+      detail: 'Cleanup completed.',
+    });
+    expect(command).toHaveBeenCalledOnce();
+    expect(xapi.event.on).toHaveBeenCalledOnce();
+    expect(stopFeedback).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the original transaction monitor after timeout and Keep Waiting does not resend or resubscribe', async () => {
+    vi.useFakeTimers();
+    try {
+      let listener: ((event: unknown) => void) | undefined;
+      const stopFeedback = vi.fn();
+      const command = vi.fn().mockResolvedValue(undefined);
+      const xapi = {
+        command,
+        event: {
+          on: vi.fn((_path: string, callback: (event: unknown) => void) => {
+            listener = callback;
+            return stopFeedback;
+          }),
+        },
+      } as unknown as CompanionDeviceXapi;
+      const request = {
+        transactionId: 'installer-deregistration:late',
+        text: '{"request":"late"}',
+      };
+      const operation = new ParentDeregistrationOperation(xapi, request);
+      const initialWait = operation.start(10);
+
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(initialWait).resolves.toMatchObject({ kind: 'timeout' });
+      expect(stopFeedback).not.toHaveBeenCalled();
+
+      const continuedWait = operation.wait(1_000);
+      listener?.({
+        Message: INSTALLER_PARENT_DEREGISTRATION_SUCCESS_MESSAGE,
+        TransactionId: request.transactionId,
+        Detail: 'Late cleanup completed.',
+      });
+
+      await expect(continuedWait).resolves.toEqual({
+        kind: 'completed',
+        detail: 'Late cleanup completed.',
+      });
+      expect(command).toHaveBeenCalledOnce();
+      expect(xapi.event.on).toHaveBeenCalledOnce();
+      expect(stopFeedback).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    [INSTALLER_PARENT_DEREGISTRATION_PENDING_MESSAGE, 'pending'],
+    [INSTALLER_PARENT_DEREGISTRATION_FAILURE_MESSAGE, 'failed'],
+  ] as const)('treats %s as terminal and closes the monitor', async (message, kind) => {
+    let listener: ((event: unknown) => void) | undefined;
+    const stopFeedback = vi.fn();
+    const xapi = {
+      command: vi.fn().mockResolvedValue(undefined),
+      event: {
+        on: vi.fn((_path: string, callback: (event: unknown) => void) => {
+          listener = callback;
+          return stopFeedback;
+        }),
+      },
+    } as unknown as CompanionDeviceXapi;
+    const request = {
+      transactionId: `installer-deregistration:${kind}`,
+      text: `{"request":"${kind}"}`,
+    };
+    const operation = new ParentDeregistrationOperation(xapi, request);
+    const result = operation.start(1_000);
+
+    listener?.({
+      Message: message,
+      TransactionId: request.transactionId,
+      Detail: `${kind} detail`,
+    });
+
+    await expect(result).resolves.toMatchObject({ kind });
+    expect(stopFeedback).toHaveBeenCalledOnce();
+  });
+
+  it('cancellation closes the subscription and a new operation cannot consume the stale result', async () => {
+    const listeners: Array<(event: unknown) => void> = [];
+    const stops = [vi.fn(), vi.fn()];
+    const xapi = {
+      command: vi.fn().mockResolvedValue(undefined),
+      event: {
+        on: vi.fn((_path: string, callback: (event: unknown) => void) => {
+          listeners.push(callback);
+          return stops[listeners.length - 1];
+        }),
+      },
+    } as unknown as CompanionDeviceXapi;
+    const first = new ParentDeregistrationOperation(xapi, {
+      transactionId: 'installer-deregistration:first',
+      text: '{"request":"first"}',
+    });
+    first.close();
+    const second = new ParentDeregistrationOperation(xapi, {
+      transactionId: 'installer-deregistration:second',
+      text: '{"request":"second"}',
+    });
+    const result = second.start(1_000);
+
+    listeners[0]?.({
+      Message: INSTALLER_PARENT_DEREGISTRATION_SUCCESS_MESSAGE,
+      TransactionId: 'installer-deregistration:first',
+    });
+    listeners[1]?.({
+      Message: INSTALLER_PARENT_DEREGISTRATION_SUCCESS_MESSAGE,
+      TransactionId: 'installer-deregistration:second',
+      Detail: 'Second completed.',
+    });
+
+    await expect(result).resolves.toMatchObject({
+      kind: 'completed',
+      detail: 'Second completed.',
+    });
+    expect(stops[0]).toHaveBeenCalledOnce();
+    expect(stops[1]).toHaveBeenCalledOnce();
   });
 });

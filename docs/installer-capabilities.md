@@ -21,7 +21,7 @@ Manifest fragment, with unrelated fields omitted:
   "SchemaVersion": 1,
   "CompanionInstaller": {
     "ContractVersion": 1,
-    "TestedVersion": "0.1.26",
+    "TestedVersion": "0.1.27",
     "Capabilities": [
       "installer.parent-deregistration.v1",
       "installer.parent-inventory.v1",
@@ -62,7 +62,7 @@ The table collapses documentation-only Main snapshots when their runtime and ins
 | Main at `b083f09` | `0.1.2.56` | `0.1.20` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
 | Main at `f4e5007` | `0.1.2.57` | `0.1.20` | Historical beta state | Registration, Inventory, and Deregistration `v1` |
 | Main at `b87896c` | `0.1.2.62` | `0.1.25` | Historical beta state | Registration, Inventory, and Deregistration `v1` plus additive operation progress |
-| Main after this work package | `0.1.2.64` | `0.1.26` | Current Main Fork source | Registration, Inventory, and Deregistration `v1` plus additive operation progress |
+| Main after this work package | `0.1.2.65` | `0.1.27` | Current Main Fork source | Registration, Inventory, and Deregistration `v1` plus additive operation progress and retained timeout monitoring |
 
 Preview `v0.1.2.51` predates the `CompanionInstaller` manifest object. The installer applies one explicit legacy profile only when that tag resolves to commit `be539c292d79197e8303d42b68902c6985cde699`: Contract Version 1, Tested Installer Version `0.1.14`, and `installer.parent-registration.v1`. It does not infer support from the runtime version. Any other manifest without `CompanionInstaller` metadata is invalid.
 
@@ -78,7 +78,7 @@ These are the current release-provided capabilities discovered by auditing the c
 
 Capabilities describe runtime support, not whether a Device Administrator chooses to use a workflow. The installer must check the selected release capability before rendering its control and again before sending its action.
 
-The current Main Fork runtime also emits additive transaction-correlated Registration and Deregistration progress messages. They do not change either v1 capability's required action or terminal-result meaning: the installer uses them when present and retains generic waiting behavior for older v1 runtimes. Progress never substitutes for a terminal success, pending, or failure result, so no new capability version is required.
+The current Main Fork runtime also emits additive transaction-correlated Registration and Deregistration progress messages. They do not change either v1 capability's required action or terminal-result meaning: the installer uses them when present and retains generic waiting behavior for older v1 runtimes. Progress never substitutes for a terminal success, pending, or failure result. Likewise, retaining the original browser subscription and transaction after a non-terminal monitoring timeout changes neither the single-attempt request nor the published terminal results. **Keep Waiting** only extends observation of that same operation. These backwards-compatible installer lifecycle corrections require neither a new capability version nor a new Installer Contract Version.
 
 `installer.parent-deregistration.v1` depends on `installer.parent-inventory.v1` because Remove targets a registration selected from Inventory. Manifest validation and release verification reject Deregistration without Inventory; Inventory without Deregistration remains a valid read-only view.
 

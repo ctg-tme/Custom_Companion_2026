@@ -169,7 +169,7 @@ Edit only the Deployment Configuration values in `Custom-Campanion_2_Config_2026
 | `CompanionDeviceInformation.password` | Existing Companion Device Callback Credentials password. The source value is blank and must be supplied. |
 | `pinMode.defaults.enabled` | `true` or `false`. This initializes PIN Mode only when no saved PIN Mode record exists. |
 | `pinMode.defaults.pin` | A quoted 4-8 digit PIN. Do not treat it as an administrator or recovery credential. |
-| `UserInterface.WebWidget` | Review the enabled state, optional URL override, restoration policy, weather location and unit, time zone, mode-specific `userGuidance`, and icon URLs. Weather and time default disabled with blank location/time-zone values. |
+| `UserInterface.WebWidget` | Review the enabled state, restoration policy, weather location and unit, time zone, mode-specific `userGuidance`, and icon URLs. The enabled Companion WebWidget uses the release-owned canonical Simple-WebWidget URL. Weather and time default disabled with blank location/time-zone values. |
 
 Each literal Config value has a trailing source definition that the Companion Installer displays as field help. Preserve these comments and use valid JavaScript string escaping for every value. Never paste a configuration file containing real credentials into a ticket, chat, or source commit.
 
