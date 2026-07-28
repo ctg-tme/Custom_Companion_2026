@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 10, 2026
- * Revised:                 July 24, 2026
- * Version:                 1.0.6
+ * Revised:                 July 28, 2026
+ * Version:                 0.1.0.6
  *
  * Description:             Durable registration, tombstone, Paired Environment, and standby storage keys,
  *                          safe MemoryStorage reads, and basic Companion Device mode state.

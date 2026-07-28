@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 10, 2026
- * Revised:                 July 27, 2026
- * Version:                 1.0.30
+ * Revised:                 July 28, 2026
+ * Version:                 0.1.0.30
  *
  * Description:             Companion Device provisioning payloads, peripheral identity, and runtime device-identity services.
  *

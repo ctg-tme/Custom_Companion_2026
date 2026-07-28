@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 09, 2026
- * Revised:                 July 27, 2026
- * Version:                 1.0.16
+ * Revised:                 July 28, 2026
+ * Version:                 0.1.0.16
  *
  * Description:             Device-to-device transport, queue policy, Message envelopes, putxml
  *                          builders, response validation, and dependency-free XML parsing.

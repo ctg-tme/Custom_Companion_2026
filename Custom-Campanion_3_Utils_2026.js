@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 09, 2026
- * Revised:                 July 24, 2026
- * Version:                 1.0.2
+ * Revised:                 July 28, 2026
+ * Version:                 0.1.0.2
  *
  * Description:             Shared structured logging plus soft and hard diagnostic boundaries.
  *

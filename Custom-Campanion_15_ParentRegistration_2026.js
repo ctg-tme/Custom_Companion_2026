@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 22, 2026
- * Revised:                 July 27, 2026
- * Version:                 1.0.12
+ * Revised:                 July 28, 2026
+ * Version:                 0.1.0.12
  *
  * Description:             Parent Room Registration and Deregistration controller. Owns the
  *                          PIN-authorized wizard, locked provisioning stages, long-hold removal,

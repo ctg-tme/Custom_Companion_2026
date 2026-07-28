@@ -20,8 +20,8 @@ or implied.
  *                          Cisco Systems Inc.
  *
  * Date Created:            July 20, 2026
- * Revised:                 July 27, 2026
- * Version:                 1.0.15
+ * Revised:                 July 28, 2026
+ * Version:                 0.1.0.15
  *
  * Description:             Companion Device Call Synchronization controller for the Custom Companion solution.
  *                          Owns Companion Device call sync classification, Webex join and disconnect behavior,
