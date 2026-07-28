@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 09, 2026
  * Revised:                 July 28, 2026
- * Version:                 0.1.0.32
+ * Version:                 0.1.0.33
  *
  * Description:             Companion Device access and hidden panels, custom access-panel icon,
  *                          PIN/registration/status prompts, shared Companion Alert ownership,
@@ -638,7 +638,7 @@ function buildCompanionWebWidgetUrl(options) {
 
 	params.hideSettings = 'true';
 
-	return `${getWebWidgetBaseUrl(options.urlOverride)}#${buildHashParams(params)}`;
+	return `${WEB_WIDGET_DEFAULT_URL}#${buildHashParams(params)}`;
 }
 
 async function showStandbySyncPrompt(XAPIObject, options) {
@@ -659,10 +659,6 @@ async function clearPrompt(XAPIObject, feedbackId) {
 	} catch (error) {
 		return;
 	}
-}
-
-function getWebWidgetBaseUrl(configuredUrl) {
-	return String(configuredUrl || WEB_WIDGET_DEFAULT_URL).split('#')[0];
 }
 
 function limitWebWidgetInfoText(value) {

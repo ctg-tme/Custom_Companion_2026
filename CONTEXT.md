@@ -194,7 +194,7 @@ _Avoid_: Current PIN, Default PIN, master PIN
 
 ## User Communication
 
-The companion WebWidget `info3` field is solution-owned runtime status space and is not editable deployment configuration. It displays active messages in this order: Unhealthy State, parent connectivity and Call Preservation, call synchronization, then standby. This is display precedence only; lower-priority behaviors continue while their messages are hidden and become visible again when the higher-priority condition clears.
+When the Companion WebWidget is enabled, its `info3` field is solution-owned runtime status space and is not editable deployment configuration. It displays active messages in this order: Unhealthy State, parent connectivity and Call Preservation, call synchronization, then standby. This is display precedence only; lower-priority behaviors continue while their messages are hidden and become visible again when the higher-priority condition clears.
 
 During the Unhealthy State, `info3` persistently tells the In-Room User that Companion Device controls are unavailable and to contact a Device Administrator. When the cause is unavailable or disabled local `HttpClient Mode`, the more specific message is `Custom Companion is unavailable because device-to-device communication is disabled. Ask a Device Administrator to enable HTTPClient Mode and restart the Macro Runtime.` It retains Unhealthy State precedence and remains visible until a successful runtime restart. Failure to update an unavailable Web Widget is logged but does not create another hard error.
 

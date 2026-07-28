@@ -14,6 +14,8 @@ describe('dynamic Config editing', () => {
     const source = await readFile(new URL('../../Custom-Campanion_2_Config_2026.js', import.meta.url), 'utf8');
     const document = parseConfigDocument(source);
     expect(document.leaves.some((leaf) => formatConfigPath(leaf.path) === 'UserInterface.WebWidget.CompanionWidget.weather.latitude')).toBe(true);
+    expect(document.leaves.some((leaf) => formatConfigPath(leaf.path) === 'UserInterface.WebWidget.CompanionWidget.enabled')).toBe(true);
+    expect(document.leaves.some((leaf) => formatConfigPath(leaf.path) === 'UserInterface.WebWidget.urlOverride')).toBe(false);
     expect(document.leaves.some((leaf) => formatConfigPath(leaf.path) === 'pinMode.defaults.pin')).toBe(true);
     expect(document.leaves.some((leaf) => formatConfigPath(leaf.path) === 'version')).toBe(false);
     expect(document.leaves.find((leaf) => formatConfigPath(leaf.path) === 'CompanionDeviceInformation.host')?.value).toBe('');

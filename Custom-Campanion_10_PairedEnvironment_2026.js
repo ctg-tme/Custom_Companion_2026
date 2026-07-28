@@ -21,7 +21,7 @@ or implied.
  *
  * Date Created:            July 20, 2026
  * Revised:                 July 28, 2026
- * Version:                 0.1.0.10
+ * Version:                 0.1.0.11
  *
  * Description:             Paired Environment Policy controller for the Custom Companion solution.
  *                          Owns reversible local configuration policy, Companion Web Widget mode,
@@ -112,6 +112,7 @@ function createPairedEnvironment(options) {
 	let isEnforcingMicrophoneMute = false;
 	let isEnforcingVolume = false;
 	let isVolumeRestorePromptActive = false;
+	let disabledCompanionWebWidgetRemovalAttempted = false;
 	let dndRefreshTimer = null;
 	const subscribedConnectorIds = {};
 
@@ -124,14 +125,21 @@ function createPairedEnvironment(options) {
 	}
 
 	async function initializeUiFeatureMode() {
-		userInterfaceThemeName = await getUserInterfaceThemeName();
+		const manageWebWidget = shouldManageWebWidget();
+		if (manageWebWidget) {
+			userInterfaceThemeName = await getUserInterfaceThemeName();
+		} else {
+			await removeDisabledCompanionWebWidgetOnce();
+		}
 		if (getRuntimeContext().mode === 'Standalone') {
 			await captureStandaloneConfig();
 		}
 		registerStandaloneUiFeatureSubscriptions();
 		await registerStandaloneEnvironmentSubscriptions();
-		registerStandaloneWebWidgetSubscription();
-		registerUserInterfaceThemeSubscription();
+		if (manageWebWidget) {
+			registerStandaloneWebWidgetSubscription();
+			registerUserInterfaceThemeSubscription();
+		}
 	}
 
 	function registerMediaHandlers() {
@@ -509,6 +517,7 @@ function createPairedEnvironment(options) {
 		const context = getRuntimeContext();
 		const activeMode = mode || context.mode;
 		if (!shouldManageWebWidget()) {
+			await removeDisabledCompanionWebWidgetOnce();
 			return;
 		}
 
@@ -520,14 +529,13 @@ function createPairedEnvironment(options) {
 			mode: activeMode,
 			parentRoomDeviceName: context.activeParentName,
 			themeName: userInterfaceThemeName,
-			urlOverride: webWidgetConfig.urlOverride,
 			runtimeInfo3: context.runtimeInfo3,
 			preserveRuntimeInfo3: context.isUnhealthy,
 			webWidgetConfig: companionWidgetConfig
 		});
 
 		try {
-			dependencies.log.debug({ Message: 'Companion Web Widget URL computed', Mode: activeMode, RestoreExistingWebWidget: !!shouldRestoreExistingWebWidget, UrlOverrideUsed: !!webWidgetConfig.urlOverride, Url: url });
+			dependencies.log.debug({ Message: 'Companion Web Widget URL computed', Mode: activeMode, RestoreExistingWebWidget: !!shouldRestoreExistingWebWidget, Url: url });
 			if (shouldRestoreExistingWebWidget) {
 				await dependencies.companionUi.replaceWebWidget(dependencies.xapi, standaloneWebWidget);
 			} else {
@@ -1104,6 +1112,14 @@ function createPairedEnvironment(options) {
 	function shouldManageWebWidget() {
 		const config = dependencies.userInterfaceConfig;
 		return !!(config && config.WebWidget && config.WebWidget.CompanionWidget && config.WebWidget.CompanionWidget.enabled);
+	}
+
+	async function removeDisabledCompanionWebWidgetOnce() {
+		if (disabledCompanionWebWidgetRemovalAttempted) {
+			return;
+		}
+		disabledCompanionWebWidgetRemovalAttempted = true;
+		await dependencies.companionUi.removeCompanionWebWidget(dependencies.xapi);
 	}
 
 	function shouldRestoreStandaloneWebWidget() {

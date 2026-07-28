@@ -30,7 +30,7 @@ async function loadRuntimeModules() {
   return { companionUi, pairedEnvironment };
 }
 
-async function createHarness(restoreStandaloneExisting: boolean) {
+async function createHarness(restoreStandaloneExisting: boolean, enabled = true) {
   const { companionUi, pairedEnvironment } = await loadRuntimeModules();
   const existingWebWidget: WebWidget = {
     panelId: 'existingWebWidget',
@@ -118,9 +118,8 @@ async function createHarness(restoreStandaloneExisting: boolean) {
     environmentStorageKey: 'standalone-environment',
     userInterfaceConfig: {
       WebWidget: {
-        urlOverride: 'https://example.test/companion',
         CompanionWidget: {
-          enabled: true,
+          enabled,
           restoreStandaloneExisting,
           Standalone: {},
           Paired: {},
@@ -170,6 +169,38 @@ async function createHarness(restoreStandaloneExisting: boolean) {
 }
 
 describe('Paired Environment WebWidget ownership', () => {
+  it('removes the solution-owned WebWidget without starting the workflow when disabled', async () => {
+    const harness = await createHarness(true, false);
+    harness.setInstalledWebWidget({
+      panelId: 'cc26WebWidget',
+      name: 'Custom Companion 2026',
+      refreshInterval: 0,
+      url: 'https://ctg-tme.github.io/Simple-WebWidget/',
+    });
+
+    await harness.controller.initializeUiFeatureMode();
+    await harness.controller.applyRuntimeWebWidget('Standalone');
+
+    expect(harness.getInstalledWebWidget()).toBeNull();
+    expect(harness.operations).toEqual([{
+      operation: 'Remove',
+      params: { PanelId: 'cc26WebWidget' },
+    }]);
+    expect(() => harness.triggerLayoutUpdated()).toThrow('LayoutUpdated subscription was not registered');
+  });
+
+  it('leaves a user-owned WebWidget untouched when the workflow is disabled', async () => {
+    const harness = await createHarness(true, false);
+
+    await harness.controller.initializeUiFeatureMode();
+
+    expect(harness.getInstalledWebWidget()).toEqual(harness.existingWebWidget);
+    expect(harness.operations).toEqual([{
+      operation: 'Remove',
+      params: { PanelId: 'cc26WebWidget' },
+    }]);
+  });
+
   it('replaces an existing WebWidget without retaining it when restoration is disabled', async () => {
     const harness = await createHarness(false);
 

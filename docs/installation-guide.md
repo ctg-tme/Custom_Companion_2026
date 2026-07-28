@@ -45,7 +45,7 @@ Use [Network Requirements](network-requirements.md) for the complete endpoint ta
 - Prepare an administrator account on the Companion Device for Installer Credentials. RoomOS restricts macro save and activation to an administrator role.
 - Prepare an existing local account on the Companion Device for Companion Device Callback Credentials. A dedicated account such as `custom-companion` is recommended for clearer audit activity. The installer verifies authentication but does not create the account or test its permissions. Registered Parent Room Devices store these credentials so they can send runtime messages back to the Companion Device.
 - Prepare a RoomOS account on each Parent Room Device that can read device identity, accept `/putxml` commands, install and run the shared Parent Room macros, and manage the Companion Device peripheral record. The Companion Device stores these credentials for autonomous communication and reconciliation.
-- If the managed Companion WebWidget is enabled, allow the Companion Device to reach the configured WebWidget and icon URLs. The default widget uses `https://ctg-tme.github.io/Simple-WebWidget/`.
+- If the managed Companion WebWidget is enabled, allow the Companion Device to reach the release-owned WebWidget URL and configured icon URLs. The widget uses `https://ctg-tme.github.io/Simple-WebWidget/`.
 
 Protect all device credentials and any backup of generated storage. Do not place them in source control, documentation, screenshots, or support logs.
 
